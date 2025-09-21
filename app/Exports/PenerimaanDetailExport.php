@@ -147,6 +147,7 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
             // Calculate cascading discounts (bertingkat)
             $totalDiskonPersen = 0;
             $totalDiskonNominal = 0;
+            $discountPercentages = []; // Array to store individual percentages
             
             for ($i = 1; $i <= 5; $i++) {
                 $diskonPersen = $detail->{"diskon_persen_$i"} ?? 0;
@@ -156,6 +157,7 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
                     $potongan = $subtotal * ($diskonPersen / 100);
                     $subtotal -= $potongan;
                     $totalDiskonPersen += $diskonPersen;
+                    $discountPercentages[] = number_format($diskonPersen, 0) . '%'; // Store individual percentage
                 } elseif ($diskonNominal > 0) {
                     $subtotal -= $diskonNominal;
                     $totalDiskonNominal += $diskonNominal;
@@ -175,7 +177,7 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
                 (int) $detail->qty, // Angka untuk qty (tanpa desimal)
                 $detail->satuan->name ?? '-',
                 round((float) $detail->harga_hpp, 2), // Harga per barang 2 desimal
-                (float) ($totalDiskonPersen / 100), // Angka untuk diskon persen (0-1 untuk format %)
+                empty($discountPercentages) ? '-' : implode('+', $discountPercentages), // Format individual percentages like "4%+1%"
                 round((float) $totalDiskonNominal, 2), // Diskon nominal 2 desimal
                 round((float) $subtotalSebelumDiskon, 2), // Subtotal 2 desimal
                 round((float) $totalDiskon, 2), // Total diskon 2 desimal

@@ -594,10 +594,21 @@ class ReturPenjualanController extends Controller
                 }
             }
             
+            // Get the retur warehouse location (same as offline)
+            $returLocation = \App\Models\Lokasi::where('kode', 'GUDANG_RETUR')->first();
+            if (!$returLocation) {
+                $returLocation = \App\Models\Lokasi::create([
+                    'kode' => 'GUDANG_RETUR',
+                    'nama' => 'Gudang Retur',
+                    'deskripsi' => 'Tempat penyimpanan barang hasil retur'
+                ]);
+                \Log::info("Created new retur location with ID: {$returLocation->id}");
+            }
+
             // Create a new warehouse stock entry for returned items
             $warehouseStock = WarehouseStock::create([
                 'product_id' => $productId,
-                'lokasi_id' => 2, // Gudang A
+                'lokasi_id' => $returLocation->id, // Use retur location
                 'penerimaan_detail_id' => $penerimaanDetailId,
                 'tax_id' => $taxId,
                 'qty' => $qty,

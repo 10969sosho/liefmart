@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\FinanceOffline;
 use App\Models\BarangKeluar;
 use App\Models\OfflineSale;
+use App\Exports\FinanceOfflineInvoiceExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Facades\Excel;
 
 class FinanceOfflineController extends Controller
 {
@@ -250,6 +252,67 @@ class FinanceOfflineController extends Controller
         ];
 
         return view('finance.offline.list_invoices', compact('invoices', 'summary'));
+    }
+
+    /**
+     * Export invoices to Excel
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function exportInvoices(Request $request)
+    {
+        // Use the same query logic as listInvoices but get all data
+        $query = FinanceOffline::with(['barangKeluarItems', 'payments', 
+                                        'barangKeluarItems.warehouseStock',
+                                        'barangKeluarItems.warehouseStock.tax',
+                                        'barangKeluarItems.warehouseStock.product.mainCategory',
+                                        'barangKeluarItems.offlineSaleItem',
+                                        'barangKeluarItems.offlineSaleItem.offlineSale',
+                                        'barangKeluarItems.offlineSaleItem.offlineSale.customerInfo',
+                                        'barangKeluarItems.offlineSaleItem.offlineSale.mainCategory']);
+
+        // Apply the same filters as listInvoices
+        if ($request->filled('invoice_number')) {
+            $query->where('invoice_number', 'like', '%' . $request->invoice_number . '%');
+        }
+
+        if ($request->filled('payment_status')) {
+            $query->where('status', $request->payment_status);
+        }
+
+        if ($request->filled('date_start')) {
+            $query->whereDate('tanggal_invoice', '>=', $request->date_start);
+        }
+
+        if ($request->filled('date_end')) {
+            $query->whereDate('tanggal_invoice', '<=', $request->date_end);
+        }
+
+        if ($request->filled('tax_id')) {
+            $query->whereHas('barangKeluarItems.warehouseStock', function($q) use ($request) {
+                $q->where('tax_id', $request->tax_id);
+            });
+        }
+        
+        if (session()->has('main_category_id')) {
+            $mainCategoryId = session('main_category_id');
+            $query->where(function($q) use ($mainCategoryId) {
+                $q->where('main_category_id', $mainCategoryId)
+                  ->orWhereHas('barangKeluarItems.offlineSaleItem.offlineSale', function($subQ) use ($mainCategoryId) {
+                      $subQ->where('main_category_id', $mainCategoryId);
+                  })
+                  ->orWhereHas('barangKeluarItems.warehouseStock.product', function($subQ) use ($mainCategoryId) {
+                      $subQ->where('main_category_id', $mainCategoryId);
+                  });
+            });
+        }
+
+        $invoices = $query->orderBy('created_at', 'desc')->get();
+
+        $fileName = 'Finance_Offline_Invoices_' . now()->format('Y-m-d_H-i-s') . '.xlsx';
+
+        return Excel::download(new FinanceOfflineInvoiceExport($invoices), $fileName);
     }
 
     /**

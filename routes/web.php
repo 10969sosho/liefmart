@@ -419,6 +419,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
     Route::prefix('offline')->name('offline.')->group(function () {
         Route::get('/', [App\Http\Controllers\Finance\FinanceOfflineController::class, 'index'])->name('index');
         Route::get('/invoices', [App\Http\Controllers\Finance\FinanceOfflineController::class, 'listInvoices'])->name('invoices');
+        Route::get('/export', [App\Http\Controllers\Finance\FinanceOfflineController::class, 'exportInvoices'])->name('export');
         Route::post('/pay/{id}', [App\Http\Controllers\Finance\FinanceOfflineController::class, 'markAsPaid'])->name('pay');
         Route::get('/generate-invoice/{saleId}', [App\Http\Controllers\Finance\FinanceOfflineController::class, 'generateInvoice'])->name('generate-invoice');
         Route::get('/print-invoice/{invoiceNumber}', [App\Http\Controllers\Finance\FinanceOfflineController::class, 'printInvoice'])
@@ -517,6 +518,7 @@ Route::prefix('retur-pembelian')
     Route::get('/', [App\Http\Controllers\ReturPembelianController::class, 'index'])->name('index');
     Route::get('/create', [App\Http\Controllers\ReturPembelianController::class, 'create'])->name('create');
     Route::post('/store', [App\Http\Controllers\ReturPembelianController::class, 'store'])->name('store');
+    Route::get('/export', [App\Http\Controllers\ReturPembelianController::class, 'export'])->name('export');
     Route::get('/{id}', [App\Http\Controllers\ReturPembelianController::class, 'show'])->name('show');
     Route::delete('/{id}', [App\Http\Controllers\ReturPembelianController::class, 'destroy'])->name('destroy');
     Route::get('/get-penerimaan/{id}', [App\Http\Controllers\ReturPembelianController::class, 'getPenerimaan'])->name('get-penerimaan');

@@ -9,9 +9,14 @@
                     <h5 class="m-0 fw-bold text-primary">
                         <i class="fas fa-file-invoice-dollar me-2"></i>{{ __('Daftar Invoice Offline') }}
                     </h5>
-                    <a href="{{ route('finance.index') }}" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-arrow-left me-1"></i> Kembali
-                    </a>
+                    <div>
+                        <a href="{{ route('finance.offline.export', request()->query()) }}" class="btn btn-sm btn-success me-2">
+                            <i class="fas fa-file-excel me-1"></i> Export Excel
+                        </a>
+                        <a href="{{ route('finance.index') }}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-arrow-left me-1"></i> Kembali
+                        </a>
+                    </div>
                 </div>
 
                 <div class="card-body">

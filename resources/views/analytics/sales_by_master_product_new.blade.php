@@ -706,7 +706,7 @@
                                         <td>{{ $row['order_number'] ?? '-' }}</td>
                                         <td>{{ $row['invoice_number'] ?? '-' }}</td>
                                         <td>{{ $row['platform_product_name'] ?? '-' }}</td>
-                                        <td>{{ $row['product_variant'] ?? '-' }}</td>
+                                        <td>{{ $row['platform_product_variant'] ?? '-' }}</td>
                                         <td class="text-end">{{ number_format($row['platform_quantity'] ?? 0, 0) }}</td>
                                         <td>{{ $row['sku'] ?? '-' }}</td>
                                         <td>

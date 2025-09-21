@@ -1266,6 +1266,10 @@
                 const sale = item.offline_sale_item.offline_sale;
                 orderNumber = sale.No_PO || sale.id;
                 destination = `Offline (${sale.customer_info?.name || 'N/A'})`;
+            } else if (item.catatan && item.catatan.includes('Retur Pembelian')) {
+                // Handle retur pembelian
+                orderNumber = item.kode_barang_keluar || 'N/A';
+                destination = 'Retur Pembelian';
             }
             
             return { orderNumber, destination };

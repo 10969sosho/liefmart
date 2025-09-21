@@ -40,6 +40,7 @@
                                                 <input type="checkbox" id="check-all">
                                             </th>
                                             <th style="position: sticky; top: 0; background-color: #f8f9fa; z-index: 1;">Nama Produk</th>
+                                            <th style="width: 150px; position: sticky; top: 0; background-color: #f8f9fa; z-index: 1;">PO</th>
                                             <th style="width: 150px; position: sticky; top: 0; background-color: #f8f9fa; z-index: 1;">Jumlah</th>
                                             <th style="width: 120px; position: sticky; top: 0; background-color: #f8f9fa; z-index: 1;">Satuan</th>
                                             <th style="width: 180px; position: sticky; top: 0; background-color: #f8f9fa; z-index: 1;">Tanggal Expired</th>
@@ -56,6 +57,7 @@
                                                         value="{{ $item->id }}">
                                                 </td>
                                                 <td>{{ $item->product->name }}</td>
+                                                <td>{{ $item->penerimaan->nomor_po ?? '-' }}</td>
                                                 <td>
                                                     <input type="number" name="items[{{ $item->id }}][qty]"
                                                         class="form-control form-control-sm qty-input"
@@ -70,7 +72,7 @@
                                             </tr>
                                         @empty
                                             <tr>
-                                                <td colspan="5" class="text-center">Tidak ada barang untuk dipindahkan
+                                                <td colspan="6" class="text-center">Tidak ada barang untuk dipindahkan
                                                 </td>
                                             </tr>
                                         @endforelse

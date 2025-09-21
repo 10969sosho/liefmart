@@ -62,7 +62,7 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
             isset($row['order_number']) ? (string)$row['order_number'] : '-', // No Pesanan as text
             isset($row['invoice_number']) ? (string)$row['invoice_number'] : '-', // No Invoice as text
             $row['platform_product_name'] ?? '-', // Nama Produk (Platform)
-            $row['product_variant'] ?? '-', // Variasi (Platform)
+            $row['platform_product_variant'] ?? '-', // Variasi (Platform)
             $row['quantity'] ?? 0, // Jumlah QTY (Platform)
             $revenue, // Jumlah Masuk Pembayaran (Rp)
             $revenueWithoutPPN, // Jumlah Masuk Pembayaran - PPN (Rp)

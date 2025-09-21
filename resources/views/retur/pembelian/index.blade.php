@@ -7,7 +7,10 @@
             <div class="card">
                 <div class="card-header">
                     <h4 class="card-title">Daftar Retur Pembelian</h4>
-                    <div class="card-tools">
+                    <div class="card-tools d-flex gap-2">
+                        <a href="{{ route('retur-pembelian.export') }}" class="btn btn-success">
+                            <i class="fas fa-file-excel"></i> Export Excel
+                        </a>
                         <a href="{{ route('retur-pembelian.create') }}" class="btn btn-primary">
                             <i class="fas fa-plus"></i> Buat Retur Baru
                         </a>
@@ -41,12 +44,23 @@
                                     <th>Tanggal Penerimaan</th>
                                     <th>Tanggal Retur</th>
                                     <th>Tipe Retur</th>
+                                    <th>Total Qty</th>
+                                    <th>Total Nominal</th>
                                     <th>User</th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($returPembelians as $retur)
+                                @php
+                                    $totalQty = $retur->details->sum('qty');
+                                    $totalNominal = $retur->details->sum(function($detail) {
+                                        if ($detail->penerimaanDetail) {
+                                            return $detail->penerimaanDetail->harga_hpp * $detail->qty;
+                                        }
+                                        return 0;
+                                    });
+                                @endphp
                                 <tr>
                                     <td>{{ $retur->kode_retur }}</td>
                                     <td>{{ $retur->penerimaan->nomor_po }}</td>
@@ -61,6 +75,8 @@
                                         <span class="badge badge-secondary">-</span>
                                         @endif
                                     </td>
+                                    <td>{{ number_format($totalQty, 0) }}</td>
+                                    <td>Rp {{ number_format($totalNominal, 0, ',', '.') }}</td>
                                     <td>{{ $retur->user ? $retur->user->name : 'N/A' }}</td>
                                     <td>
                                         <a href="{{ route('retur-pembelian.show', $retur->id) }}" class="btn btn-sm btn-info">
@@ -77,7 +93,7 @@
                                 </tr>
                                 @empty
                                 <tr>
-                                    <td colspan="7" class="text-center">Tidak ada data retur pembelian</td>
+                                    <td colspan="9" class="text-center">Tidak ada data retur pembelian</td>
                                 </tr>
                                 @endforelse
                             </tbody>

@@ -184,9 +184,12 @@ class ReturFinanceService
             $invoices = $offlineSale->getInvoices();
             
             foreach ($invoices as $invoice) {
+                // Recalculate nominal based on updated subtotals
+                $newNominal = $this->recalculateInvoiceNominal($invoice);
+                
                 // Set invoice values to 0 and mark as refunded
                 $invoice->update([
-                    'nominal' => 0,
+                    'nominal' => $newNominal,
                     'outstanding' => 0,
                     'status' => 'refunded',
                     'notes' => 'Retur penuh - invoice dibatalkan'
@@ -215,9 +218,12 @@ class ReturFinanceService
             $invoices = $offlineSale->getInvoices();
             
             foreach ($invoices as $invoice) {
-                // Set invoice values to 0 but keep outstanding for deduction
+                // Recalculate nominal based on updated subtotals
+                $newNominal = $this->recalculateInvoiceNominal($invoice);
+                
+                // Set invoice values to new nominal but keep outstanding for deduction
                 $invoice->update([
-                    'nominal' => 0,
+                    'nominal' => $newNominal,
                     'outstanding' => -$additionalDeduction,
                     'status' => 'partial_refund',
                     'notes' => 'Retur dengan potongan tambahan: Rp ' . number_format($additionalDeduction, 0, ',', '.')
@@ -287,5 +293,25 @@ class ReturFinanceService
         $total += $order->shipping_cost ?? 0;
         
         return $total;
+    }
+    
+    /**
+     * Recalculate invoice nominal based on updated subtotals
+     */
+    private function recalculateInvoiceNominal(FinanceOffline $invoice): float
+    {
+        // Get all barang keluar items for this invoice
+        $barangKeluarItems = $invoice->barangKeluarItems;
+        
+        $totalNominal = 0;
+        
+        foreach ($barangKeluarItems as $barangKeluar) {
+            if ($barangKeluar->offlineSaleItem) {
+                // Use the updated subtotal from offlineSaleItem
+                $totalNominal += $barangKeluar->offlineSaleItem->subtotal ?? 0;
+            }
+        }
+        
+        return $totalNominal;
     }
 }

@@ -2202,6 +2202,7 @@ class AnalyticController extends Controller
                 $productRows->push([
                     'platform_product_id' => $platformProduct->id,
                     'platform_product_name' => $platformProduct->platform_product_name,
+                    'platform_product_variant' => $platformProduct->variant ?? 'N/A', // Platform product variant
                     'order_id' => $order->id,
                     'order_item_id' => $orderItem->id, // Added for barang keluar calculation
                     'product_id' => $product->id, // Added for barang keluar calculation
@@ -2227,7 +2228,7 @@ class AnalyticController extends Controller
                     'sub_brand' => $product->subBrand ? $product->subBrand->name : 'N/A',
                     'product_type' => $product->productType ? $product->productType->name : 'N/A',
                     'product_size' => $product->productSize ? $product->productSize->name : 'N/A',
-                    'product_variant' => $product->productVariant ? $product->productVariant->name : 'N/A',
+                    'product_variant' => $product->productVariant ? $product->productVariant->name : 'N/A', // Master product variant
                     'package_info' => $packageInfo,
                 ]);
             }

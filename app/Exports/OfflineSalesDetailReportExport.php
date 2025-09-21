@@ -6,9 +6,14 @@ use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
+use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use App\Models\ReturOfflineSaleDetail;
 
-class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize
+class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithColumnFormatting
 {
     protected $sales;
     protected $summary;
@@ -16,16 +21,52 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
     protected $endDate;
     protected $selectedCustomer;
     protected $selectedProduct;
+    protected $data;
 
     public function __construct($sales, $summary, $startDate, $endDate, $selectedCustomer = null, $selectedProduct = null)
     {
-        // Accept pre-processed sales instead of re-querying
         $this->sales = collect($sales);
         $this->summary = $summary;
         $this->startDate = $startDate;
         $this->endDate = $endDate;
         $this->selectedCustomer = $selectedCustomer;
         $this->selectedProduct = $selectedProduct;
+        $this->prepareData();
+    }
+
+    private function prepareData()
+    {
+        $this->data = collect();
+
+        foreach ($this->sales as $sale) {
+            // Add header row for each sale
+            $this->data->push([
+                'type' => 'header',
+                'sale' => $sale,
+                'item' => null
+            ]);
+
+            // Add detail rows for each sale item
+            foreach ($sale->items as $item) {
+                $this->data->push([
+                    'type' => 'detail',
+                    'sale' => $sale,
+                    'item' => $item
+                ]);
+            }
+
+            // Add empty rows for spacing
+            $this->data->push([
+                'type' => 'spacer',
+                'sale' => null,
+                'item' => null
+            ]);
+            $this->data->push([
+                'type' => 'spacer',
+                'sale' => null,
+                'item' => null
+            ]);
+        }
     }
 
     /**
@@ -103,110 +144,184 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
 
     public function collection()
     {
-        // Transform the sales data to flatten the items for export
-        $exportData = collect();
-        
-        foreach ($this->sales as $sale) {
-            foreach ($sale->items as $item) {
-                // Cari qty retur untuk item ini (hanya dari retur dengan status selesai)
-                $qtyRetur = ReturOfflineSaleDetail::where('offline_sale_item_id', $item->id)
-                    ->whereHas('returOfflineSale', function($q) { $q->where('status', 'selesai'); })
-                    ->sum('qty');
-                $qtyRetur = (float) $qtyRetur;
-                $qtyAfterRetur = max(0, (float)$item->quantity - $qtyRetur);
-                $hargaJual = (float)($item->unit_price ?? 0);
-                
-                // ✅ Calculate proper total value after all discounts
-                $totalValue = $this->calculateTotalAfterDiscounts($item);
-                $totalDiscount = $this->calculateTotalDiscount($item);
-                $discountSummary = $this->getDiscountSummary($item);
-                
-                // Debug logging untuk troubleshooting
-                \Log::info('Offline Sales Export - Item Debug', [
-                    'item_id' => $item->id,
-                    'product_name' => $item->product ? $item->product->name : 'Unknown',
-                    'original_qty' => $item->quantity,
-                    'qty_retur' => $qtyRetur,
-                    'qty_after_retur' => $qtyAfterRetur,
-                    'unit_price' => $hargaJual,
-                    'total_before_discount' => $hargaJual * $item->quantity,
-                    'total_discount' => $totalDiscount,
-                    'total_value' => $totalValue,
-                    'discount_summary' => $discountSummary
-                ]);
-                
-                $exportData->push([
-                    'tanggal_invoice' => $sale->sale_date->format('Y-m-d'),
-                    'nomor_invoice' => $sale->surat_jalan_number,
-                    'customer_name' => $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
-                    'product_name' => $item->product ? $item->product->name : 'Unknown Product',
-                    'quantity' => $item->quantity,
-                    'qty_retur' => $qtyRetur,
-                    'harga_jual' => $hargaJual,
-                    'total_discount' => $totalDiscount,
-                    'discount_summary' => $discountSummary,
-                    'total_value' => $totalValue,
-                ]);
-            }
-        }
-        
-        return $exportData;
+        return $this->data;
     }
 
     public function headings(): array
     {
         return [
-            'Tanggal',
-            'Nomor Invoice',
+            'No',
+            'Tanggal Penjualan',
+            'No. Surat Jalan',
             'Customer',
-            'Produk',
-            'Quantity',
-            'QTY Retur',
+            'Nama Produk',
+            'Qty',
+            'Satuan',
             'Harga Satuan',
+            'Diskon %',
+            'Diskon Nominal',
+            'Subtotal',
             'Total Diskon',
-            'Detail Diskon',
-            'Total Value (Setelah Diskon)'
+            'Total Setelah Diskon',
+            'QTY Retur',
+            'Catatan'
         ];
     }
 
-    public function map($item): array
+    public function map($row): array
     {
-        // Handle array format from collection
-        $tanggalInvoice = $item['tanggal_invoice'] ?? '';
-        $nomorInvoice = $item['nomor_invoice'] ?? '';
-        $customerName = $item['customer_name'] ?? '';
-        $productName = $item['product_name'] ?? '';
-        $quantity = (float)($item['quantity'] ?? 0);
-        $qtyRetur = (float)($item['qty_retur'] ?? 0);
-        $hargaJual = (float)($item['harga_jual'] ?? 0);
-        $totalDiscount = (float)($item['total_discount'] ?? 0);
-        $discountSummary = $item['discount_summary'] ?? '-';
-        $totalValue = (float)($item['total_value'] ?? 0);
-        
-        // Debug logging for specific items with zero total value
-        if ($totalValue == 0 && $quantity > 0 && $hargaJual > 0) {
-            \Log::warning('Offline Sales Export - Zero Total Value Warning', [
-                'product' => $productName,
-                'quantity' => $quantity,
-                'qty_retur' => $qtyRetur,
-                'harga_jual' => $hargaJual,
-                'total_discount' => $totalDiscount,
-                'calculated_value' => $quantity * $hargaJual, // ✅ Fixed: Use original quantity for total value
-                'item_data' => $item
-            ]);
+        if ($row['type'] === 'header') {
+            $sale = $row['sale'];
+            return [
+                'PENJUALAN OFFLINE',
+                $sale->sale_date ? $sale->sale_date->format('d/m/Y') : '-',
+                $sale->surat_jalan_number,
+                $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
+                'Status: ' . $sale->status,
+                'Total Items: ' . $sale->items->count(),
+                'Total Value: Rp ' . number_format($sale->value_after_returns ?? 0, 0, ',', '.'),
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                ''
+            ];
+        } elseif ($row['type'] === 'detail') {
+            $sale = $row['sale'];
+            $item = $row['item'];
+            
+            // Calculate qty retur untuk item ini
+            $qtyRetur = ReturOfflineSaleDetail::where('offline_sale_item_id', $item->id)
+                ->whereHas('returOfflineSale', function($q) { $q->where('status', 'selesai'); })
+                ->sum('qty');
+            $qtyRetur = (float) $qtyRetur;
+            
+            // Calculate subtotal before discount
+            $subtotalSebelumDiskon = $item->quantity * $item->unit_price;
+            $subtotal = $subtotalSebelumDiskon;
+            
+            // Calculate cascading discounts (bertingkat)
+            $totalDiskonPersen = 0;
+            $totalDiskonNominal = 0;
+            $discountPercentages = []; // Array to store individual percentages
+            
+            for ($i = 1; $i <= 5; $i++) {
+                $diskonPersen = $item->{"discount_percent_$i"} ?? 0;
+                $diskonNominal = $item->{"discount_amount_$i"} ?? 0;
+                
+                if ($diskonPersen > 0) {
+                    $potongan = $subtotal * ($diskonPersen / 100);
+                    $subtotal -= $potongan;
+                    $totalDiskonPersen += $diskonPersen;
+                    $discountPercentages[] = number_format($diskonPersen, 0) . '%'; // Store individual percentage
+                } elseif ($diskonNominal > 0) {
+                    $subtotal -= $diskonNominal;
+                    $totalDiskonNominal += $diskonNominal;
+                }
+            }
+            
+            $totalDiskon = $subtotalSebelumDiskon - $subtotal;
+            $hargaTotalSetelahDiskon = $subtotal;
+            
+            return [
+                $this->getCounter(),
+                $sale->sale_date ? $sale->sale_date->format('d/m/Y') : '-',
+                $sale->surat_jalan_number,
+                $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
+                $item->product ? $item->product->name : 'Unknown Product',
+                (int) $item->quantity,
+                $item->product && $item->product->satuan ? $item->product->satuan->name : '-',
+                round((float) $item->unit_price, 2),
+                empty($discountPercentages) ? '-' : implode('+', $discountPercentages), // Format individual percentages like "4%+1%"
+                round((float) $totalDiskonNominal, 2), // Diskon nominal 2 desimal
+                round((float) $subtotalSebelumDiskon, 2), // Subtotal 2 desimal
+                round((float) $totalDiskon, 2), // Total diskon 2 desimal
+                round((float) $hargaTotalSetelahDiskon, 2), // Total setelah diskon 2 desimal
+                (int) $qtyRetur, // QTY Retur
+                $item->notes ?? '-' // Catatan
+            ];
+        } else {
+            // Spacer row
+            return array_fill(0, 15, '');
         }
+    }
 
+    private $counter = 1;
+
+    private function getCounter()
+    {
+        return $this->counter++;
+    }
+
+    public function styles(Worksheet $sheet)
+    {
+        $styles = [
+            // Header styling
+            1 => [
+                'font' => [
+                    'bold' => true,
+                    'color' => ['rgb' => 'FFFFFF']
+                ],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '4472C4']
+                ]
+            ],
+            // Apply borders to all cells
+            'A1:O1000' => [
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                        'color' => ['rgb' => '000000']
+                    ]
+                ]
+            ]
+        ];
+
+        return $styles;
+    }
+
+    public function columnFormats(): array
+    {
         return [
-            $tanggalInvoice,
-            $nomorInvoice,
-            $customerName,
-            $productName,
-            number_format($quantity, 0), // Format as integer for quantity
-            number_format($qtyRetur, 0), // Format as integer for return quantity
-            number_format($hargaJual, 0), // Format currency without decimals
-            number_format($totalDiscount, 0), // Format total discount
-            $discountSummary, // Discount details (e.g., "10% + Rp 5000")
-            number_format($totalValue, 0), // ✅ Format total value after discount
+            'H:O' => '#,##0.00', // Format currency columns
         ];
     }
-} 
+
+    public function registerEvents(): array
+    {
+        return [
+            AfterSheet::class => function(AfterSheet $event) {
+                // Add summary at the end
+                $row = $event->sheet->getHighestRow() + 2;
+                
+                // Add summary header
+                $event->sheet->setCellValue('A' . $row, 'RINGKASAN');
+                $event->sheet->getStyle('A' . $row)->getFont()->setBold(true);
+                
+                $row++;
+                $event->sheet->setCellValue('A' . $row, 'Total Penjualan:');
+                $event->sheet->setCellValue('B' . $row, $this->summary['total_orders']);
+                
+                $row++;
+                $event->sheet->setCellValue('A' . $row, 'Total Value:');
+                $event->sheet->setCellValue('B' . $row, 'Rp ' . number_format($this->summary['total_value'], 0, ',', '.'));
+                
+                $row++;
+                $event->sheet->setCellValue('A' . $row, 'Total Volume:');
+                $event->sheet->setCellValue('B' . $row, number_format($this->summary['total_volume']) . ' pcs');
+                
+                $row++;
+                $event->sheet->setCellValue('A' . $row, 'Rata-rata per Penjualan:');
+                $event->sheet->setCellValue('B' . $row, 'Rp ' . number_format($this->summary['avg_order_value'], 0, ',', '.'));
+                
+                $row++;
+                $event->sheet->setCellValue('A' . $row, 'Periode:');
+                $event->sheet->setCellValue('B' . $row, $this->startDate . ' - ' . $this->endDate);
+            },
+        ];
+    }
+}

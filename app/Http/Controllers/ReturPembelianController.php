@@ -9,10 +9,12 @@ use App\Models\ReturPembelian;
 use App\Models\ReturPembelianDetail;
 use App\Models\Satuan;
 use App\Models\WarehouseStock;
+use App\Models\BarangKeluar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ReturPembelianController extends Controller
 {
@@ -23,7 +25,7 @@ class ReturPembelianController extends Controller
      */
     public function index()
     {
-        $returPembelians = ReturPembelian::with(['penerimaan', 'user'])
+        $returPembelians = ReturPembelian::with(['penerimaan', 'user', 'details.penerimaanDetail'])
             ->orderBy('retur_pembelians.created_at', 'desc')
             ->paginate(10);
 
@@ -253,7 +255,7 @@ class ReturPembelianController extends Controller
 
                 try {
                     // Reduce stock from warehouse based on specific warehouse stock ID or using FIFO principle as fallback
-                    $this->reduceStock($detail['product_id'], $detail['qty'], $detail['penerimaan_detail_id'], $detail['warehouse_stock_id'] ?? null);
+                    $this->reduceStock($detail['product_id'], $detail['qty'], $detail['penerimaan_detail_id'], $detail['warehouse_stock_id'] ?? null, $returPembelian->id);
                     $stockReduced++;
                     \Log::info('Reduced stock for product ID: ' . $detail['product_id']);
                 } catch (\Exception $e) {
@@ -350,9 +352,10 @@ class ReturPembelianController extends Controller
      * @param  float  $qty
      * @param  int  $penerimaanDetailId
      * @param  int|null  $warehouseStockId
+     * @param  int|null  $returPembelianId
      * @return void
      */
-    private function reduceStock($productId, $qty, $penerimaanDetailId, $warehouseStockId = null)
+    private function reduceStock($productId, $qty, $penerimaanDetailId, $warehouseStockId = null, $returPembelianId = null)
     {
         \Log::info('Reducing stock for product', [
             'product_id' => $productId,
@@ -398,6 +401,9 @@ class ReturPembelianController extends Controller
             // Update the stock
             $stock->qty -= $qty;
             $stock->save();
+            
+            // Record stock out movement for retur pembelian
+            $this->recordStockOut($stock, $qty, $returPembelianId ?? null);
             
             \Log::info('Stock reduction completed for specific warehouse stock', [
                 'warehouse_stock_id' => $stock->id,
@@ -465,6 +471,9 @@ class ReturPembelianController extends Controller
             // Update the stock
             $stock->qty -= $qtyToTake;
             $stock->save();
+            
+            // Record stock out movement for retur pembelian
+            $this->recordStockOut($stock, $qtyToTake, $returPembelianId ?? null);
             
             // Update remaining qty to reduce
             $remainingQty -= $qtyToTake;
@@ -534,6 +543,187 @@ class ReturPembelianController extends Controller
                 'added_qty' => $qty,
                 'new_qty' => $warehouseStock->qty
             ]);
+        }
+        
+        // Remove related barang keluar records for this retur pembelian
+        $this->removeStockOutRecords($productId, $penerimaanDetailId);
+    }
+
+    /**
+     * Remove stock out records related to retur pembelian
+     *
+     * @param  int  $productId
+     * @param  int  $penerimaanDetailId
+     * @return void
+     */
+    private function removeStockOutRecords($productId, $penerimaanDetailId)
+    {
+        try {
+            // Find and delete barang keluar records related to retur pembelian for this product
+            $barangKeluarRecords = BarangKeluar::whereHas('warehouseStock', function($query) use ($productId, $penerimaanDetailId) {
+                $query->where('product_id', $productId)
+                      ->where('penerimaan_detail_id', $penerimaanDetailId);
+            })->where('catatan', 'like', 'Retur Pembelian%')
+              ->get();
+            
+            foreach ($barangKeluarRecords as $record) {
+                $record->delete();
+                \Log::info('Removed stock out record for retur pembelian', [
+                    'barang_keluar_id' => $record->id,
+                    'kode_barang_keluar' => $record->kode_barang_keluar
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error removing stock out records for retur pembelian', [
+                'product_id' => $productId,
+                'penerimaan_detail_id' => $penerimaanDetailId,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Export retur pembelian data to Excel
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function export()
+    {
+        $returPembelians = ReturPembelian::with([
+                'penerimaan', 
+                'user', 
+                'details.product', 
+                'details.satuan',
+                'details.penerimaanDetail'
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $exportData = [];
+        foreach ($returPembelians as $retur) {
+            foreach ($retur->details as $detail) {
+                $hargaHpp = $detail->penerimaanDetail ? $detail->penerimaanDetail->harga_hpp : 0;
+                $totalNominal = $hargaHpp * $detail->qty;
+                
+                $exportData[] = [
+                    'Kode Retur' => $retur->kode_retur,
+                    'Nomor PO' => $retur->penerimaan->nomor_po,
+                    'Tanggal Penerimaan' => $retur->penerimaan->tanggal_penerimaan ? $retur->penerimaan->tanggal_penerimaan->format('d/m/Y') : '-',
+                    'Tanggal Retur' => $retur->tanggal_retur ? $retur->tanggal_retur->format('d/m/Y') : '-',
+                    'Tipe Retur' => ucfirst($retur->tipe_retur),
+                    'Nama Produk' => $detail->product->name ?? '-',
+                    'Harga HPP' => round($hargaHpp, 2),
+                    'Qty Retur' => round($detail->qty, 2),
+                    'Satuan' => $detail->satuan->name ?? '-',
+                    'Total Nominal' => round($totalNominal, 2),
+                    'Alasan' => $detail->alasan ?? '-',
+                    'User' => $retur->user->name ?? 'N/A',
+                    'Dibuat Pada' => $retur->created_at ? $retur->created_at->format('d/m/Y H:i') : '-',
+                ];
+            }
+        }
+
+        return Excel::download(new class($exportData) implements \Maatwebsite\Excel\Concerns\FromArray, \Maatwebsite\Excel\Concerns\WithHeadings, \Maatwebsite\Excel\Concerns\WithColumnFormatting, \Maatwebsite\Excel\Concerns\WithCustomValueBinder {
+            private $data;
+
+            public function __construct($data)
+            {
+                $this->data = $data;
+            }
+
+            public function array(): array
+            {
+                return $this->data;
+            }
+
+            public function headings(): array
+            {
+                return [
+                    'Kode Retur',
+                    'Nomor PO',
+                    'Tanggal Penerimaan',
+                    'Tanggal Retur',
+                    'Tipe Retur',
+                    'Nama Produk',
+                    'Harga HPP',
+                    'Qty Retur',
+                    'Satuan',
+                    'Total Nominal',
+                    'Alasan',
+                    'User',
+                    'Dibuat Pada'
+                ];
+            }
+
+            public function columnFormats(): array
+            {
+                return [
+                    'G' => '#,##0.00', // Harga HPP
+                    'H' => '#,##0.00', // Qty Retur
+                    'J' => '#,##0.00', // Total Nominal
+                ];
+            }
+
+            public function bindValue(\PhpOffice\PhpSpreadsheet\Cell\Cell $cell, $value)
+            {
+                if (is_numeric($value)) {
+                    $cell->setValueExplicit($value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC);
+                    return true;
+                }
+                $cell->setValue($value);
+                return true;
+            }
+        }, 'retur_pembelian_' . date('Y-m-d_H-i-s') . '.xlsx');
+    }
+
+    /**
+     * Record stock out movement for retur pembelian
+     *
+     * @param  WarehouseStock  $stock
+     * @param  float  $qty
+     * @param  int|null  $returPembelianId
+     * @return void
+     */
+    private function recordStockOut($stock, $qty, $returPembelianId = null)
+    {
+        try {
+            // Generate kode barang keluar
+            $kodeBarangKeluar = BarangKeluar::generateKode();
+            
+            // Get retur pembelian info for notes
+            $returPembelian = null;
+            if ($returPembelianId) {
+                $returPembelian = ReturPembelian::with('penerimaan')->find($returPembelianId);
+            }
+            
+            $catatan = 'Retur Pembelian';
+            if ($returPembelian && $returPembelian->penerimaan) {
+                $catatan .= " - PO: {$returPembelian->penerimaan->nomor_po}";
+            }
+            
+            // Create barang keluar record
+            BarangKeluar::create([
+                'kode_barang_keluar' => $kodeBarangKeluar,
+                'warehouse_stock_id' => $stock->id,
+                'qty' => $qty,
+                'tanggal_keluar' => now()->toDateString(),
+                'catatan' => $catatan,
+            ]);
+            
+            \Log::info('Recorded stock out for retur pembelian', [
+                'kode_barang_keluar' => $kodeBarangKeluar,
+                'warehouse_stock_id' => $stock->id,
+                'qty' => $qty,
+                'retur_pembelian_id' => $returPembelianId
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error recording stock out for retur pembelian', [
+                'warehouse_stock_id' => $stock->id,
+                'qty' => $qty,
+                'retur_pembelian_id' => $returPembelianId,
+                'error' => $e->getMessage()
+            ]);
+            // Don't throw exception here to avoid breaking the main flow
         }
     }
 } 

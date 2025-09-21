@@ -93,26 +93,45 @@
                                 <tr>
                                     <th>No</th>
                                     <th>Nama Barang</th>
+                                    <th>Harga HPP</th>
                                     <th>Qty Retur</th>
                                     <th>Satuan</th>
+                                    <th>Total Nominal</th>
                                     <th>Alasan</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                @php
+                                    $grandTotalNominal = 0;
+                                @endphp
                                 @forelse($returPembelian->details as $index => $detail)
+                                @php
+                                    $hargaHpp = $detail->penerimaanDetail ? $detail->penerimaanDetail->harga_hpp : 0;
+                                    $totalNominal = $hargaHpp * $detail->qty;
+                                    $grandTotalNominal += $totalNominal;
+                                @endphp
                                 <tr>
                                     <td>{{ $index + 1 }}</td>
                                     <td>{{ $detail->product->name }}</td>
-                                    <td>{{ $detail->qty }}</td>
+                                    <td class="text-right">Rp {{ number_format($hargaHpp, 0, ',', '.') }}</td>
+                                    <td class="text-center">{{ number_format($detail->qty, 0) }}</td>
                                     <td>{{ $detail->satuan->name ?? '-' }}</td>
+                                    <td class="text-right">Rp {{ number_format($totalNominal, 0, ',', '.') }}</td>
                                     <td>{{ $detail->alasan ?? '-' }}</td>
                                 </tr>
                                 @empty
                                 <tr>
-                                    <td colspan="5" class="text-center">Tidak ada detail barang</td>
+                                    <td colspan="7" class="text-center">Tidak ada detail barang</td>
                                 </tr>
                                 @endforelse
                             </tbody>
+                            <tfoot>
+                                <tr class="font-weight-bold">
+                                    <td colspan="5" class="text-right">Total:</td>
+                                    <td class="text-right">Rp {{ number_format($grandTotalNominal, 0, ',', '.') }}</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
 
