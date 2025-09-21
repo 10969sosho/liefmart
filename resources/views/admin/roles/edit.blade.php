@@ -1,0 +1,274 @@
+@extends('layouts.app')
+
+@section('content')
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-edit me-2"></i>
+                        Edit Role: {{ $role->display_name }}
+                    </h4>
+                    <a href="{{ route('admin.roles.index') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Kembali
+                    </a>
+                </div>
+                <div class="card-body">
+                    <form action="{{ route('admin.roles.update', $role) }}" method="POST">
+                        @csrf
+                        @method('PUT')
+                        
+                        <div class="row">
+                            <!-- Role Information -->
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            Informasi Role
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label for="name" class="form-label">Nama Role <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control @error('name') is-invalid @enderror" 
+                                                   id="name" name="name" value="{{ old('name', $role->name) }}" 
+                                                   placeholder="Contoh: sales_staff" required>
+                                            <small class="text-muted">Gunakan format lowercase dengan underscore</small>
+                                            @error('name')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label for="display_name" class="form-label">Display Name <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control @error('display_name') is-invalid @enderror" 
+                                                   id="display_name" name="display_name" value="{{ old('display_name', $role->display_name) }}" 
+                                                   placeholder="Contoh: Staff Penjualan" required>
+                                            @error('display_name')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label for="description" class="form-label">Deskripsi</label>
+                                            <textarea class="form-control @error('description') is-invalid @enderror" 
+                                                      id="description" name="description" rows="3" 
+                                                      placeholder="Deskripsi singkat tentang role ini">{{ old('description', $role->description) }}</textarea>
+                                            @error('description')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="is_active" 
+                                                       name="is_active" value="1" {{ old('is_active', $role->is_active) ? 'checked' : '' }}>
+                                                <label class="form-check-label" for="is_active">
+                                                    Role Aktif
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-users me-2"></i>
+                                            <strong>{{ $role->users->count() }}</strong> user menggunakan role ini
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Permissions -->
+                            <div class="col-md-8">
+                                <div class="card h-100">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-key me-2"></i>
+                                            Permissions - Pilih Fitur yang Bisa Diakses
+                                        </h6>
+                                        <div>
+                                            <span class="badge bg-success me-2">{{ count($rolePermissions) }} dipilih</span>
+                                            <button type="button" class="btn btn-sm btn-success" id="select-all">
+                                                <i class="fas fa-check-double me-1"></i>Pilih Semua
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-warning" id="deselect-all">
+                                                <i class="fas fa-times me-1"></i>Hapus Semua
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                                        @if($permissions->count() > 0)
+                                            @foreach($permissions as $category => $categoryPermissions)
+                                                @php
+                                                    $categorySelected = $categoryPermissions->whereIn('id', $rolePermissions)->count();
+                                                    $categoryTotal = $categoryPermissions->count();
+                                                @endphp
+                                                <div class="mb-4">
+                                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                                        <h6 class="text-primary mb-0">
+                                                            <i class="fas fa-folder me-2"></i>
+                                                            {{ ucfirst(str_replace('-', ' ', $category)) }}
+                                                            <span class="badge bg-primary">{{ $categorySelected }}/{{ $categoryTotal }}</span>
+                                                        </h6>
+                                                        <div>
+                                                            <button type="button" class="btn btn-sm btn-outline-primary category-select-all" 
+                                                                    data-category="{{ $category }}">
+                                                                <i class="fas fa-check me-1"></i>Pilih Semua
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div class="row">
+                                                        @foreach($categoryPermissions as $permission)
+                                                            @php
+                                                                $isChecked = in_array($permission->id, old('permissions', $rolePermissions));
+                                                            @endphp
+                                                            <div class="col-md-6 col-lg-4 mb-2">
+                                                                <div class="form-check p-3 border rounded {{ $isChecked ? 'bg-primary bg-opacity-10 border-primary' : 'bg-light' }}">
+                                                                    <input class="form-check-input permission-checkbox category-{{ $category }}" 
+                                                                           type="checkbox" 
+                                                                           id="permission_{{ $permission->id }}" 
+                                                                           name="permissions[]" 
+                                                                           value="{{ $permission->id }}"
+                                                                           {{ $isChecked ? 'checked' : '' }}>
+                                                                    <label class="form-check-label w-100" for="permission_{{ $permission->id }}">
+                                                                        <div>
+                                                                            <strong>{{ $permission->display_name }}</strong>
+                                                                        </div>
+                                                                        <small class="text-muted">{{ $permission->description }}</small>
+                                                                        <div class="mt-1">
+                                                                            <span class="badge bg-secondary">{{ $permission->name }}</span>
+                                                                        </div>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                                @if($category === 'exports')
+                                                <div class="mb-3">
+                                                    <div class="alert alert-info py-2 px-3">
+                                                        <i class="fas fa-info-circle me-1"></i>
+                                                        Centang "Semua Export" untuk memberikan semua hak export sekaligus.
+                                                    </div>
+                                                </div>
+                                                @endif
+                                                <hr>
+                                            @endforeach
+                                        @else
+                                            <div class="text-center py-4">
+                                                <i class="fas fa-exclamation-triangle fa-3x text-muted mb-3"></i>
+                                                <p class="text-muted">Tidak ada permissions yang tersedia</p>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="d-flex justify-content-end gap-2">
+                                    <a href="{{ route('admin.roles.index') }}" class="btn btn-secondary">
+                                        <i class="fas fa-times me-1"></i>Batal
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save me-1"></i>Update Role
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.form-check:hover {
+    background-color: var(--bs-primary-bg-subtle) !important;
+    border-color: var(--bs-primary) !important;
+}
+
+.form-check-input:checked + .form-check-label {
+    color: var(--bs-primary);
+}
+
+.permission-checkbox:checked + .form-check-label {
+    font-weight: 600;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Select All Permissions
+    document.getElementById('select-all').addEventListener('click', function() {
+        const checkboxes = document.querySelectorAll('.permission-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = true;
+            updateCheckboxStyle(cb);
+        });
+        updateCounter();
+    });
+
+    // Deselect All Permissions
+    document.getElementById('deselect-all').addEventListener('click', function() {
+        const checkboxes = document.querySelectorAll('.permission-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = false;
+            updateCheckboxStyle(cb);
+        });
+        updateCounter();
+    });
+
+    // Category Select All
+    document.querySelectorAll('.category-select-all').forEach(button => {
+        button.addEventListener('click', function() {
+            const category = this.dataset.category;
+            const checkboxes = document.querySelectorAll(`.category-${category}`);
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            
+            checkboxes.forEach(cb => {
+                cb.checked = !allChecked;
+                updateCheckboxStyle(cb);
+            });
+            
+            this.innerHTML = allChecked 
+                ? '<i class="fas fa-check me-1"></i>Pilih Semua'
+                : '<i class="fas fa-times me-1"></i>Hapus Semua';
+            
+            updateCounter();
+        });
+    });
+
+    // Individual checkbox change
+    document.querySelectorAll('.permission-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateCheckboxStyle(this);
+            updateCounter();
+        });
+    });
+
+    function updateCheckboxStyle(checkbox) {
+        const formCheck = checkbox.closest('.form-check');
+        if (checkbox.checked) {
+            formCheck.classList.add('bg-primary', 'bg-opacity-10', 'border-primary');
+            formCheck.classList.remove('bg-light');
+        } else {
+            formCheck.classList.remove('bg-primary', 'bg-opacity-10', 'border-primary');
+            formCheck.classList.add('bg-light');
+        }
+    }
+
+    function updateCounter() {
+        const checked = document.querySelectorAll('.permission-checkbox:checked').length;
+        const counter = document.querySelector('.badge.bg-success');
+        if (counter) {
+            counter.textContent = checked + ' dipilih';
+        }
+    }
+});
+</script>
+@endsection
