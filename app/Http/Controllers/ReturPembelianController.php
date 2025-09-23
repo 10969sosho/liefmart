@@ -255,7 +255,7 @@ class ReturPembelianController extends Controller
 
                 try {
                     // Reduce stock from warehouse based on specific warehouse stock ID or using FIFO principle as fallback
-                    $this->reduceStock($detail['product_id'], $detail['qty'], $detail['penerimaan_detail_id'], $detail['warehouse_stock_id'] ?? null, $returPembelian->id);
+                    $this->reduceStock($detail['product_id'], $detail['qty'], $detail['penerimaan_detail_id'], $detail['warehouse_stock_id'] ?? null, $returPembelian->id, $returPembelian->tanggal_retur);
                     $stockReduced++;
                     \Log::info('Reduced stock for product ID: ' . $detail['product_id']);
                 } catch (\Exception $e) {
@@ -353,9 +353,10 @@ class ReturPembelianController extends Controller
      * @param  int  $penerimaanDetailId
      * @param  int|null  $warehouseStockId
      * @param  int|null  $returPembelianId
+     * @param  string|null  $tanggalRetur
      * @return void
      */
-    private function reduceStock($productId, $qty, $penerimaanDetailId, $warehouseStockId = null, $returPembelianId = null)
+    private function reduceStock($productId, $qty, $penerimaanDetailId, $warehouseStockId = null, $returPembelianId = null, $tanggalRetur = null)
     {
         \Log::info('Reducing stock for product', [
             'product_id' => $productId,
@@ -403,7 +404,7 @@ class ReturPembelianController extends Controller
             $stock->save();
             
             // Record stock out movement for retur pembelian
-            $this->recordStockOut($stock, $qty, $returPembelianId ?? null);
+            $this->recordStockOut($stock, $qty, $returPembelianId ?? null, $tanggalRetur);
             
             \Log::info('Stock reduction completed for specific warehouse stock', [
                 'warehouse_stock_id' => $stock->id,
@@ -473,7 +474,7 @@ class ReturPembelianController extends Controller
             $stock->save();
             
             // Record stock out movement for retur pembelian
-            $this->recordStockOut($stock, $qtyToTake, $returPembelianId ?? null);
+            $this->recordStockOut($stock, $qtyToTake, $returPembelianId ?? null, $tanggalRetur);
             
             // Update remaining qty to reduce
             $remainingQty -= $qtyToTake;
@@ -682,9 +683,10 @@ class ReturPembelianController extends Controller
      * @param  WarehouseStock  $stock
      * @param  float  $qty
      * @param  int|null  $returPembelianId
+     * @param  string|null  $tanggalRetur
      * @return void
      */
-    private function recordStockOut($stock, $qty, $returPembelianId = null)
+    private function recordStockOut($stock, $qty, $returPembelianId = null, $tanggalRetur = null)
     {
         try {
             // Generate kode barang keluar
@@ -706,7 +708,7 @@ class ReturPembelianController extends Controller
                 'kode_barang_keluar' => $kodeBarangKeluar,
                 'warehouse_stock_id' => $stock->id,
                 'qty' => $qty,
-                'tanggal_keluar' => now()->toDateString(),
+                'tanggal_keluar' => $tanggalRetur ? \Carbon\Carbon::parse($tanggalRetur)->toDateString() : now()->toDateString(),
                 'catatan' => $catatan,
             ]);
             

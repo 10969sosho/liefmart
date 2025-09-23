@@ -119,6 +119,44 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
     {
         if ($row['type'] === 'header') {
             $penerimaan = $row['penerimaan'];
+            
+            // Calculate totals for this specific penerimaan
+            $penerimaanTotalQty = 0;
+            $penerimaanTotalSubtotal = 0;
+            $penerimaanTotalDiscount = 0;
+            $penerimaanTotalAfterDiscount = 0;
+            
+            foreach ($penerimaan->details as $detail) {
+                $qty = (float)($detail->qty ?? 0);
+                $hargaHpp = (float)($detail->harga_hpp ?? 0);
+                $subtotalSebelumDiskon = $qty * $hargaHpp;
+                
+                // Calculate cascading discounts
+                $subtotal = $subtotalSebelumDiskon;
+                $totalDiskonNominal = 0;
+                
+                for ($i = 1; $i <= 5; $i++) {
+                    $diskonPersen = $detail->{"diskon_persen_$i"} ?? 0;
+                    $diskonNominal = $detail->{"diskon_nominal_$i"} ?? 0;
+                    
+                    if ($diskonPersen > 0) {
+                        $potongan = $subtotal * ($diskonPersen / 100);
+                        $subtotal -= $potongan;
+                    } elseif ($diskonNominal > 0) {
+                        $subtotal -= $diskonNominal;
+                        $totalDiskonNominal += $diskonNominal;
+                    }
+                }
+                
+                $totalDiskon = $subtotalSebelumDiskon - $subtotal;
+                $hargaTotalSetelahDiskon = $subtotal;
+                
+                $penerimaanTotalQty += $qty;
+                $penerimaanTotalSubtotal += $subtotalSebelumDiskon;
+                $penerimaanTotalDiscount += $totalDiskon;
+                $penerimaanTotalAfterDiscount += $hargaTotalSetelahDiskon;
+            }
+            
             return [
                 'PENERIMAAN BARANG',
                 $penerimaan->kode_penerimaan,
@@ -126,14 +164,14 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
                 $penerimaan->nomor_po,
                 $penerimaan->status,
                 'Kategori: ' . ($penerimaan->mainCategory->name ?? '-'),
+                'Total QTY: ' . $penerimaanTotalQty,
                 'Tax: ' . ($penerimaan->taxCategory->name ?? '-'),
                 'Metode: ' . $penerimaan->metode_pembayaran,
-                (int) round($penerimaan->calculated_total), // Angka untuk total (dibulatkan)
-                '', // Kolom presentase dihapus
                 '',
                 '',
-                '',
-                '',
+                'Total Subtotal: Rp ' . number_format($penerimaanTotalSubtotal, 0, ',', '.'),
+                'Total Diskon: Rp ' . number_format($penerimaanTotalDiscount, 0, ',', '.'),
+                'Total Value: Rp ' . number_format($penerimaanTotalAfterDiscount, 0, ',', '.'),
                 ''
             ];
         } elseif ($row['type'] === 'detail') {
@@ -222,18 +260,24 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
             ]
         ];
 
-        // Style header rows for each PO
+        // Style header rows for each PO with green background
         $row = 2;
         foreach ($this->data as $item) {
             if ($item['type'] === 'header') {
                 $styles[$row] = [
                     'font' => [
                         'bold' => true,
-                        'color' => ['rgb' => 'FFFFFF']
+                        'color' => ['rgb' => '000000']
                     ],
                     'fill' => [
                         'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                        'startColor' => ['rgb' => '70AD47']
+                        'startColor' => ['rgb' => '00FF00'] // Bright green
+                    ],
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                            'color' => ['rgb' => '000000']
+                        ]
                     ]
                 ];
             }

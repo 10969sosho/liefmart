@@ -505,16 +505,6 @@
                             Cetak Surat Jalan
                         </a>
                         
-                        <div class="border-top pt-3">
-                            <form action="{{ route('sales.offline.destroy', $offlineSale) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus data ini? Stok yang sudah dikeluarkan akan dikembalikan ke gudang.');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-danger action-btn w-100">
-                                    <i class="fas fa-trash me-2"></i>
-                                    Hapus Penjualan
-                                </button>
-                            </form>
-                        </div>
                     </div>
                 </div>
             </div>

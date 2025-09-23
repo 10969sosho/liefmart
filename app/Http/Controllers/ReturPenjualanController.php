@@ -707,96 +707,9 @@ class ReturPenjualanController extends Controller
 
     public function export()
     {
-        $returPenjualans = \App\Models\ReturPenjualan::with([
-                'order.platform', 
-                'user', 
-                'details.product', 
-                'details.orderItem.platformProduct.mappingBarang'
-            ])
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        $exportData = [];
-        foreach ($returPenjualans as $retur) {
-            $resi = $retur->order->resi ?? ($retur->order->no_resi ?? '-');
-            foreach ($retur->details as $detail) {
-                // Calculate correct price per individual product for paket
-                if (!$detail->orderItem) {
-                    $harga = 0;
-                } else {
-                    $platformProduct = $detail->orderItem->platformProduct;
-                    if (!$platformProduct || !$platformProduct->mappingBarang || $platformProduct->mappingBarang->isEmpty()) {
-                        // Non-paket product: use original price
-                        $harga = $detail->orderItem->price_after_discount;
-                    } else {
-                        // Paket product: calculate total quantity in the package
-                        $totalPackageQty = $platformProduct->mappingBarang->sum('quantity');
-                        
-                        // Calculate price per individual product
-                        $harga = $totalPackageQty > 0 ? 
-                            $detail->orderItem->price_after_discount / $totalPackageQty : 
-                            $detail->orderItem->price_after_discount;
-                        
-                        // Add debug log for verification
-                        \Log::info("Export paket calculation for order {$retur->order->order_number}: Package price {$detail->orderItem->price_after_discount}, Package qty {$totalPackageQty}, Individual price {$harga}");
-                    }
-                }
-                
-                // Get platform product name (variant) and actual product name separately
-                $platformProductName = $detail->orderItem && $detail->orderItem->platformProduct ? 
-                    $detail->orderItem->platformProduct->platform_product_name : '-';
-                $productName = $detail->product ? $detail->product->name : '-';
-                
-                $exportData[] = [
-                    'Kode Retur' => $retur->kode_retur,
-                    'Nomor Order' => (string)$retur->order->order_number, // ✅ Convert to string to prevent scientific notation
-                    'No. Resi' => (string)$resi, // ✅ Convert to string as well
-                    'Platform' => $retur->order->platform->name ?? '-',
-                    'Tanggal Retur' => $retur->tanggal_retur ? $retur->tanggal_retur->format('d/m/Y') : '-',
-                    'Status' => Str::ucfirst($retur->status),
-                    'User' => $retur->user->name,
-                    'Nama Produk' => $platformProductName,
-                    'Varian Produk' => $productName,
-                    'Harga Produk' => round($harga, 2), // Round to 2 decimal places
-                    'Qty' => $detail->qty,
-                    'Total Harga' => round($harga * $detail->qty, 2), // Round total as well
-                    'Kondisi' => $detail->kondisi,
-                    'Alasan' => $detail->alasan ?? '-',
-                ];
-            }
-        }
-
-        return Excel::download(new class($exportData) implements \Maatwebsite\Excel\Concerns\FromArray, \Maatwebsite\Excel\Concerns\WithHeadings, \Maatwebsite\Excel\Concerns\WithColumnFormatting, \Maatwebsite\Excel\Concerns\WithCustomValueBinder {
-            protected $data;
-            public function __construct($data) { $this->data = $data; }
-            public function array(): array { return $this->data; }
-            public function headings(): array {
-                return [
-                    'Kode Retur', 'Nomor Order', 'No. Resi', 'Platform', 'Tanggal Retur', 'Status', 'User',
-                    'Nama Produk', 'Varian Produk', 'Harga Produk', 'Qty', 'Total Harga', 'Kondisi', 'Alasan'
-                ];
-            }
-            public function columnFormats(): array {
-                return [
-                    'B' => \PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, // Nomor Order as text
-                    'C' => \PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, // No. Resi as text
-                ];
-            }
-            
-            public function bindValue(\PhpOffice\PhpSpreadsheet\Cell\Cell $cell, $value)
-            {
-                $columnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($cell->getColumn());
-                
-                // Force Nomor Order (column B = index 2) and No. Resi (column C = index 3) as text
-                if (($columnIndex === 2 || $columnIndex === 3) && is_string($value) && !empty($value) && $value !== '-') {
-                    $cell->setValueExplicit($value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-                    return true;
-                }
-                
-                // Default binding for other cells
-                return (new \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder())->bindValue($cell, $value);
-            }
-        }, 'retur_penjualan.xlsx');
+        $filename = 'retur_penjualan_detail_' . date('Y-m-d') . '.xlsx';
+        
+        return Excel::download(new \App\Exports\ReturPenjualanDetailExport(), $filename);
     }
 
     /**

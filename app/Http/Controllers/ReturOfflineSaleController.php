@@ -579,71 +579,9 @@ class ReturOfflineSaleController extends Controller
      */
     public function export()
     {
-        $returOfflineSales = \App\Models\ReturOfflineSale::with(['offlineSale', 'user', 'details.product', 'details.offlineSaleItem'])
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        $exportData = [];
-        foreach ($returOfflineSales as $retur) {
-            $noSuratJalan = $retur->offlineSale->surat_jalan_number ?? '-';
-            $customer = $retur->offlineSale->customerInfo->name ?? $retur->offlineSale->customer_name ?? '-';
-            foreach ($retur->details as $detail) {
-                $harga = $detail->offlineSaleItem ? $detail->offlineSaleItem->unit_price : 0;
-                $qty = $detail->qty;
-                $subtotal = $harga * $qty;
-                $diskon = 0;
-                $currentTotal = $subtotal;
-                $diskonText = [];
-                for($i = 1; $i <= 5; $i++) {
-                    $percentField = "discount_percent_" . $i;
-                    $amountField = "discount_amount_" . $i;
-                    $percent = $detail->offlineSaleItem ? ($detail->offlineSaleItem->$percentField ?? 0) : 0;
-                    $amount = $detail->offlineSaleItem ? ($detail->offlineSaleItem->$amountField ?? 0) : 0;
-                    if($percent > 0) {
-                        $d = $currentTotal * ($percent / 100);
-                        $diskon += $d;
-                        $diskonText[] = number_format($percent, 2, ',', '.') . '%';
-                        $currentTotal -= $d;
-                        $currentTotal = round($currentTotal, 2);
-                    }
-                    if($amount > 0) {
-                        $d = $amount * $qty;
-                        $diskon += $d;
-                        $diskonText[] = 'Rp ' . number_format($amount, 0, ',', '.');
-                        $currentTotal -= $d;
-                        $currentTotal = round($currentTotal, 2);
-                    }
-                }
-                $exportData[] = [
-                    'Kode Retur' => $retur->kode_retur,
-                    'No. Surat Jalan' => $noSuratJalan,
-                    'Tanggal Retur' => $retur->tanggal_retur ? $retur->tanggal_retur->format('d/m/Y') : '-',
-                    'Status' => ucfirst($retur->status),
-                    'User' => $retur->user->name ?? '-',
-                    'Customer' => $customer,
-                    'Nama Produk' => $detail->product->name ?? '-',
-                    'Harga Satuan' => $harga,
-                    'Qty Retur' => $qty,
-                    'Diskon' => implode(' + ', $diskonText) ?: '-',
-                    'Total Diskon' => $diskon,
-                    'Subtotal Retur' => $currentTotal,
-                    'Kondisi' => $detail->kondisi,
-                    'Alasan' => $detail->alasan ?? '-',
-                ];
-            }
-        }
-
-        return Excel::download(new class($exportData) implements \Maatwebsite\Excel\Concerns\FromArray, \Maatwebsite\Excel\Concerns\WithHeadings {
-            protected $data;
-            public function __construct($data) { $this->data = $data; }
-            public function array(): array { return $this->data; }
-            public function headings(): array {
-                return [
-                    'Kode Retur', 'No. Surat Jalan', 'Tanggal Retur', 'Status', 'User', 'Customer',
-                    'Nama Produk', 'Harga Satuan', 'Qty Retur', 'Diskon', 'Total Diskon', 'Subtotal Retur', 'Kondisi', 'Alasan'
-                ];
-            }
-        }, 'retur_offline.xlsx');
+        $filename = 'retur_offline_detail_' . date('Y-m-d') . '.xlsx';
+        
+        return Excel::download(new \App\Exports\ReturOfflineDetailExport(), $filename);
     }
 
     /**

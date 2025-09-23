@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\Penerimaan;
 use App\Models\PenerimaanDetail;
+use App\Models\WarehouseStock;
 use App\Models\Product;
 use App\Models\PaymentMethod;
 use App\Helpers\NumberFormatter;
@@ -48,10 +49,17 @@ class PenerimaanSeeder extends Seeder
         $csv = array_map('str_getcsv', file($filePath));
         $header = array_shift($csv);
         $header = array_map('trim', $header); // Trim whitespace from headers
-        if (array_map('strtoupper', $header) !== ['NAMA BARANG', 'QTY', 'HARGA']) {
-            $this->command->error('CSV format incorrect in ' . basename($filePath) . '. Expected: NAMA BARANG, QTY, HARGA but got: ' . implode(', ', $header));
+        
+        // Check for both old format (without ED) and new format (with ED)
+        $expectedHeadersOld = ['NAMA BARANG', 'QTY', 'HARGA'];
+        $expectedHeadersNew = ['NAMA BARANG', 'QTY', 'HARGA', 'ED'];
+        
+        if (array_map('strtoupper', $header) !== $expectedHeadersOld && array_map('strtoupper', $header) !== $expectedHeadersNew) {
+            $this->command->error('CSV format incorrect in ' . basename($filePath) . '. Expected: NAMA BARANG, QTY, HARGA or NAMA BARANG, QTY, HARGA, ED but got: ' . implode(', ', $header));
             return;
         }
+        
+        $hasEd = array_map('strtoupper', $header) === $expectedHeadersNew;
         $totalHarga = 0;
         $details = [];
         foreach ($csv as $row) {
@@ -62,6 +70,8 @@ class PenerimaanSeeder extends Seeder
             $productName = trim($row[0]);
             $qty = NumberFormatter::parseNumericValue(trim($row[1]));
             $harga = NumberFormatter::parseNumericValue(trim($row[2]));
+            $ed = $hasEd && isset($row[3]) ? trim($row[3]) : null;
+            
             $product = Product::where('name', $productName)->first();
             if (!$product) {
                 $this->command->error("Product not found: {$productName} (file: " . basename($filePath) . ")");
@@ -75,6 +85,7 @@ class PenerimaanSeeder extends Seeder
                 'satuan_id' => 1,
                 'harga_hpp' => $harga,
                 'subtotal' => $subtotal,
+                'ed' => $ed,
             ];
         }
         if (empty($details)) {
@@ -98,7 +109,7 @@ class PenerimaanSeeder extends Seeder
             'lokasi_id' => 1,
         ]);
         foreach ($details as $detail) {
-            PenerimaanDetail::create([
+            $penerimaanDetail = PenerimaanDetail::create([
                 'penerimaan_id' => $penerimaan->id,
                 'product_id' => $detail['product_id'],
                 'qty' => $detail['qty'],
@@ -118,7 +129,113 @@ class PenerimaanSeeder extends Seeder
                 'subtotal' => $detail['subtotal'],
                 'catatan' => null,
             ]);
+
+            // Create WarehouseStock if ED is provided
+            if ($detail['ed']) {
+                $this->createWarehouseStocks($detail, $penerimaanDetail, $penerimaan);
+            }
         }
         $this->command->info("Imported " . count($details) . " items from " . basename($filePath) . " as {$type} penerimaan.");
+    }
+
+    /**
+     * Create WarehouseStock entries based on ED format
+     * Handles various ED formats including complex ones like "2 PCS (11/01/25) 4 PCS (5/01/26)"
+     */
+    private function createWarehouseStocks($detail, $penerimaanDetail, $penerimaan)
+    {
+        $ed = $detail['ed'];
+        
+        // Handle complex ED format like "2 PCS (11/01/25) 4 PCS (5/01/26)"
+        if (preg_match_all('/(\d+)\s+PCS\s+\((\d{1,2})\/(\d{1,2})\/(\d{2,4})\)/', $ed, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $qty = (int) $match[1];
+                $day = (int) $match[2];
+                $month = (int) $match[3];
+                $year = (int) $match[4];
+                
+                // Convert 2-digit year to 4-digit
+                if ($year < 100) {
+                    $year += 2000;
+                }
+                
+                $expiredDate = Carbon::createFromDate($year, $month, $day);
+                
+                WarehouseStock::create([
+                    'product_id' => $detail['product_id'],
+                    'lokasi_id' => $penerimaan->lokasi_id,
+                    'penerimaan_detail_id' => $penerimaanDetail->id,
+                    'tax_id' => $penerimaan->tax_category_id,
+                    'qty' => $qty,
+                    'expired_date' => $expiredDate,
+                    'status_ed' => 'aman', // Will be calculated by model mutator
+                    'catatan' => null,
+                    'source_type' => 'penerimaan',
+                    'source_id' => $penerimaan->id,
+                    'source_date' => $penerimaan->tanggal_penerimaan,
+                ]);
+            }
+        }
+        // Handle simple ED format like "2026-12" or "2026-12-15"
+        elseif (preg_match('/^(\d{4})-(\d{2})$/', $ed, $matches)) {
+            $expiredDate = Carbon::createFromFormat('Y-m', $ed)->endOfMonth();
+            
+            WarehouseStock::create([
+                'product_id' => $detail['product_id'],
+                'lokasi_id' => $penerimaan->lokasi_id,
+                'penerimaan_detail_id' => $penerimaanDetail->id,
+                'tax_id' => $penerimaan->tax_category_id,
+                'qty' => $detail['qty'],
+                'expired_date' => $expiredDate,
+                'status_ed' => 'aman', // Will be calculated by model mutator
+                'catatan' => null,
+                'source_type' => 'penerimaan',
+                'source_id' => $penerimaan->id,
+                'source_date' => $penerimaan->tanggal_penerimaan,
+            ]);
+        }
+        elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $ed, $matches)) {
+            $expiredDate = Carbon::createFromFormat('Y-m-d', $ed);
+            
+            WarehouseStock::create([
+                'product_id' => $detail['product_id'],
+                'lokasi_id' => $penerimaan->lokasi_id,
+                'penerimaan_detail_id' => $penerimaanDetail->id,
+                'tax_id' => $penerimaan->tax_category_id,
+                'qty' => $detail['qty'],
+                'expired_date' => $expiredDate,
+                'status_ed' => 'aman', // Will be calculated by model mutator
+                'catatan' => null,
+                'source_type' => 'penerimaan',
+                'source_id' => $penerimaan->id,
+                'source_date' => $penerimaan->tanggal_penerimaan,
+            ]);
+        }
+        // Handle format like "6/1/2027" (M/D/Y)
+        elseif (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $ed, $matches)) {
+            $month = (int) $matches[1];
+            $day = (int) $matches[2];
+            $year = (int) $matches[3];
+            
+            $expiredDate = Carbon::createFromDate($year, $month, $day);
+            
+            WarehouseStock::create([
+                'product_id' => $detail['product_id'],
+                'lokasi_id' => $penerimaan->lokasi_id,
+                'penerimaan_detail_id' => $penerimaanDetail->id,
+                'tax_id' => $penerimaan->tax_category_id,
+                'qty' => $detail['qty'],
+                'expired_date' => $expiredDate,
+                'status_ed' => 'aman', // Will be calculated by model mutator
+                'catatan' => null,
+                'source_type' => 'penerimaan',
+                'source_id' => $penerimaan->id,
+                'source_date' => $penerimaan->tanggal_penerimaan,
+            ]);
+        }
+        else {
+            // If ED format is not recognized, log warning but don't create WarehouseStock
+            $this->command->warn("Unrecognized ED format: '{$ed}' for product ID {$detail['product_id']}. Skipping WarehouseStock creation.");
+        }
     }
 }

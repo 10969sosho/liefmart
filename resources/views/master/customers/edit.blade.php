@@ -29,7 +29,7 @@
                                 <div class="form-group">
                                     <label for="email" class="form-control-label">Email</label>
                                     <input class="form-control @error('email') is-invalid @enderror" type="email" 
-                                        id="email" name="email" value="{{ old('email', $customer->email) }}">
+                                        id="email" name="email" value="{{ old('email', $customer->email == '-' ? '' : $customer->email) }}">
                                     @error('email')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror

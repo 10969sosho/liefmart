@@ -37,6 +37,10 @@
                                         <div class="col-md-8 text-sm font-weight-bold">{{ $product->sku ?? 'Tidak ada' }}</div>
                                     </div>
                                     <div class="row mb-3">
+                                        <div class="col-md-4 text-sm text-secondary">Barcode</div>
+                                        <div class="col-md-8 text-sm font-weight-bold">{{ $product->barcode ?? '-' }}</div>
+                                    </div>
+                                    <div class="row mb-3">
                                         <div class="col-md-4 text-sm text-secondary">Status</div>
                                         <div class="col-md-8">
                                             <span class="badge {{ $product->is_active ? 'bg-success' : 'bg-secondary' }}">

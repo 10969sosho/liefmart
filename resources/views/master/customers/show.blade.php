@@ -34,7 +34,7 @@
                                     </div>
                                     <div class="row mb-3">
                                         <div class="col-md-4 text-sm text-secondary">Email</div>
-                                        <div class="col-md-8 text-sm font-weight-bold">{{ $customer->email }}</div>
+                                        <div class="col-md-8 text-sm font-weight-bold">{{ $customer->email == '-' ? '-' : $customer->email }}</div>
                                     </div>
                                     <div class="row mb-3">
                                         <div class="col-md-4 text-sm text-secondary">Telepon</div>

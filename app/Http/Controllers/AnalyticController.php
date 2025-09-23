@@ -2097,57 +2097,60 @@ class AnalyticController extends Controller
             $totalOrderValueFromProducts = 0;
             $orderMasterProducts = collect();
             
-            // First pass: collect all master products and their selling prices
-            foreach ($order->orderItems as $orderItem) {
-                $platformProduct = $orderItem->platformProduct;
-                if (!$platformProduct || !$platformProduct->mappingBarang || $platformProduct->mappingBarang->isEmpty()) {
-                    continue;
-                }
-                
-                foreach ($platformProduct->mappingBarang as $mapping) {
-                    $product = $mapping->product;
-                    if (!$product) continue;
-                    
-                    // Apply search filter
-                    if ($search) {
-                        $searchLower = strtolower($search);
-                        $match = false;
-                        if ($platformProduct && strpos(strtolower($platformProduct->platform_product_name), $searchLower) !== false) $match = true;
-                        if ($product && strpos(strtolower($product->name), $searchLower) !== false) $match = true;
-                        if ($product && $product->sku && strpos(strtolower($product->sku), $searchLower) !== false) $match = true;
-                        if (!$match) continue;
-                    }
-                    
-                    // Apply category filters (use selected arrays, not Eloquent collections)
-                    if (!empty($selectedMainCategories) && !in_array($product->main_category_id, $selectedMainCategories)) continue;
-                    if (!empty($selectedBrands) && !in_array($product->brand_id, $selectedBrands)) continue;
-                    if (!empty($selectedSubBrands) && !in_array($product->sub_brand_id, $selectedSubBrands)) continue;
-                    if (!empty($selectedProductCategories) && !in_array($product->product_category_id, $selectedProductCategories)) continue;
-                    if (!empty($selectedProductTypes) && !in_array($product->product_type_id, $selectedProductTypes)) continue;
-                    if (!empty($selectedProductSizes) && !in_array($product->product_size_id, $selectedProductSizes)) continue;
-                    if (!empty($selectedProductVariants) && !in_array($product->product_variant_id, $selectedProductVariants)) continue;
-                    
-                    // Use selling price (initial_price with discount applied) from products table
-                    $pricelistPrice = $this->calculateSellingPrice($product);
-                    
-                    // Calculate master product quantity (platform qty × mapping qty)
-                    $masterProductQty = $orderItem->quantity * $mapping->quantity;
-                    
-                    // Calculate total value for this master product using pricelist
-                    $masterProductValue = $pricelistPrice * $masterProductQty;
-                    $totalOrderValueFromProducts += $masterProductValue;
-                    
-                    $orderMasterProducts->push([
-                        'order_item' => $orderItem,
-                        'platform_product' => $platformProduct,
-                        'mapping' => $mapping,
-                        'product' => $product,
-                        'selling_price' => $pricelistPrice,
-                        'master_qty' => $masterProductQty,
-                        'master_value' => $masterProductValue,
-                    ]);
-                }
+        // First pass: collect all master products and their selling prices from barang_keluar
+        // This ensures we get the correct mapping for each order item
+        $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($q) use ($order) {
+            $q->where('order_id', $order->id);
+        })->with(['orderItem.platformProduct', 'warehouseStock.product'])->get();
+        
+        foreach ($barangKeluarItems as $barangKeluar) {
+            $orderItem = $barangKeluar->orderItem;
+            $platformProduct = $orderItem->platformProduct;
+            $product = $barangKeluar->warehouseStock->product;
+            
+            if (!$platformProduct || !$product) {
+                continue;
             }
+            
+            // Apply search filter
+            if ($search) {
+                $searchLower = strtolower($search);
+                $match = false;
+                if ($platformProduct && strpos(strtolower($platformProduct->platform_product_name), $searchLower) !== false) $match = true;
+                if ($product && strpos(strtolower($product->name), $searchLower) !== false) $match = true;
+                if ($product && $product->sku && strpos(strtolower($product->sku), $searchLower) !== false) $match = true;
+                if (!$match) continue;
+            }
+            
+            // Apply category filters (use selected arrays, not Eloquent collections)
+            if (!empty($selectedMainCategories) && !in_array($product->main_category_id, $selectedMainCategories)) continue;
+            if (!empty($selectedBrands) && !in_array($product->brand_id, $selectedBrands)) continue;
+            if (!empty($selectedSubBrands) && !in_array($product->sub_brand_id, $selectedSubBrands)) continue;
+            if (!empty($selectedProductCategories) && !in_array($product->product_category_id, $selectedProductCategories)) continue;
+            if (!empty($selectedProductTypes) && !in_array($product->product_type_id, $selectedProductTypes)) continue;
+            if (!empty($selectedProductSizes) && !in_array($product->product_size_id, $selectedProductSizes)) continue;
+            if (!empty($selectedProductVariants) && !in_array($product->product_variant_id, $selectedProductVariants)) continue;
+            
+            // Use initial_price directly for pricelist (without discount applied)
+            
+            // Calculate master product quantity from barang_keluar qty
+            $masterProductQty = $barangKeluar->qty;
+            
+            // Calculate total value for this master product using pricelist
+            $masterProductValue = ($product->initial_price ?? 0) * $masterProductQty;
+            $totalOrderValueFromProducts += $masterProductValue;
+            
+            $orderMasterProducts->push([
+                'order_item' => $orderItem,
+                'platform_product' => $platformProduct,
+                'mapping' => null, // Not needed when using barang_keluar
+                'product' => $product,
+                'selling_price' => $product->initial_price ?? 0,
+                'master_qty' => $masterProductQty,
+                'master_value' => $masterProductValue,
+                'barang_keluar' => $barangKeluar, // Store barang_keluar for reference
+            ]);
+        }
             
             if ($orderMasterProducts->isEmpty()) continue;
             
@@ -2155,11 +2158,11 @@ class AnalyticController extends Controller
             foreach ($orderMasterProducts as $masterProductData) {
                 $orderItem = $masterProductData['order_item'];
                 $platformProduct = $masterProductData['platform_product'];
-                $mapping = $masterProductData['mapping'];
                 $product = $masterProductData['product'];
                 $actualPrice = $masterProductData['selling_price'];
                 $masterQty = $masterProductData['master_qty'];
                 $masterValue = $masterProductData['master_value'];
+                $barangKeluar = $masterProductData['barang_keluar'];
                 
                 // Calculate revenue distribution percentage based on pricelist
                 // Persentase = (Harga Pricelist 1 Barang / Total Harga Pricelist 1 Order) × 100%
@@ -2211,9 +2214,10 @@ class AnalyticController extends Controller
                     'platform' => $order->platform->name,
                     'quantity' => $masterQty, // Master product quantity (platform qty × mapping qty)
                     'platform_quantity' => $orderItem->quantity, // QTY yang diorder di platform
-                    'price' => $pricelistPrice, // Pricelist price from products table
+                    'price' => $actualPrice, // Pricelist price from products table
                     'revenue' => $proportionalSaldoMasuk, // Proportional saldo masuk (per product)
                     'order_total_payment' => $totalSaldoMasuk, // Total saldo masuk untuk 1 order (sama untuk semua row dalam order)
+                    'total_order_value_from_products' => $totalOrderValueFromProducts, // Total nilai order dari products table
                     'capital' => $totalModal, // Total modal (modal per unit × qty)
                     'gross_profit_per_unit' => $grossProfitPerUnit, // (saldo masuk / qty) - modal per unit
                     'gross_profit_total' => $grossProfitTotal, // saldo masuk - modal x qty
@@ -4305,59 +4309,62 @@ class AnalyticController extends Controller
                 $invoiceNumber = $order->invoice_number ?? '-';
             }
             
-            // First pass: collect all master products and calculate total order value
+            // First pass: collect all master products and their selling prices from barang_keluar
+            // This ensures we get the correct mapping for each order item
+            $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($q) use ($order) {
+                $q->where('order_id', $order->id);
+            })->with(['orderItem.platformProduct', 'warehouseStock.product'])->get();
+            
             $orderMasterProducts = collect();
             $totalOrderValueFromProducts = 0;
             
-            foreach ($order->orderItems as $orderItem) {
+            foreach ($barangKeluarItems as $barangKeluar) {
+                $orderItem = $barangKeluar->orderItem;
                 $platformProduct = $orderItem->platformProduct;
-                if (!$platformProduct || !$platformProduct->mappingBarang || $platformProduct->mappingBarang->isEmpty()) {
+                $product = $barangKeluar->warehouseStock->product;
+                
+                if (!$platformProduct || !$product) {
                     continue;
                 }
                 
-                foreach ($platformProduct->mappingBarang as $mapping) {
-                    $product = $mapping->product;
-                    if (!$product) continue;
-                    
-                    // Apply search filter
-                    if ($searchTerm) {
-                        $searchLower = strtolower($searchTerm);
-                        $match = false;
-                        if ($platformProduct && strpos(strtolower($platformProduct->platform_product_name), $searchLower) !== false) $match = true;
-                        if ($product && strpos(strtolower($product->name), $searchLower) !== false) $match = true;
-                        if ($product && $product->sku && strpos(strtolower($product->sku), $searchLower) !== false) $match = true;
-                        if (!$match) continue;
-                    }
-                    
-                    // Apply category filters (use selected arrays, not Eloquent collections)
-                    if (!empty($selectedMainCategories) && !in_array($product->main_category_id, $selectedMainCategories)) continue;
-                    if (!empty($selectedBrands) && !in_array($product->brand_id, $selectedBrands)) continue;
-                    if (!empty($selectedSubBrands) && !in_array($product->sub_brand_id, $selectedSubBrands)) continue;
-                    if (!empty($selectedProductCategories) && !in_array($product->product_category_id, $selectedProductCategories)) continue;
-                    if (!empty($selectedProductTypes) && !in_array($product->product_type_id, $selectedProductTypes)) continue;
-                    if (!empty($selectedProductSizes) && !in_array($product->product_size_id, $selectedProductSizes)) continue;
-                    if (!empty($selectedProductVariants) && !in_array($product->product_variant_id, $selectedProductVariants)) continue;
-                    
-                    // Use selling price (initial_price with discount applied) from products table
-                    $pricelistPrice = $this->calculateSellingPrice($product);
-                    
-                    // Calculate master product quantity (platform qty × mapping qty)
-                    $masterProductQty = $orderItem->quantity * $mapping->quantity;
-                    
-                    // Calculate total value for this master product using pricelist
-                    $masterProductValue = $pricelistPrice * $masterProductQty;
-                    $totalOrderValueFromProducts += $masterProductValue;
-                    
-                    $orderMasterProducts->push([
-                        'order_item' => $orderItem,
-                        'platform_product' => $platformProduct,
-                        'mapping' => $mapping,
-                        'product' => $product,
-                        'selling_price' => $pricelistPrice,
-                        'master_qty' => $masterProductQty,
-                        'master_value' => $masterProductValue,
-                    ]);
+                // Apply search filter
+                if ($searchTerm) {
+                    $searchLower = strtolower($searchTerm);
+                    $match = false;
+                    if ($platformProduct && strpos(strtolower($platformProduct->platform_product_name), $searchLower) !== false) $match = true;
+                    if ($product && strpos(strtolower($product->name), $searchLower) !== false) $match = true;
+                    if ($product && $product->sku && strpos(strtolower($product->sku), $searchLower) !== false) $match = true;
+                    if (!$match) continue;
                 }
+                
+                // Apply category filters (use selected arrays, not Eloquent collections)
+                if (!empty($selectedMainCategories) && !in_array($product->main_category_id, $selectedMainCategories)) continue;
+                if (!empty($selectedBrands) && !in_array($product->brand_id, $selectedBrands)) continue;
+                if (!empty($selectedSubBrands) && !in_array($product->sub_brand_id, $selectedSubBrands)) continue;
+                if (!empty($selectedProductCategories) && !in_array($product->product_category_id, $selectedProductCategories)) continue;
+                if (!empty($selectedProductTypes) && !in_array($product->product_type_id, $selectedProductTypes)) continue;
+                if (!empty($selectedProductSizes) && !in_array($product->product_size_id, $selectedProductSizes)) continue;
+                if (!empty($selectedProductVariants) && !in_array($product->product_variant_id, $selectedProductVariants)) continue;
+                
+                // Use initial_price directly for pricelist (without discount applied)
+                
+                // Calculate master product quantity from barang_keluar qty
+                $masterProductQty = $barangKeluar->qty;
+                
+                // Calculate total value for this master product using pricelist
+                $masterProductValue = ($product->initial_price ?? 0) * $masterProductQty;
+                $totalOrderValueFromProducts += $masterProductValue;
+                
+                $orderMasterProducts->push([
+                    'order_item' => $orderItem,
+                    'platform_product' => $platformProduct,
+                    'mapping' => null, // Not needed when using barang_keluar
+                    'product' => $product,
+                    'selling_price' => $product->initial_price ?? 0,
+                    'master_qty' => $masterProductQty,
+                    'master_value' => $masterProductValue,
+                    'barang_keluar' => $barangKeluar, // Store barang_keluar for reference
+                ]);
             }
             
             if ($orderMasterProducts->isEmpty()) continue;
@@ -4413,6 +4420,7 @@ class AnalyticController extends Controller
                 $productRows->push([
                     'platform_product_id' => $platformProduct->id,
                     'platform_product_name' => $platformProduct->platform_product_name,
+                    'platform_product_variant' => $platformProduct->variant ?? 'N/A', // Platform product variant
                     'order_id' => $order->id,
                     'order_item_id' => $orderItem->id, // Added for barang keluar calculation
                     'product_id' => $product->id, // Added for barang keluar calculation
@@ -4421,7 +4429,7 @@ class AnalyticController extends Controller
                     'platform' => $order->platform->name,
                     'quantity' => $masterQty, // Master product quantity (platform qty × mapping qty)
                     'platform_quantity' => $orderItem->quantity, // QTY yang diorder di platform
-                    'price' => $pricelistPrice, // Pricelist price from products table
+                    'price' => $actualPrice, // Pricelist price from products table
                     'revenue' => $proportionalSaldoMasuk, // Proportional saldo masuk (per product)
                     'order_total_payment' => $totalSaldoMasuk, // Total saldo masuk untuk 1 order (sama untuk semua row dalam order)
                     'total_order_value_from_products' => $totalOrderValueFromProducts, // Total nilai order dari products table

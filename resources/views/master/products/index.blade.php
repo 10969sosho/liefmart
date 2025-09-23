@@ -128,7 +128,8 @@
                                 <tr class="bg-white">
                                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-4" style="width: 5%;">No.</th>
                                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-3" style="width: 20%;">Nama Produk</th>
-                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2" style="width: 15%;">SKU</th>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2" style="width: 12%;">SKU</th>
+                                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2" style="width: 12%;">Barcode</th>
                                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Main Category</th>
                                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Brand</th>
                                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Sub Brand</th>
@@ -159,6 +160,11 @@
                                     <td>
                                         <span class="text-secondary text-xs font-weight-bold text-wrap">
                                             {{ $product->sku ?? 'Tidak ada' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="text-secondary text-xs font-weight-bold text-wrap">
+                                            {{ $product->barcode ?? '-' }}
                                         </span>
                                     </td>
                                     <td>

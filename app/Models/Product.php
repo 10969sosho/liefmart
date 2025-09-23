@@ -25,6 +25,7 @@ class Product extends Model
         'product_variant_id',
         'description',
         'sku',
+        'barcode',
         'is_active',
         'initial_price',
         'discount_percentage',

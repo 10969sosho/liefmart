@@ -653,8 +653,15 @@ class TiktokImport implements ToCollection, WithMultipleSheets
 
             // Jika tidak ada mapping, tambahkan ke unmapped
             if (!$mappingExists) {
-                if (!in_array($fullProductName, $this->unmappedProducts)) {
-                    $this->unmappedProducts[] = $fullProductName;
+                // Simpan dalam format array untuk mempertahankan nama dan variant terpisah
+                $productData = [
+                    'name' => $productName,
+                    'variant' => $variation,
+                    'full_name' => $fullProductName
+                ];
+                
+                if (!in_array($productData, $this->unmappedProducts)) {
+                    $this->unmappedProducts[] = $productData;
                 }
             }
         } else {
@@ -662,8 +669,15 @@ class TiktokImport implements ToCollection, WithMultipleSheets
             \Log::warning("No platform product found for: $fullProductName");
 
             // Tambahkan ke unmapped jika tidak ditemukan
-            if (!in_array($fullProductName, $this->unmappedProducts)) {
-                $this->unmappedProducts[] = $fullProductName;
+            // Simpan dalam format array untuk mempertahankan nama dan variant terpisah
+            $productData = [
+                'name' => $productName,
+                'variant' => $variation,
+                'full_name' => $fullProductName
+            ];
+            
+            if (!in_array($productData, $this->unmappedProducts)) {
+                $this->unmappedProducts[] = $productData;
             }
         }
     }

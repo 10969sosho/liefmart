@@ -56,7 +56,13 @@ class CustomerController extends Controller
                 ->withInput();
         }
 
-        Customer::create($request->all());
+        $data = $request->all();
+        // Replace empty email with "-" to avoid null in database
+        if (empty($data['email'])) {
+            $data['email'] = '-';
+        }
+
+        Customer::create($data);
 
         return redirect()->route('customers.index')
             ->with('success', 'Pelanggan berhasil ditambahkan.');
@@ -99,7 +105,13 @@ class CustomerController extends Controller
                 ->withInput();
         }
 
-        $customer->update($request->all());
+        $data = $request->all();
+        // Replace empty email with "-" to avoid null in database
+        if (empty($data['email'])) {
+            $data['email'] = '-';
+        }
+
+        $customer->update($data);
 
         return redirect()->route('customers.index')
             ->with('success', 'Pelanggan berhasil diperbarui.');

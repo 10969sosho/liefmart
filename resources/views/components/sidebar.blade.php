@@ -262,7 +262,7 @@
                                 <ul class="nav flex-column ms-3 mt-1">
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-platform') }}">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Sales Volume Value
+                                            <i class="fas fa-circle fa-xs me-2"></i> Sales Report
                                         </a>
                                     </li>
                                     <li class="nav-item">
@@ -277,7 +277,7 @@
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-date-number') }}">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Sales by Date Number (1-31)
+                                            <i class="fas fa-circle fa-xs me-2"></i> Sales by Date 
                                         </a>
                                     </li>
                                     <li class="nav-item">
@@ -292,12 +292,12 @@
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-master-product') }}">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Sales by Master Product
+                                            <i class="fas fa-circle fa-xs me-2"></i> Gross Profit Master
                                         </a>
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-platform-product') }}">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Sales by Platform Product
+                                            <i class="fas fa-circle fa-xs me-2"></i> Gross Profit Platform
                                         </a>
                                     </li>
                                 </ul>

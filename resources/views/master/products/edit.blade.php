@@ -29,8 +29,23 @@
                                 <div class="form-group">
                                     <label for="sku" class="form-control-label">SKU</label>
                                     <input class="form-control @error('sku') is-invalid @enderror" type="text" 
-                                        id="sku" name="sku" value="{{ old('sku', $product->sku) }}">
+                                        id="sku" name="sku" value="{{ old('sku', $product->sku) }}" readonly>
+                                    <small class="form-text text-muted">SKU akan digenerate otomatis</small>
                                     @error('sku')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="barcode" class="form-control-label">Barcode</label>
+                                    <input class="form-control @error('barcode') is-invalid @enderror" type="text" 
+                                        id="barcode" name="barcode" value="{{ old('barcode', $product->barcode) }}" placeholder="Masukkan barcode produk">
+                                    <small class="form-text text-muted">Barcode produk (opsional)</small>
+                                    @error('barcode')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>

@@ -422,6 +422,22 @@ class StockMutationProductSheet implements FromCollection, WithHeadings, WithMap
                         $sortPriority = 1; // Initial stock gets priority 1
                     }
                     
+                    // CRITICAL: For "Barang Masuk", show correct quantity based on transaction type
+                    // 1. Barang masuk NORMAL: gunakan penerimaan_detail.qty (original received quantity)
+                    // 2. Barang masuk RETUR: gunakan warehouse_stock.qty (actual returned quantity)
+                    $displayQty = (float)($item->qty ?? 0);
+                    
+                    if ($item->source_type && ($item->source_type === 'retur_penjualan' || $item->source_type === 'retur_offline')) {
+                        // BARANG MASUK KARENA RETUR: gunakan warehouse_stock.qty (quantity yang benar-benar di-retur)
+                        $displayQty = (float)($item->qty ?? 0);
+                    } elseif ($item->penerimaanDetail && $item->penerimaanDetail->qty) {
+                        // BARANG MASUK NORMAL: gunakan penerimaan_detail.qty (original quantity received from supplier)
+                        $displayQty = (float)($item->penerimaanDetail->qty);
+                    } else {
+                        // Fallback - use warehouse_stock.qty
+                        $displayQty = (float)($item->qty ?? 0);
+                    }
+                    
                     $mutations[] = [
                         'date' => $date,
                         'timestamp' => $timestamp,
@@ -429,7 +445,7 @@ class StockMutationProductSheet implements FromCollection, WithHeadings, WithMap
                         'reference' => $reference,
                         'expired_date' => $item->expired_date ? Carbon::parse($item->expired_date) : null,
                         'location' => 'Gudang A', // Always use Gudang A instead of Unlocated
-                        'qty' => (float)($item->qty ?? 0),
+                        'qty' => $displayQty,
                         'unit' => $item->penerimaanDetail && $item->penerimaanDetail->satuan && $item->penerimaanDetail->satuan->name ? 
                             $item->penerimaanDetail->satuan->name : 'Pcs',
                         'notes' => $notes,
@@ -439,6 +455,13 @@ class StockMutationProductSheet implements FromCollection, WithHeadings, WithMap
                 } catch (\Exception $e) {
                     // Add fallback entry for problematic items
                     \Log::error('Error processing stock in item ID '.$item->id.': ' . $e->getMessage());
+                    
+                    // Use same quantity logic even for error cases
+                    $displayQty = (float)($item->qty ?? 0);
+                    if ($item->penerimaanDetail && $item->penerimaanDetail->qty) {
+                        $displayQty = (float)($item->penerimaanDetail->qty);
+                    }
+                    
                     $mutations[] = [
                         'date' => $item->created_at ? Carbon::parse($item->created_at) : Carbon::now(),
                         'timestamp' => $item->created_at ?? Carbon::now(),
@@ -446,7 +469,7 @@ class StockMutationProductSheet implements FromCollection, WithHeadings, WithMap
                         'reference' => 'WS-'.$item->id,
                         'expired_date' => null,
                         'location' => 'N/A',
-                        'qty' => (float)($item->qty ?? 0),
+                        'qty' => $displayQty,
                         'unit' => 'Pcs',
                         'notes' => 'Penerimaan Barang (data tidak lengkap)',
                         'original' => $item,
@@ -705,9 +728,9 @@ class StockMutationProductSheet implements FromCollection, WithHeadings, WithMap
             if ($item['type'] !== 'info' && $item['type'] !== 'error') {
                 $qtyValue = (float)($item['qty'] ?? 0);
                 if ($item['type'] === 'in') {
-                    $qty = '+' . number_format($qtyValue, 2);
+                    $qty = number_format($qtyValue, 2); // No + sign for incoming
                 } else {
-                    $qty = '-' . number_format($qtyValue, 2);
+                    $qty = '-' . number_format($qtyValue, 2); // Only - sign for outgoing
                 }
                 $balance = number_format((float)($item['balance'] ?? 0), 2);
             }
@@ -815,11 +838,7 @@ class StockMutationProductSheet implements FromCollection, WithHeadings, WithMap
                     if ($type === 'Masuk') {
                         // Green text for incoming
                         $sheet->getStyle('G' . $row)->getFont()->getColor()->setRGB('28a745');
-                        // Add + sign for incoming quantities
-                        $qty = $sheet->getCell('G' . $row)->getValue();
-                        if (!empty($qty)) {
-                            $sheet->setCellValue('G' . $row, '+' . $qty);
-                        }
+                        // Quantity already has + sign from map() method, no need to add another one
                     } elseif ($type === 'Keluar') {
                         // Red text for outgoing
                         $sheet->getStyle('G' . $row)->getFont()->getColor()->setRGB('dc3545');

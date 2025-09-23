@@ -172,21 +172,64 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
     {
         if ($row['type'] === 'header') {
             $sale = $row['sale'];
+            
+            // Calculate totals for this specific order
+            $orderTotalQty = 0;
+            $orderTotalSubtotal = 0;
+            $orderTotalDiscount = 0;
+            $orderTotalQtyRetur = 0;
+            
+            foreach ($sale->items as $item) {
+                $qty = (float)($item->quantity ?? 0);
+                $unitPrice = (float)($item->unit_price ?? 0);
+                $subtotalSebelumDiskon = $qty * $unitPrice;
+                
+                // Calculate cascading discounts
+                $subtotal = $subtotalSebelumDiskon;
+                $totalDiskonNominal = 0;
+                
+                for ($i = 1; $i <= 5; $i++) {
+                    $diskonPersen = $item->{"discount_percent_$i"} ?? 0;
+                    $diskonNominal = $item->{"discount_amount_$i"} ?? 0;
+                    
+                    if ($diskonPersen > 0) {
+                        $potongan = $subtotal * ($diskonPersen / 100);
+                        $subtotal -= $potongan;
+                    } elseif ($diskonNominal > 0) {
+                        $subtotal -= $diskonNominal;
+                        $totalDiskonNominal += $diskonNominal;
+                    }
+                }
+                
+                $totalDiskon = $subtotalSebelumDiskon - $subtotal;
+                
+                // Calculate qty retur untuk item ini
+                $qtyRetur = \App\Models\ReturOfflineSaleDetail::where('offline_sale_item_id', $item->id)
+                    ->whereHas('returOfflineSale', function($q) { $q->where('status', 'selesai'); })
+                    ->sum('qty');
+                $qtyRetur = (float) $qtyRetur;
+                
+                $orderTotalQty += $qty;
+                $orderTotalSubtotal += $subtotalSebelumDiskon;
+                $orderTotalDiscount += $totalDiskon;
+                $orderTotalQtyRetur += $qtyRetur;
+            }
+            
             return [
                 'PENJUALAN OFFLINE',
                 $sale->sale_date ? $sale->sale_date->format('d/m/Y') : '-',
                 $sale->surat_jalan_number,
                 $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
                 'Status: ' . $sale->status,
-                'Total Items: ' . $sale->items->count(),
+                'Total QTY: ' . $orderTotalQty,
+                '',
+                '',
+                '',
+                '',
+                'Total Subtotal: Rp ' . number_format($orderTotalSubtotal, 0, ',', '.'),
+                'Total Diskon: Rp ' . number_format($orderTotalDiscount, 0, ',', '.'),
                 'Total Value: Rp ' . number_format($sale->value_after_returns ?? 0, 0, ',', '.'),
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
+                'Total Retur: ' . $orderTotalQtyRetur,
                 ''
             ];
         } elseif ($row['type'] === 'detail') {
@@ -295,32 +338,31 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
     {
         return [
             AfterSheet::class => function(AfterSheet $event) {
-                // Add summary at the end
-                $row = $event->sheet->getHighestRow() + 2;
-                
-                // Add summary header
-                $event->sheet->setCellValue('A' . $row, 'RINGKASAN');
-                $event->sheet->getStyle('A' . $row)->getFont()->setBold(true);
-                
-                $row++;
-                $event->sheet->setCellValue('A' . $row, 'Total Penjualan:');
-                $event->sheet->setCellValue('B' . $row, $this->summary['total_orders']);
-                
-                $row++;
-                $event->sheet->setCellValue('A' . $row, 'Total Value:');
-                $event->sheet->setCellValue('B' . $row, 'Rp ' . number_format($this->summary['total_value'], 0, ',', '.'));
-                
-                $row++;
-                $event->sheet->setCellValue('A' . $row, 'Total Volume:');
-                $event->sheet->setCellValue('B' . $row, number_format($this->summary['total_volume']) . ' pcs');
-                
-                $row++;
-                $event->sheet->setCellValue('A' . $row, 'Rata-rata per Penjualan:');
-                $event->sheet->setCellValue('B' . $row, 'Rp ' . number_format($this->summary['avg_order_value'], 0, ',', '.'));
-                
-                $row++;
-                $event->sheet->setCellValue('A' . $row, 'Periode:');
-                $event->sheet->setCellValue('B' . $row, $this->startDate . ' - ' . $this->endDate);
+                // Find and style header rows (PENJUALAN OFFLINE rows) with green background
+                $row = 1;
+                while ($row <= $event->sheet->getHighestRow()) {
+                    $cellValue = $event->sheet->getCell('A' . $row)->getValue();
+                    if ($cellValue === 'PENJUALAN OFFLINE') {
+                        // Apply green styling to header row
+                        $event->sheet->getStyle('A' . $row . ':O' . $row)->applyFromArray([
+                            'fill' => [
+                                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                'startColor' => ['rgb' => '00FF00'] // Bright green
+                            ],
+                            'font' => [
+                                'bold' => true,
+                                'color' => ['rgb' => '000000']
+                            ],
+                            'borders' => [
+                                'allBorders' => [
+                                    'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                                    'color' => ['rgb' => '000000']
+                                ]
+                            ]
+                        ]);
+                    }
+                    $row++;
+                }
             },
         ];
     }

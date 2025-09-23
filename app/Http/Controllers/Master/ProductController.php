@@ -166,6 +166,7 @@ class ProductController extends Controller
                 'product_size_id' => 'required|exists:product_sizes,id',
                 'product_variant_id' => 'nullable|exists:product_variants,id',
                 'sku' => 'nullable|string|max:50|unique:products,sku',
+                'barcode' => 'nullable|string|max:255',
                 'description' => 'nullable|string',
                 'initial_price' => 'nullable|numeric|min:0',
                 'discount_percentage' => 'nullable|numeric|min:0|max:100',
@@ -181,6 +182,25 @@ class ProductController extends Controller
             // Pastikan product_variant_id null jika kosong
             if (empty($validated['product_variant_id'])) {
                 $validated['product_variant_id'] = null;
+            }
+            
+            // Generate SKU automatically if not provided
+            if (empty($validated['sku'])) {
+                $brand = \App\Models\Brand::find($validated['brand_id']);
+                $brandName = $brand ? $brand->name : 'UNKNOWN';
+                $prefix = strtoupper(substr($brandName, 0, 1) . substr($validated['name'], 0, 1));
+                
+                // Get the next available number
+                $lastProduct = Product::where('sku', 'like', $prefix . '%')
+                    ->orderBy('sku', 'desc')
+                    ->first();
+                
+                $nextNumber = 1;
+                if ($lastProduct && preg_match('/' . preg_quote($prefix) . '(\d+)/', $lastProduct->sku, $matches)) {
+                    $nextNumber = (int)$matches[1] + 1;
+                }
+                
+                $validated['sku'] = $prefix . sprintf('%04d', $nextNumber);
             }
             
             // Log data yang akan disimpan
@@ -287,6 +307,7 @@ class ProductController extends Controller
                 'product_size_id' => 'required|exists:product_sizes,id',
                 'product_variant_id' => 'nullable|exists:product_variants,id',
                 'sku' => 'nullable|string|max:50|unique:products,sku,' . $id,
+                'barcode' => 'nullable|string|max:255',
                 'description' => 'nullable|string',
                 'initial_price' => 'nullable|numeric|min:0',
                 'discount_percentage' => 'nullable|numeric|min:0|max:100',
@@ -300,6 +321,26 @@ class ProductController extends Controller
             // Pastikan product_variant_id null jika kosong
             if (empty($validated['product_variant_id'])) {
                 $validated['product_variant_id'] = null;
+            }
+            
+            // Generate SKU automatically if not provided
+            if (empty($validated['sku'])) {
+                $brand = \App\Models\Brand::find($validated['brand_id']);
+                $brandName = $brand ? $brand->name : 'UNKNOWN';
+                $prefix = strtoupper(substr($brandName, 0, 1) . substr($validated['name'], 0, 1));
+                
+                // Get the next available number
+                $lastProduct = Product::where('sku', 'like', $prefix . '%')
+                    ->where('id', '!=', $id)
+                    ->orderBy('sku', 'desc')
+                    ->first();
+                
+                $nextNumber = 1;
+                if ($lastProduct && preg_match('/' . preg_quote($prefix) . '(\d+)/', $lastProduct->sku, $matches)) {
+                    $nextNumber = (int)$matches[1] + 1;
+                }
+                
+                $validated['sku'] = $prefix . sprintf('%04d', $nextNumber);
             }
             
             // Log data yang akan diupdate

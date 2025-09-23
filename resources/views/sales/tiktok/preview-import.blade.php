@@ -232,10 +232,18 @@
                                 <div class="list-group">
                                     @foreach ($unmappedProducts as $product)
                                         @php
-                                            // Parse product name and variant from the full product name
-                                            $productParts = explode(' - ', $product, 2);
-                                            $productName = $productParts[0];
-                                            $variant = isset($productParts[1]) ? $productParts[1] : '';
+                                            // Handle both array format (new) and string format (backward compatibility)
+                                            if (is_array($product)) {
+                                                $productName = $product['name'];
+                                                $variant = $product['variant'] ?? '';
+                                                $fullProductName = $product['full_name'];
+                                            } else {
+                                                // Fallback to old parsing method for backward compatibility
+                                                $productParts = explode(' - ', $product, 2);
+                                                $productName = $productParts[0];
+                                                $variant = isset($productParts[1]) ? $productParts[1] : '';
+                                                $fullProductName = $product;
+                                            }
                                             $displayText = $variant ? $productName . ' | ' . $variant : $productName;
                                         @endphp
                                         <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
@@ -245,7 +253,7 @@
                                                     <small class="text-muted">Variant: {{ $variant }}</small>
                                                 @endif
                                             </div>
-                                            <a href="{{ route('master.mapping.auto-create', ['platform' => 'tiktok', 'productName' => urlencode($product)]) }}" 
+                                            <a href="{{ route('master.mapping.auto-create', ['platform' => 'tiktok', 'productName' => urlencode($fullProductName)]) }}" 
                                                 class="btn btn-sm btn-warning">
                                                 <i class="fas fa-link me-1"></i> Mapping
                                             </a>

@@ -827,9 +827,39 @@ public function update(Request $request, $id)
         $decodedProductName = urldecode($productName);
         
         // Parse product name and variant from the full product name
+        // Improved parsing to handle products that already contain " - " in their names
         $productParts = explode(' - ', $decodedProductName, 2);
         $productNameOnly = $productParts[0];
         $variant = isset($productParts[1]) ? $productParts[1] : '';
+        
+        // Try to find the correct parsing by checking against existing platform products
+        // This helps when the product name itself contains " - "
+        $platform_entity = Platform::where('name', $platform)->first();
+        if ($platform_entity) {
+            // Check if there's a platform product that matches exactly with different parsing
+            $alternativeParsing = null;
+            
+            // If we have multiple " - " in the string, try different splitting points
+            $allParts = explode(' - ', $decodedProductName);
+            if (count($allParts) > 2) {
+                // Try different combinations
+                for ($i = 1; $i < count($allParts); $i++) {
+                    $altProductName = implode(' - ', array_slice($allParts, 0, $i));
+                    $altVariant = implode(' - ', array_slice($allParts, $i));
+                    
+                    $platformProduct = \App\Models\PlatformProduct::where('platform_id', $platform_entity->id)
+                        ->where('platform_product_name', $altProductName)
+                        ->where('variant', $altVariant)
+                        ->first();
+                        
+                    if ($platformProduct) {
+                        $productNameOnly = $altProductName;
+                        $variant = $altVariant;
+                        break;
+                    }
+                }
+            }
+        }
         
         \Log::info('[AUTO-MAPPING] Parsed product data', [
             'fullProductName' => $decodedProductName,

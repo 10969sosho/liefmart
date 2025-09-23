@@ -87,7 +87,7 @@ class ProductSeeder extends Seeder
                 $variantName = trim($record['VARIAN'] ?? '');
                 $initialPrice = trim($record['HARGA AWAL'] ?? '0');
                 $discountPercentage = trim($record['PERSENTASE DISKON'] ?? '0');
-                $csvSku = trim($record['SKU'] ?? ''); // Read SKU from CSV
+                $csvBarcode = trim($record['SKU'] ?? ''); // Read SKU from CSV and use as barcode
                 $description = "Product imported from CSV";
                 
                 // Auto-fill empty fields with "KOSONG" to prevent skipping
@@ -105,25 +105,17 @@ class ProductSeeder extends Seeder
                     continue;
                 }
 
-                // Determine SKU: use CSV SKU if available, otherwise generate automatically
-                if (!empty($csvSku)) {
-                    $sku = $csvSku; // Use SKU from CSV
-                    $skuSource = "from CSV";
-                    
-                    // Check if SKU already exists, if yes generate new unique SKU with counter
-                    $duplicateCounter = 1;
-                    while (Product::where('sku', $sku)->exists()) {
-                        $sku = "SAMA_" . $duplicateCounter . "_" . $csvSku; // Format: SAMA_1_[SKU_CSV], SAMA_2_[SKU_CSV], etc.
-                        $skuSource = "auto-generated (duplicate resolved #{$duplicateCounter})";
-                        $duplicateCounter++;
-                    }
-                } else {
-                    // Generate SKU automatically: First letter of brand + first letter of product + incremental number
-                    $prefix = strtoupper(substr($brandName, 0, 1) . substr($productName, 0, 1));
-                    $sku = $prefix . sprintf('%04d', $skuCounter);
-                    $skuCounter++;
-                    $skuSource = "auto-generated";
+                // Determine Barcode: use CSV SKU as barcode if available
+                $barcode = null;
+                if (!empty($csvBarcode)) {
+                    $barcode = $csvBarcode; // Use SKU from CSV as barcode
                 }
+                
+                // Always generate SKU automatically: First letter of brand + first letter of product + incremental number
+                $prefix = strtoupper(substr($brandName, 0, 1) . substr($productName, 0, 1));
+                $sku = $prefix . sprintf('%04d', $skuCounter);
+                $skuCounter++;
+                $skuSource = "auto-generated";
 
                 // Convert price and discount to proper numeric values
                 $initialPrice = $initialPrice === '#N/A' ? 0 : (float)str_replace(',', '', $initialPrice);
@@ -198,24 +190,27 @@ class ProductSeeder extends Seeder
                     [
                         'main_category_id' => $kosmetikCategoryId,
                         'description' => $description,
-                        'sku' => $sku, // Use determined SKU (CSV or auto-generated)
+                        'sku' => $sku, // Always auto-generated SKU
+                        'barcode' => $barcode, // Use CSV SKU as barcode if available
                         'initial_price' => $initialPrice,
                         'discount_percentage' => $discountPercentage,
                         'is_active' => true
                     ]
                 );
 
-                // Update prices and SKU for existing products
+                // Update prices, SKU, and barcode for existing products
                 if (!$product->wasRecentlyCreated) {
                     $product->update([
                         'initial_price' => $initialPrice,
                         'discount_percentage' => $discountPercentage,
-                        'sku' => $sku // Update SKU
+                        'sku' => $sku, // Update SKU
+                        'barcode' => $barcode // Update barcode
                     ]);
                 }
 
                 $count++;
-                $this->command->info("Created/updated product: {$productName} with SKU: {$sku} ({$skuSource})");
+                $barcodeInfo = $barcode ? "Barcode: {$barcode}" : "No barcode";
+                $this->command->info("Created/updated product: {$productName} with SKU: {$sku} ({$skuSource}), {$barcodeInfo}");
             } catch (\Exception $e) {
                 Log::error('Error importing product: ' . $e->getMessage());
                 $this->command->error('Error importing row: ' . json_encode($record) . ' - ' . $e->getMessage());
