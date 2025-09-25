@@ -422,8 +422,7 @@ class ReturPembelianController extends Controller
         $warehouseStocks = WarehouseStock::where('warehouse_stock.product_id', $productId)
             ->where('warehouse_stock.penerimaan_detail_id', $penerimaanDetailId)
             ->where('warehouse_stock.qty', '>', 0)
-            ->orderBy('warehouse_stock.expired_date', 'asc')  // First prioritize based on expiry date (earliest first)
-            ->orderBy('warehouse_stock.created_at', 'asc')    // Then by receipt date (FIFO)
+            ->orderBy('warehouse_stock.created_at', 'asc')    // FIFO berdasarkan tanggal penerimaan
             ->get();
             
         if ($warehouseStocks->isEmpty()) {

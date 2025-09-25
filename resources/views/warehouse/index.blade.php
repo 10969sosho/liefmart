@@ -69,7 +69,7 @@
                             <thead>
                                 <tr>
                                     <th>No</th>
-                                    <th>Kode Penerimaan</th>
+                                    <th>NOMOR PO</th>
                                     <th>Nama Produk</th>
                                     <th>Jumlah</th>
                                     <th>Satuan</th>

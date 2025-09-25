@@ -353,7 +353,7 @@ class WarehouseController extends Controller
         
         // Sorting
         $query->orderBy('product_id')
-              ->orderBy('expired_date');
+              ->orderBy('created_at');
         
         // Clone query untuk export jika diperlukan
         $exportQuery = clone $query;
@@ -569,7 +569,7 @@ class WarehouseController extends Controller
         
         // Sorting
         $query->orderBy('product_id')
-              ->orderBy('expired_date');
+              ->orderBy('created_at');
         
         // Ambil semua data (tanpa pagination) untuk export
         $stocks = $query->get();

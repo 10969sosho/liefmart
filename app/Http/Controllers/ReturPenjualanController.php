@@ -537,16 +537,16 @@ class ReturPenjualanController extends Controller
             $referenceStock = WarehouseStock::where('product_id', $productId)
                 ->where('is_damaged', $isDamaged)
                 ->where('qty', '>', 0)
-                ->orderBy('expired_date', 'asc')  // Prioritize earliest expiry date
-                ->orderBy('created_at', 'desc')   // Then most recent stock
+                ->orderBy('created_at', 'asc')   // Layer 1: FIFO berdasarkan tanggal penerimaan
+                ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                 ->first();
             
             // If no reference stock found, try to find any stock for this product
             if (!$referenceStock) {
                 $referenceStock = WarehouseStock::where('product_id', $productId)
                     ->where('qty', '>', 0)
-                    ->orderBy('expired_date', 'asc')
-                    ->orderBy('created_at', 'desc')
+                    ->orderBy('created_at', 'asc')   // Layer 1: FIFO berdasarkan tanggal penerimaan
+                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                     ->first();
             }
             

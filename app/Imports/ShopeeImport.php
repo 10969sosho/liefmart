@@ -1081,10 +1081,11 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 \Log::info("Mapping quantity: {$mapping->quantity} (type: " . gettype($mapping->quantity) . ")");
                 \Log::info("Calculated qty to reduce: {$qtyToReduce} (type: " . gettype($qtyToReduce) . ")");
 
-                // Ambil stok produk dari warehouse berdasarkan tanggal ED (prioritaskan yang lebih awal)
+                // Ambil stok produk dari warehouse berdasarkan FIFO + prioritas HGN
                 $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                     ->where('qty', '>', 0)
-                    ->orderBy('expired_date') // FIFO berdasarkan tanggal kadaluarsa
+                    ->orderBy('created_at') // Layer 1: FIFO berdasarkan tanggal penerimaan
+                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                     ->get();
                 \Log::info('Found stock records: '.$stocks->count());
 

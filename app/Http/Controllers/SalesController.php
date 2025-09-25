@@ -518,10 +518,11 @@ class SalesController extends Controller
             // Hitung jumlah yang perlu dikurangi dari stok
             $qtyToReduce = $quantity * $mapping->quantity;
             
-            // Ambil stok produk dari warehouse berdasarkan tanggal ED (prioritaskan yang lebih awal)
+            // Ambil stok produk dari warehouse berdasarkan FIFO + prioritas HGN
             $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                 ->where('qty', '>', 0)
-                ->orderBy('expired_date') // FIFO berdasarkan tanggal kadaluarsa
+                ->orderBy('created_at') // Layer 1: FIFO berdasarkan tanggal penerimaan
+                ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                 ->get();
             
             // Hitung total stok tersedia
@@ -961,8 +962,8 @@ class SalesController extends Controller
                 // Get all available warehouse stocks for this product
                 $warehouseStocks = WarehouseStock::where('product_id', $productId)
                     ->where('qty', '>', 0)
-                    ->orderBy('expired_date') // First priority: earliest expiry date
-                    ->orderBy('created_at')   // Second priority: earliest received date (FIFO)
+                    ->orderBy('created_at')   // Layer 1: FIFO berdasarkan tanggal penerimaan
+                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                     ->get();
                 
                 if ($warehouseStocks->isEmpty()) {
@@ -1290,8 +1291,8 @@ class SalesController extends Controller
         $stocks = WarehouseStock::where('product_id', $productId)
                     ->where('qty', '>', 0)
                     ->with(['lokasi'])
-                    ->orderBy('expired_date') // Ordered by ED first
-                    ->orderBy('created_at')   // Then by FIFO
+                    ->orderBy('created_at')   // Layer 1: FIFO berdasarkan tanggal penerimaan
+                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                     ->get()
                     ->map(function($stock) {
                         return [

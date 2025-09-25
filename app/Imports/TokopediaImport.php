@@ -705,10 +705,11 @@ class TokopediaImport implements ToCollection, WithMultipleSheets
                 $qtyToReduce = $quantity * $mapping->quantity;
                 \Log::info("Processing mapping for product ID: {$mapping->product_id}, Qty to reduce: {$qtyToReduce}");
 
-                // Ambil stok produk dari warehouse berdasarkan tanggal ED (prioritaskan yang lebih awal)
+                // Ambil stok produk dari warehouse berdasarkan FIFO + prioritas HGN
                 $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                     ->where('qty', '>', 0)
-                    ->orderBy('expired_date') // FIFO berdasarkan tanggal kadaluarsa
+                    ->orderBy('created_at') // Layer 1: FIFO berdasarkan tanggal penerimaan
+                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                     ->get();
                 \Log::info('Found stock records: '.$stocks->count());
 

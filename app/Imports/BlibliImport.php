@@ -626,10 +626,11 @@ class BlibliImport extends DefaultValueBinder implements ToCollection, WithMulti
             // Hitung jumlah yang perlu dikurangi dari stok
             $qtyToReduce = $quantity * $mapping->quantity;
 
-            // Ambil stok yang tersedia berdasarkan FIFO (First In, First Out)
+            // Ambil stok yang tersedia berdasarkan FIFO + prioritas HGN
             $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                 ->where('qty', '>', 0)
-                ->orderBy('created_at', 'asc')
+                ->orderBy('created_at', 'asc') // Layer 1: FIFO berdasarkan tanggal penerimaan
+                ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
                 ->get();
 
             $remainingQty = $qtyToReduce;
