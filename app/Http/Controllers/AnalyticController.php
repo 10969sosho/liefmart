@@ -5603,8 +5603,8 @@ class AnalyticController extends Controller
      */
     public function exportGrossProfitOffline(Request $request)
     {
-        // Set default date range
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
+        // Set default date range - use last 6 months to capture more data
+        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01', strtotime('-6 months'));
         $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
         
         // Get filter parameters
@@ -5728,7 +5728,7 @@ class AnalyticController extends Controller
                     'payment_per_invoice' => $totalPaymentAmount,
                     'payment_per_product' => $paymentPerProduct,
                     'cost_price' => $costPrice,
-                    'total_cost_price' => $totalCostPriceForSale,
+                    'total_cost_price' => $totalCostPrice,
                     'profit_per_unit' => $profitPerUnit,
                     'profit_per_invoice' => $profitPerInvoice,
                     'margin_per_unit' => $marginPerUnit,
