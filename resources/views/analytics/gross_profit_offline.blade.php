@@ -34,7 +34,7 @@
                         <label for="start_date" class="form-label small fw-medium">Tanggal Mulai</label>
                         <div class="input-group">
                             <span class="input-group-text bg-light"><i class="fas fa-calendar-alt"></i></span>
-                            <input type="date" class="form-control" id="start_date" name="start_date" value="{{ $startDate }}">
+                            <input type="date" class="form-control" id="start_date" name="start_date" value="{{ $startDate }}" placeholder="DD/MM/YYYY">
                         </div>
                     </div>
                     
@@ -42,7 +42,7 @@
                         <label for="end_date" class="form-label small fw-medium">Tanggal Akhir</label>
                         <div class="input-group">
                             <span class="input-group-text bg-light"><i class="fas fa-calendar-alt"></i></span>
-                            <input type="date" class="form-control" id="end_date" name="end_date" value="{{ $endDate }}">
+                            <input type="date" class="form-control" id="end_date" name="end_date" value="{{ $endDate }}" placeholder="DD/MM/YYYY">
                         </div>
                     </div>
                     
@@ -280,5 +280,64 @@
         // Open export URL in new tab/window
         window.open(exportUrl.toString(), '_blank');
     }
+    
+    // Initialize date formatting for DD/MM/YYYY display
+    document.addEventListener('DOMContentLoaded', function() {
+        // Wait for date-format.js to load
+        function waitForDateFormat() {
+            if (typeof window.formatDateDDMMYYYY === 'function' && window.dateFormatLoaded) {
+                initializeDateInputs();
+            } else {
+                console.log('Waiting for date-format.js to load...');
+                setTimeout(waitForDateFormat, 100);
+            }
+        }
+        
+        function initializeDateInputs() {
+            const startDateInput = document.getElementById('start_date');
+            const endDateInput = document.getElementById('end_date');
+            
+            if (startDateInput && endDateInput) {
+                // Convert existing values to DD/MM/YYYY format for display
+                if (startDateInput.value) {
+                    startDateInput.value = window.convertToDDMMYYYY(startDateInput.value);
+                }
+                if (endDateInput.value) {
+                    endDateInput.value = window.convertToDDMMYYYY(endDateInput.value);
+                }
+                
+                // Add focus event to show DD/MM/YYYY format
+                startDateInput.addEventListener('focus', function() {
+                    if (this.value) {
+                        this.value = window.convertToDDMMYYYY(this.value);
+                    }
+                });
+                
+                endDateInput.addEventListener('focus', function() {
+                    if (this.value) {
+                        this.value = window.convertToDDMMYYYY(this.value);
+                    }
+                });
+                
+                // Add blur event to convert back to YYYY-MM-DD for form submission
+                startDateInput.addEventListener('blur', function() {
+                    if (this.value) {
+                        this.value = window.convertToYYYYMMDD(this.value);
+                    }
+                });
+                
+                endDateInput.addEventListener('blur', function() {
+                    if (this.value) {
+                        this.value = window.convertToYYYYMMDD(this.value);
+                    }
+                });
+                
+                console.log('Date inputs initialized for DD/MM/YYYY format');
+            }
+        }
+        
+        // Start waiting for date-format.js
+        waitForDateFormat();
+    });
 </script>
 @endpush
