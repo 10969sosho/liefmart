@@ -133,10 +133,31 @@
                 return; // Hentikan eksekusi jika jQuery tidak tersedia
             }
             
-            // Gunakan jQuery setelah dipastikan tersedia
-            jQuery(function($) {
+            // Wait for date-format.js to load if not already available
+            function waitForDateFormat() {
+                if (typeof window.formatDateDDMMYYYY === 'function' && window.dateFormatLoaded) {
+                    console.log('Date format functions are ready');
+                    initializeWarehouseScript();
+                } else {
+                    console.log('Waiting for date-format.js to load...');
+                    setTimeout(waitForDateFormat, 100);
+                }
+            }
+            
+            function initializeWarehouseScript() {
+                // Gunakan jQuery setelah dipastikan tersedia
+                jQuery(function($) {
                 // Set tanggal hari ini sebagai default untuk input tanggal expired
                 const today = new Date();
+                // Fallback function if date-format.js is not loaded
+                const formatDateDDMMYYYY = window.formatDateDDMMYYYY || function(date) {
+                    const d = new Date(date);
+                    if (isNaN(d.getTime())) return '';
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const year = d.getFullYear();
+                    return `${day}/${month}/${year}`;
+                };
                 const todayFormatted = formatDateDDMMYYYY(today);
                 $('.expired-input').val(todayFormatted);
 
@@ -326,6 +347,10 @@
                     }
                 });
             });
+            }
+            
+            // Start waiting for date-format.js
+            waitForDateFormat();
         });
     </script>
 @endpush

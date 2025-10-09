@@ -208,3 +208,7 @@ window.formatDateDDMMYY = formatDateDDMMYY;
 window.getTodayDDMMYYYY = getTodayDDMMYYYY;
 window.getTodayYYYYMMDD = getTodayYYYYMMDD;
 window.isValidDDMMYYYY = isValidDDMMYYYY;
+
+// Signal that date-format.js has loaded
+window.dateFormatLoaded = true;
+console.log('Date format functions loaded successfully');
