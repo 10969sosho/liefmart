@@ -75,14 +75,14 @@
                                 <div class="card-body">
                                     <p>File Excel harus memiliki kolom berikut:</p>
                                     <div class="bg-light p-3 rounded mb-3 overflow-auto">
-                                        <code>NOMOR PESANAN | TANGGAL MASUK PEMBAYARAN | HARI MASUK PEMBAYARAN | Voucher Ditanggung Penjual | KOMISI AMS/AFFILIATE | BIAYA ADMIN | BIAYA LAYANAN | DISKON 5 | DISKON 6 | JUMLAH MASUK PEMBAYARAN</code>
+                                        <code>NOMOR PESANAN | TANGGAL MASUK PEMBAYARAN | HARI MASUK PEMBAYARAN | Voucher Ditanggung Penjual | KOMISI AMS/AFFILIATE | BIAYA ADMIN | BIAYA LAYANAN | DISKON 5 | DISKON 6 | DISKON 7 | DISKON 8 | DISKON 9 | DISKON 10 | DISKON 11 | DISKON 12 | JUMLAH MASUK PEMBAYARAN</code>
                                     </div>
                                     
                                     <div class="alert alert-warning">
                                         <i class="fas fa-lightbulb me-2"></i> 
                                         <span class="fw-bold">Catatan Penting:</span>
                                         <ul class="mb-0 mt-1">
-                                            <li>Kolom <strong>DISKON 5</strong> dan <strong>DISKON 6</strong> bersifat opsional</li>
+                                            <li>Kolom <strong>DISKON 5</strong> hingga <strong>DISKON 12</strong> bersifat opsional</li>
                                             <li>Nilai diskon dimasukkan dalam format negatif (contoh: -500)</li>
                                             <li>JUMLAH MASUK PEMBAYARAN harus dalam format angka</li>
                                             <li>Sistem secara otomatis mencocokkan nomor pesanan dengan data order yang ada</li>

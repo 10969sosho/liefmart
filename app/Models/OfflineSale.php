@@ -19,6 +19,8 @@ class OfflineSale extends Model
         'customer_name',
         'customer_id',
         'status',
+        'payment_date',
+        'payment_method',
         'subtotal',
         'tax_amount',
         'total_amount',
@@ -29,6 +31,7 @@ class OfflineSale extends Model
 
     protected $casts = [
         'sale_date' => 'date',
+        'payment_date' => 'date',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
@@ -88,6 +91,14 @@ class OfflineSale extends Model
     public function mainCategory()
     {
         return $this->belongsTo(MainCategory::class);
+    }
+
+    /**
+     * Get all finance offline records related to this sale
+     */
+    public function getFinanceOfflineAttribute()
+    {
+        return $this->getInvoices();
     }
 
     /**

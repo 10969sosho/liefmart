@@ -344,9 +344,9 @@
                         <div class="col-md-4">
                             <div class="mb-2">
                                 <span class="fw-semibold">Periode:</span> 
-                                {{ \Carbon\Carbon::parse($startDate)->format('d M Y') }}
+                                {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }}
                                 @if($startDate != $endDate)
-                                 - {{ \Carbon\Carbon::parse($endDate)->format('d M Y') }}
+                                 - {{ \Carbon\Carbon::parse($endDate)->format('d/m/Y') }}
                                 @endif
                             </div>
                         </div>
@@ -435,9 +435,9 @@
                                 <p>
                                     <i class="bi bi-calendar-event me-1"></i>
                                     @if($startDate == $endDate)
-                                        {{ \Carbon\Carbon::parse($startDate)->format('d M Y') }}
+                                        {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }}
                                     @else
-                                        {{ \Carbon\Carbon::parse($startDate)->format('d M Y') }} - {{ \Carbon\Carbon::parse($endDate)->format('d M Y') }}
+                                        {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }} - {{ \Carbon\Carbon::parse($endDate)->format('d/m/Y') }}
                                     @endif
                                 </p>
                             </div>
@@ -627,10 +627,7 @@
             
             // Get today's date in YYYY-MM-DD format
             const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const day = String(today.getDate()).padStart(2, '0');
-            const todayFormatted = `${year}-${month}-${day}`;
+            const todayFormatted = getTodayYYYYMMDD();
             
             // Set default values if empty
             if (!startDateInput.value) {

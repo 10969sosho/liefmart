@@ -305,7 +305,7 @@
                         <tbody>
                             @foreach($existingMappings as $mapping)
                             <tr>
-                                <td>{{ $mapping->product->name }}</td>
+                                <td>{{ $mapping->product ? $mapping->product->name : 'Product tidak ditemukan (ID: ' . $mapping->product_id . ')' }}</td>
                                 <td>{{ $mapping->quantity }}</td>
                                 <td>v{{ $mapping->version }}</td>
                                 <td>

@@ -109,7 +109,7 @@
                                             </div>
                                             <div>
                                                 <p class="mb-0 small text-muted">Order Duplikat</p>
-                                                <h5 class="mb-0 fw-bold">{{ isset($duplicateOrders) ? count($duplicateOrders) : 0 }}</h5>
+                                                <h5 class="mb-0 fw-bold">{{ isset($duplicateOrdersInFile) ? count($duplicateOrdersInFile) : 0 }}</h5>
                                             </div>
                                         </div>
                                     </div>
@@ -160,19 +160,39 @@
                         </div>
                     @endif
                     
-                    {{-- Alert untuk informasi No Order duplikat --}}
-                    @if(isset($duplicateOrders) && count($duplicateOrders) > 0)
-                        <div class="alert alert-info alert-dismissible fade show" role="alert">
+                    {{-- Alert untuk informasi No Order duplikat dalam file --}}
+                    @if(isset($duplicateOrdersInFile) && count($duplicateOrdersInFile) > 0)
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
                             <h5 class="alert-heading d-flex align-items-center">
-                                <i class="fas fa-copy me-2"></i> Order Duplikat:
+                                <i class="fas fa-copy me-2"></i> Order Duplikat dalam File:
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            <p>Beberapa nomor order sudah ada di database dan akan di-skip:</p>
+                            <p>Beberapa order dengan produk yang sama dalam file akan di-skip:</p>
                             <div class="row">
-                                @foreach($duplicateOrders as $orderNumber)
-                                    <div class="col-md-4 col-sm-6">
-                                        <span class="badge bg-light text-dark border mb-2 py-2 px-3 w-100 text-start">
-                                            <i class="fas fa-tag me-2 text-secondary"></i>{{ $orderNumber }}
+                                @foreach($duplicateOrdersInFile as $duplicate)
+                                    <div class="col-md-6 col-sm-12">
+                                        <span class="badge bg-warning text-dark border mb-2 py-2 px-3 w-100 text-start">
+                                            <i class="fas fa-tag me-2"></i>{{ $duplicate['order_number'] }} - {{ $duplicate['product_name'] }}
+                                        </span>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+                    
+                    {{-- Alert untuk informasi No Order duplikat di database --}}
+                    @if(isset($duplicateOrdersInDatabase) && count($duplicateOrdersInDatabase) > 0)
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                            <h5 class="alert-heading d-flex align-items-center">
+                                <i class="fas fa-exclamation-triangle me-2"></i> Order Duplikat di Database:
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <p><strong>Beberapa nomor order sudah ada di database dan akan di-skip:</strong></p>
+                            <div class="row">
+                                @foreach($duplicateOrdersInDatabase as $duplicate)
+                                    <div class="col-md-6 col-sm-12">
+                                        <span class="badge bg-warning text-dark border mb-2 py-2 px-3 w-100 text-start">
+                                            <i class="fas fa-skip-forward me-2"></i>{{ $duplicate['order_number'] }} - {{ $duplicate['product_name'] }}
                                         </span>
                                     </div>
                                 @endforeach
@@ -186,7 +206,13 @@
                                 <i class="fas fa-exclamation-triangle me-2"></i> Perhatian!
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            <p>Beberapa produk belum memiliki mapping ke Master Product. <strong>Lakukan mapping produk terlebih dahulu untuk melanjutkan proses import.</strong></p>
+                            <p>Beberapa produk belum memiliki mapping ke Master Product. <strong>Produk baru telah otomatis dibuat di Master Barang Platform dan perlu dimapping ke Master Product internal.</strong></p>
+                            <p class="mb-2"><strong>Langkah selanjutnya:</strong></p>
+                            <ol class="mb-3">
+                                <li>Klik tombol "Mapping" untuk setiap produk di bawah ini</li>
+                                <li>Pilih Master Product internal yang sesuai</li>
+                                <li>Setelah semua produk dimapping, klik "Proses Import"</li>
+                            </ol>
                             <div class="list-group">
                                 @foreach($unmappedProducts as $product)
                                     @php
@@ -210,8 +236,8 @@
                                                 <small class="text-muted">Variant: {{ $variant }}</small>
                                             @endif
                                         </div>
-                                        <a href="{{ route('master.mapping.auto-create', ['platform' => 'shopee', 'productName' => urlencode($fullProductName)]) }}" 
-                                            class="btn btn-sm btn-warning">
+                                        <a href="{{ route('master.mapping.index', ['search' => $productName]) }}" 
+                                            class="btn btn-sm btn-warning" target="_blank">
                                             <i class="fas fa-link me-1"></i> Mapping
                                         </a>
                                     </div>
@@ -265,7 +291,11 @@
                                 <i class="fas fa-exclamation-triangle me-2"></i> Stok Tidak Mencukupi!
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            <p>Beberapa produk memiliki stok yang tidak mencukupi:</p>
+                            <p><strong>Beberapa produk memiliki stok yang tidak mencukupi dan tidak bisa dilanjutkan:</strong></p>
+                            <p class="text-danger mb-3">
+                                <i class="fas fa-exclamation-circle me-1"></i>
+                                <strong>Contoh:</strong> Barang ini QTY 100, diperlukan 102, tidak bisa dilanjutkan
+                            </p>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered">
                                     <thead class="table-light">
@@ -279,20 +309,140 @@
                                     <tbody>
                                         @foreach($insufficientStockProducts as $product)
                                             <tr>
-                                                <td>{{ $product['product_name'] }}</td>
-                                                <td class="text-center">{{ $product['required_qty'] }}</td>
-                                                <td class="text-center">{{ $product['available_qty'] }}</td>
-                                                <td class="text-center text-danger fw-bold">{{ $product['required_qty'] - $product['available_qty'] }}</td>
+                                                <td>
+                                                    <strong>{{ $product['product_name'] }}</strong>
+                                                    @if(isset($product['platform_product_name']))
+                                                        <br><small class="text-muted">Platform: {{ $product['platform_product_name'] }}</small>
+                                                    @endif
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-danger">{{ $product['required_qty'] }}</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-warning text-dark">{{ $product['available_qty'] }}</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-danger">{{ $product['required_qty'] - $product['available_qty'] }}</span>
+                                                    <br><small class="text-danger">Kekurangan</small>
+                                                </td>
                                             </tr>
                                         @endforeach
                                     </tbody>
                                 </table>
                             </div>
-                            <p class="mb-0 mt-2">
-                                <a href="{{ route('inventory.stock') }}" class="btn btn-sm btn-primary" target="_blank">
-                                    <i class="fas fa-box me-1"></i> Kelola Stok
-                                </a>
-                            </p>
+                        </div>
+                    @endif
+
+                    {{-- Alert untuk mapping errors --}}
+                    @if(isset($mappingErrors) && count($mappingErrors) > 0)
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                            <h5 class="alert-heading d-flex align-items-center">
+                                <i class="fas fa-exclamation-triangle me-2"></i> Mapping Error!
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <p>Beberapa produk tidak memiliki mapping barang:</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Platform Product ID</th>
+                                            <th>Nama Produk</th>
+                                            <th>Error</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($mappingErrors as $error)
+                                            <tr>
+                                                <td>{{ $error['platform_product_id'] }}</td>
+                                                <td>{{ $error['platform_product_name'] }}</td>
+                                                <td class="text-danger">{{ $error['error'] }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- Alert untuk data errors --}}
+                    @if(isset($dataErrors) && count($dataErrors) > 0)
+                        <div class="alert alert-info alert-dismissible fade show" role="alert">
+                            <h5 class="alert-heading d-flex align-items-center">
+                                <i class="fas fa-info-circle me-2"></i> Data Validation Error!
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <p>Beberapa data memiliki format yang tidak valid:</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Row</th>
+                                            <th>Order Number</th>
+                                            <th>Errors</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($dataErrors as $error)
+                                            <tr>
+                                                <td>{{ $error['row'] }}</td>
+                                                <td>{{ $error['order_number'] }}</td>
+                                                <td>
+                                                    <ul class="mb-0">
+                                                        @foreach($error['errors'] as $err)
+                                                            <li class="text-danger">{{ $err }}</li>
+                                                        @endforeach
+                                                    </ul>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- Alert untuk stock errors detail --}}
+                    @if(isset($stockErrors) && count($stockErrors) > 0)
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <h5 class="alert-heading d-flex align-items-center">
+                                <i class="fas fa-exclamation-triangle me-2"></i> Stock Error Detail!
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <p>Detail error stok yang akan mempengaruhi order:</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Produk</th>
+                                            <th class="text-center">Dibutuhkan</th>
+                                            <th class="text-center">Tersedia</th>
+                                            <th class="text-center">Kekurangan</th>
+                                            <th>Order Terpengaruh</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($stockErrors as $error)
+                                            <tr>
+                                                <td>{{ $error['product_name'] }}</td>
+                                                <td class="text-center">{{ $error['required_qty'] }}</td>
+                                                <td class="text-center">{{ $error['available_qty'] }}</td>
+                                                <td class="text-center text-danger fw-bold">{{ $error['shortage'] }}</td>
+                                                <td>
+                                                    @if(!empty($error['order_affected']))
+                                                        <small>
+                                                            @foreach($error['order_affected'] as $order)
+                                                                <span class="badge bg-secondary me-1">{{ $order }}</span>
+                                                            @endforeach
+                                                        </small>
+                                                    @else
+                                                        <small class="text-muted">N/A</small>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     @endif
 
@@ -425,20 +575,37 @@
                                     </button>
                                 </form>
                             @else
-                                <div class="alert alert-warning d-flex align-items-center mb-0">
-                                    <i class="fas fa-exclamation-triangle me-2"></i>
-                                    <span>
-                                        <strong>Perhatian:</strong> 
-                                        @if(!empty($invalidData))
-                                            Ada data yang tidak valid. Perbaiki file Excel Anda.
-                                        @elseif(!empty($insufficientStockProducts))
-                                            Ada produk dengan stok tidak mencukupi. Tambahkan stok terlebih dahulu.
-                                        @elseif(!empty($unmappedProducts))
-                                            Ada produk yang belum di-mapping. Lakukan mapping produk terlebih dahulu.
-                                        @else
-                                            Selesaikan semua masalah di atas sebelum melanjutkan proses import.
-                                        @endif
-                                    </span>
+                                <div class="alert alert-danger d-flex align-items-start mb-0">
+                                    <i class="fas fa-exclamation-triangle me-2 mt-1"></i>
+                                    <div>
+                                        <strong>Import Tidak Dapat Dilanjutkan!</strong>
+                                        <p class="mb-2">Terdapat error yang harus diperbaiki terlebih dahulu:</p>
+                                        <ul class="mb-0">
+                                            @if(!empty($invalidData))
+                                                <li><strong>Data tidak valid:</strong> {{ count($invalidData) }} baris memiliki format yang salah</li>
+                                            @endif
+                                            @if(!empty($insufficientStockProducts))
+                                                <li><strong>Stok tidak mencukupi:</strong> {{ count($insufficientStockProducts) }} produk kekurangan stok (tidak bisa dilanjutkan)</li>
+                                            @endif
+                                            @if(!empty($unmappedProducts))
+                                                <li><strong>Mapping produk:</strong> {{ count($unmappedProducts) }} produk belum di-mapping</li>
+                                            @endif
+                                            @if(!empty($mappingErrors))
+                                                <li><strong>Mapping error:</strong> {{ count($mappingErrors) }} produk tidak memiliki mapping</li>
+                                            @endif
+                                            @if(!empty($dataErrors))
+                                                <li><strong>Data validation:</strong> {{ count($dataErrors) }} baris memiliki error format</li>
+                                            @endif
+                                            @if(!empty($stockErrors))
+                                                <li><strong>Stock error:</strong> {{ count($stockErrors) }} produk bermasalah dengan stok</li>
+                                            @endif
+                                        </ul>
+                                        <p class="mb-0 mt-2">
+                                            <small class="text-muted">
+                                                Perbaiki semua error di atas sebelum dapat melanjutkan import.
+                                            </small>
+                                        </p>
+                                    </div>
                                 </div>
                             @endif
                         </div>

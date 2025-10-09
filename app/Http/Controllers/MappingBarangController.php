@@ -954,6 +954,7 @@ public function update(Request $request, $id)
             'product_name' => 'required|string',
             'product_id' => 'required|exists:products,id',
             'quantity' => 'required|numeric|min:0.01',
+            'variant' => 'nullable|string',
         ]);
 
         try {
@@ -964,13 +965,17 @@ public function update(Request $request, $id)
             }
 
             // Cek apakah platform product sudah ada
-            $platformProduct = PlatformProduct::where('platform_id', $platform->id)->where('platform_product_name', $request->product_name)->first();
+            $platformProduct = PlatformProduct::where('platform_id', $platform->id)
+                ->where('platform_product_name', $request->product_name)
+                ->where('variant', $request->variant ?? '')
+                ->first();
 
             // Jika belum ada, buat baru
             if (!$platformProduct) {
                 $platformProduct = new PlatformProduct([
                     'platform_id' => $platform->id,
                     'platform_product_name' => $request->product_name,
+                    'variant' => $request->variant,
                 ]);
                 $platformProduct->save();
             }

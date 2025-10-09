@@ -709,7 +709,7 @@ class TokopediaImport implements ToCollection, WithMultipleSheets
                 $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                     ->where('qty', '>', 0)
                     ->orderBy('created_at') // Layer 1: FIFO berdasarkan tanggal penerimaan
-                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+                    ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
                     ->get();
                 \Log::info('Found stock records: '.$stocks->count());
 
@@ -747,7 +747,8 @@ class TokopediaImport implements ToCollection, WithMultipleSheets
                 // Jika masih ada sisa quantity yang perlu dikurangi, stok tidak cukup
                 if ($remainingQty > 0) {
                     \Log::warning("Insufficient stock for product ID: {$mapping->product_id}, Missing qty: {$remainingQty}");
-                    throw new \Exception("Stok tidak cukup untuk produk {$mapping->product->name}");
+                    $productName = $mapping->product ? $mapping->product->name : "Product ID: {$mapping->product_id}";
+                    throw new \Exception("Stok tidak cukup untuk produk {$productName}");
                 }
             }
         } catch (\Exception $e) {

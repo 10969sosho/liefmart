@@ -41,7 +41,7 @@
 
     <div class="row">
         <!-- Left Column - Main Information -->
-        <div class="col-lg-5 mb-4">
+        <div class="col-lg-4 mb-4">
             <div class="card mb-4">
                 <div class="card-header d-flex align-items-center">
                     <i class="fas fa-info-circle text-primary me-2"></i>
@@ -107,7 +107,7 @@
         </div>
         
         <!-- Right Column - Detail Barang -->
-        <div class="col-lg-7">
+        <div class="col-lg-8">
             <div class="card">
                 <div class="card-header d-flex align-items-center">
                     <i class="fas fa-box text-primary me-2"></i>
@@ -124,11 +124,54 @@
                                     <th>Satuan</th>
                                     <th>Harga</th>
                                     <th>Diskon</th>
+                                    <th>Harga Setelah Diskon</th>
                                     <th>Subtotal</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($penerimaan->details as $index => $detail)
+                                @php
+                                    // Calculate price after tiered discounts
+                                    $hppAsli = $detail->harga_hpp;
+                                    $hppSetelahDiskon = $hppAsli;
+                                    
+                                    // Apply percentage discounts in sequence (tiered discounts)
+                                    if ($detail->diskon_persen_1 > 0) {
+                                        $hppSetelahDiskon -= ($hppSetelahDiskon * $detail->diskon_persen_1 / 100);
+                                    }
+                                    if ($detail->diskon_persen_2 > 0) {
+                                        $hppSetelahDiskon -= ($hppSetelahDiskon * $detail->diskon_persen_2 / 100);
+                                    }
+                                    if ($detail->diskon_persen_3 > 0) {
+                                        $hppSetelahDiskon -= ($hppSetelahDiskon * $detail->diskon_persen_3 / 100);
+                                    }
+                                    if ($detail->diskon_persen_4 > 0) {
+                                        $hppSetelahDiskon -= ($hppSetelahDiskon * $detail->diskon_persen_4 / 100);
+                                    }
+                                    if ($detail->diskon_persen_5 > 0) {
+                                        $hppSetelahDiskon -= ($hppSetelahDiskon * $detail->diskon_persen_5 / 100);
+                                    }
+                                    
+                                    // Apply nominal discounts
+                                    if ($detail->diskon_nominal_1 > 0) {
+                                        $hppSetelahDiskon -= $detail->diskon_nominal_1;
+                                    }
+                                    if ($detail->diskon_nominal_2 > 0) {
+                                        $hppSetelahDiskon -= $detail->diskon_nominal_2;
+                                    }
+                                    if ($detail->diskon_nominal_3 > 0) {
+                                        $hppSetelahDiskon -= $detail->diskon_nominal_3;
+                                    }
+                                    if ($detail->diskon_nominal_4 > 0) {
+                                        $hppSetelahDiskon -= $detail->diskon_nominal_4;
+                                    }
+                                    if ($detail->diskon_nominal_5 > 0) {
+                                        $hppSetelahDiskon -= $detail->diskon_nominal_5;
+                                    }
+                                    
+                                    // Ensure price doesn't go negative
+                                    $hppSetelahDiskon = max(0, $hppSetelahDiskon);
+                                @endphp
                                 <tr class="item-data-row">
                                     <td>{{ $index + 1 }}</td>
                                     <td>
@@ -174,12 +217,19 @@
                                         @endif
                                     </td>
                                     <td class="fw-medium">
+                                        @if($detail->is_free)
+                                            <span class="badge bg-secondary">Free</span>
+                                        @else
+                                            Rp {{ number_format($hppSetelahDiskon, 2, ',', '.') }}
+                                        @endif
+                                    </td>
+                                    <td class="fw-medium">
                                         Rp {{ number_format($detail->subtotal, 2, ',', '.') }}
                                     </td>
                                 </tr>
                                 @empty
                                 <tr>
-                                    <td colspan="7" class="text-center py-4">
+                                    <td colspan="8" class="text-center py-4">
                                         <div class="py-3">
                                             <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
                                             <h6 class="fw-normal mb-1">Belum ada barang</h6>
@@ -191,7 +241,7 @@
                             </tbody>
                             <tfoot class="table-group-divider">
                                 <tr>
-                                    <td colspan="5"></td>
+                                    <td colspan="6"></td>
                                     <td class="fw-bold text-end">Total:</td>
                                     <td class="fw-bold">Rp {{ number_format(round($penerimaan->total_harga), 0, ',', '.') }}</td>
                                 </tr>

@@ -90,4 +90,36 @@ class Product extends Model
     {
         return $this->hasMany(WarehouseStock::class);
     }
+
+    /**
+     * Mutator untuk initial_price - pastikan null menjadi 0
+     */
+    public function setInitialPriceAttribute($value)
+    {
+        $this->attributes['initial_price'] = $value ?? 0;
+    }
+
+    /**
+     * Accessor untuk initial_price - pastikan null menjadi 0
+     */
+    public function getInitialPriceAttribute($value)
+    {
+        return $value ?? 0;
+    }
+
+    /**
+     * Mutator untuk discount_percentage - pastikan null menjadi 0
+     */
+    public function setDiscountPercentageAttribute($value)
+    {
+        $this->attributes['discount_percentage'] = $value ?? 0;
+    }
+
+    /**
+     * Accessor untuk discount_percentage - pastikan null menjadi 0
+     */
+    public function getDiscountPercentageAttribute($value)
+    {
+        return $value ?? 0;
+    }
 }

@@ -77,25 +77,38 @@ class FinanceOffline extends Model
      */
     public static function generateInvoiceNumber($taxId)
     {
-        // Mendapatkan kategori berdasarkan tax_id
-        $category = ($taxId == 5 || $taxId == 6) 
-            ? InvoiceSequence::CATEGORY_KOPI 
-            : InvoiceSequence::CATEGORY_SKINCARE;
-            
-        // Mendapatkan jenis penjualan (untuk Finance Offline selalu OFFLINE)
-        $salesType = InvoiceSequence::SALES_OFFLINE;
+        // Format tahun-bulan saat ini (YYMM)
+        $yearMonth = Carbon::now()->format('ym');
         
-        // Mendapatkan status pajak - fix untuk offline cosmetics
-        // Tax ID 3 = HGN (PKP), Tax ID 4 = LM (Non-PKP) untuk kosmetik offline
-        // Tax ID 5 = PKP, Tax ID 6 = Non-PKP untuk kopi offline
-        $taxStatus = in_array($taxId, [3, 5, 7]) 
-            ? InvoiceSequence::TAX_PKP 
-            : InvoiceSequence::TAX_NON_PKP;
+        // Determine the suffix based on tax ID
+        $suffix = "";
+        if ($taxId == 3) { // HGN (PKP)
+            $suffix = "HGNSDA-KOS/01";
+        } elseif ($taxId == 4) { // LM (Non-PKP)
+            $suffix = "HGNSDA-KOS/02";
+        } elseif ($taxId == 5) { // Kopi PKP
+            $suffix = "HPNSDA-KOP/01";
+        } elseif ($taxId == 6) { // Kopi Non-PKP
+            $suffix = "HPNSDA-KOP/02";
+        } else {
+            // Default to HGN PKP
+            $suffix = "HGNSDA-KOS/01";
+        }
         
-        // Mendapatkan nomor invoice dari InvoiceSequence
-        $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus);
+        // Find the latest invoice number for this format and year-month
+        $latestInvoice = self::where('invoice_number', 'like', "%/$yearMonth/$suffix")
+                            ->orderBy('invoice_number', 'desc')
+                            ->value('invoice_number');
         
-        return $invoiceData['invoice_number'];
+        if ($latestInvoice) {
+            // Extract the number part and increment
+            $lastNumber = (int) substr($latestInvoice, 0, 4);
+            $newNumber = $lastNumber + 1;
+        } else {
+            $newNumber = 1;
+        }
+        
+        return str_pad($newNumber, 4, '0', STR_PAD_LEFT) . "/$yearMonth/$suffix";
     }
 
     /**

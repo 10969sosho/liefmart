@@ -66,8 +66,9 @@
                                                 </td>
                                                 <td>{{ $item->satuan->name }}</td>
                                                 <td>
-                                                    <input type="date" name="items[{{ $item->id }}][expired_date]"
-                                                        class="form-control form-control-sm expired-input" disabled>
+                                                    <input type="text" name="items[{{ $item->id }}][expired_date]"
+                                                        class="form-control form-control-sm expired-input" 
+                                                        placeholder="dd/mm/yyyy" disabled>
                                                 </td>
                                             </tr>
                                         @empty
@@ -135,8 +136,9 @@
             // Gunakan jQuery setelah dipastikan tersedia
             jQuery(function($) {
                 // Set tanggal hari ini sebagai default untuk input tanggal expired
-                const today = new Date().toISOString().split('T')[0];
-                $('.expired-input').val(today);
+                const today = new Date();
+                const todayFormatted = formatDateDDMMYYYY(today);
+                $('.expired-input').val(todayFormatted);
 
                 // Checkbox di header untuk centang semua
                 $('#check-all').change(function() {
@@ -185,7 +187,7 @@
 
                         // Pastikan ada nilai default untuk tanggal expired saat dicentang
                         if (isChecked && !$expiredInput.val()) {
-                            $expiredInput.val(today);
+                            $expiredInput.val(todayFormatted);
                         }
                     });
 
@@ -235,6 +237,38 @@
                             valid = false;
                             return false;
                         }
+
+                        // Validasi format tanggal dd/mm/yyyy
+                        const datePattern = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+                        const dateValue = $expiredInput.val();
+                        if (!datePattern.test(dateValue)) {
+                            message = 'Format tanggal expired untuk ' + productName + ' harus dd/mm/yyyy (contoh: 25/12/2024)';
+                            valid = false;
+                            return false;
+                        }
+
+                        // Validasi tanggal yang valid
+                        const dateParts = dateValue.match(datePattern);
+                        if (dateParts) {
+                            const day = parseInt(dateParts[1], 10);
+                            const month = parseInt(dateParts[2], 10);
+                            const year = parseInt(dateParts[3], 10);
+                            
+                            // Validasi range tanggal
+                            if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900 || year > 2100) {
+                                message = 'Tanggal expired untuk ' + productName + ' tidak valid';
+                                valid = false;
+                                return false;
+                            }
+                            
+                            // Validasi tanggal yang benar-benar ada
+                            const testDate = new Date(year, month - 1, day);
+                            if (testDate.getDate() !== day || testDate.getMonth() !== month - 1 || testDate.getFullYear() !== year) {
+                                message = 'Tanggal expired untuk ' + productName + ' tidak valid (contoh: 29/02/2024 tidak valid)';
+                                valid = false;
+                                return false;
+                            }
+                        }
                     });
 
                     if (!valid) {
@@ -243,8 +277,23 @@
                         return false;
                     }
 
-                    // If validation passes, set the submitting flag and temporarily show "Processing..."
+                    // If validation passes, convert dates to ISO format before submission
                     if (valid) {
+                        // Convert dd/mm/yyyy to yyyy-mm-dd for backend
+                        $('.item-checkbox:checked').each(function() {
+                            const $row = $(this).closest('tr');
+                            const $expiredInput = $row.find('.expired-input');
+                            const dateValue = $expiredInput.val();
+                            
+                            if (dateValue) {
+                                const dateParts = dateValue.split('/');
+                                if (dateParts.length === 3) {
+                                    const isoDate = dateParts[2] + '-' + dateParts[1] + '-' + dateParts[0];
+                                    $expiredInput.val(isoDate);
+                                }
+                            }
+                        });
+                        
                         isSubmitting = true;
                         const $submitBtn = $('#submit-btn');
                         const originalHtml = $submitBtn.html();

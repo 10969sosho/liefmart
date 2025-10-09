@@ -335,6 +335,11 @@
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales by Product
                                         </a>
                                     </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.gross-profit') }}">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Gross Profit
+                                        </a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -452,6 +457,32 @@
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('products.create') }}">
                                             <i class="fas fa-circle fa-xs me-2"></i> Add New Product
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+
+                        <!-- Master Barang Platform -->
+                        <li class="nav-item mb-1">
+                            <a class="nav-link d-flex justify-content-between align-items-center py-2 px-3 rounded" 
+                               data-bs-toggle="collapse" href="#collapseBarangPlatform" role="button" aria-expanded="false">
+                                <div>
+                                    <i class="fas fa-store me-2"></i> Barang Platform
+                                </div>
+                                <i class="fas fa-chevron-right fa-xs transition-transform"></i>
+                            </a>
+                            <div class="collapse" id="collapseBarangPlatform">
+                                <ul class="nav flex-column ms-3 mt-1">
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('barang-platform.index') }}">
+                                            <i class="fas fa-circle fa-xs me-2"></i> All Barang Platform
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('barang-platform.create') }}">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Create Barang Platform
                                         </a>
                                     </li>
                                 </ul>
@@ -586,30 +617,17 @@
                         </li>
                         @endif
 
-                        <!-- Legacy User Management (untuk kompatibilitas) -->
+                        <!-- Database Restore (Superadmin only) -->
+                        @if(auth()->check() && auth()->user()->role_id == 1)
                         <li class="nav-item mb-1">
-                            <a class="nav-link d-flex justify-content-between align-items-center py-2 px-3 rounded" 
-                               data-bs-toggle="collapse" href="#collapseUsersLegacy" role="button" aria-expanded="false">
-                                <div>
-                                    <i class="fas fa-user-cog me-2"></i> Legacy Users
-                                </div>
-                                <i class="fas fa-chevron-right fa-xs transition-transform"></i>
+                            <a class="nav-link py-2 px-3 rounded" href="{{ route('database-restore.index') }}">
+                                <i class="fas fa-database me-2"></i> Database Restore
                             </a>
-                            <div class="collapse" id="collapseUsersLegacy">
-                                <ul class="nav flex-column ms-3 mt-1">
-                                    <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('users.index') }}">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Old User List
-                                        </a>
-                                    </li>
-                                    <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('users.create') }}">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Old Add User
-                                        </a>
-                                    </li>
-                                </ul>
-                            </div>
                         </li>
+                        @endif
+
+                        <!-- Legacy User Management (untuk kompatibilitas) -->
+                      
                     </ul>
                 </div>
                 @endif

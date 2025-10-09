@@ -32,6 +32,43 @@ class ProductVariantController extends Controller
     }
 
     /**
+     * Store a newly created product variant via API.
+     */
+    public function storeApi(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'product_size_id' => 'required|exists:product_sizes,id',
+                'description' => 'nullable|string',
+            ]);
+
+            $data = [
+                'name' => $request->name,
+                'product_size_id' => $request->product_size_id,
+                'description' => $request->description,
+                'is_active' => true,
+            ];
+
+            $productVariant = ProductVariant::create($data);
+
+            return response()->json([
+                'success' => true,
+                'id' => $productVariant->id,
+                'name' => $productVariant->name,
+                'message' => 'Varian Produk berhasil ditambahkan'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create ProductVariant via API: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Store a newly created resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request

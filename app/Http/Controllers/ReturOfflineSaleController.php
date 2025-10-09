@@ -459,7 +459,7 @@ class ReturOfflineSaleController extends Controller
             ->where('is_damaged', $isDamaged)
             ->where('qty', '>', 0)
             ->orderBy('created_at', 'asc')   // Layer 1: FIFO berdasarkan tanggal penerimaan
-            ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+            ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
             ->first();
         
         // If no reference stock found, try to find any stock for this product
@@ -467,7 +467,7 @@ class ReturOfflineSaleController extends Controller
             $referenceStock = WarehouseStock::where('product_id', $productId)
                 ->where('qty', '>', 0)
                 ->orderBy('created_at', 'asc')   // Layer 1: FIFO berdasarkan tanggal penerimaan
-                ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+                ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
                 ->first();
         }
         

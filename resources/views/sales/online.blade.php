@@ -64,6 +64,150 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Additional 10 Merchant Cards -->
+                    <div class="row mt-4">
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-primary"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 1</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-success"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 2</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-warning"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 3</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-info"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 4</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-danger"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 5</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-secondary"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 6</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-dark"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 7</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-primary"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 8</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-success"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 9</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3">
+                                        <i class="fas fa-store fa-3x text-warning"></i>
+                                    </div>
+                                    <h5 class="card-title">Merchant 10</h5>
+                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

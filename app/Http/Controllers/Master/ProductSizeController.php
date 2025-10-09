@@ -142,6 +142,46 @@ class ProductSizeController extends Controller
     }
 
     /**
+     * Store a newly created product size via API.
+     */
+    public function storeApi(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'product_type_id' => 'required|exists:product_types,id',
+                'code' => 'nullable|string|max:50',
+                'description' => 'nullable|string',
+            ]);
+
+            $data = [
+                'name' => $request->name,
+                'product_type_id' => $request->product_type_id,
+                'code' => $request->code,
+                'description' => $request->description,
+                'is_active' => true,
+            ];
+
+            $productSize = ProductSize::create($data);
+
+            return response()->json([
+                'success' => true,
+                'id' => $productSize->id,
+                'name' => $productSize->name,
+                'code' => $productSize->code,
+                'message' => 'Ukuran Produk berhasil ditambahkan'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create ProductSize via API: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Remove the specified resource from storage.
      *
      * @param  int  $id

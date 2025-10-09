@@ -289,6 +289,111 @@ class PembayaranShopeeController extends Controller
             // Bersihkan header dari spasi berlebih
             $headers = array_map('trim', $headerRow);
             
+            // Map for alternate header names (lowercase for case insensitive comparison)
+            $headerMapping = [
+                'nomor pesanan' => 'NOMOR PESANAN',
+                'no pesanan' => 'NOMOR PESANAN',
+                'no. pesanan' => 'NOMOR PESANAN',
+                'no order' => 'NOMOR PESANAN',
+                'no. order' => 'NOMOR PESANAN',
+                'order number' => 'NOMOR PESANAN',
+                
+                'tanggal masuk pembayaran' => 'TANGGAL MASUK PEMBAYARAN',
+                'tanggal pembayaran' => 'TANGGAL MASUK PEMBAYARAN',
+                'payment date' => 'TANGGAL MASUK PEMBAYARAN',
+                'tgl masuk pembayaran' => 'TANGGAL MASUK PEMBAYARAN',
+                'tgl pembayaran' => 'TANGGAL MASUK PEMBAYARAN',
+                'tanggal' => 'TANGGAL MASUK PEMBAYARAN',
+                
+                'hari masuk pembayaran' => 'HARI MASUK PEMBAYARAN',
+                'hari pembayaran' => 'HARI MASUK PEMBAYARAN',
+                'payment day' => 'HARI MASUK PEMBAYARAN',
+                'hari' => 'HARI MASUK PEMBAYARAN',
+                
+                'jumlah masuk pembayaran' => 'JUMLAH MASUK PEMBAYARAN',
+                'jumlah pembayaran' => 'JUMLAH MASUK PEMBAYARAN',
+                'amount' => 'JUMLAH MASUK PEMBAYARAN',
+                'jumlah' => 'JUMLAH MASUK PEMBAYARAN',
+                'nominal pembayaran' => 'JUMLAH MASUK PEMBAYARAN',
+                
+                'voucher ditanggung penjual' => 'Voucher Ditanggung Penjual',
+                'voucher penjual' => 'Voucher Ditanggung Penjual',
+                'voucher' => 'Voucher Ditanggung Penjual',
+                
+                'komisi ams/affiliate' => 'KOMISI AMS/AFFILIATE',
+                'komisi ams' => 'KOMISI AMS/AFFILIATE',
+                'komisi affiliate' => 'KOMISI AMS/AFFILIATE',
+                'ams/affiliate' => 'KOMISI AMS/AFFILIATE',
+                'ams' => 'KOMISI AMS/AFFILIATE',
+                'affiliate' => 'KOMISI AMS/AFFILIATE',
+                
+                'biaya admin' => 'BIAYA ADMIN',
+                'admin fee' => 'BIAYA ADMIN',
+                'admin' => 'BIAYA ADMIN',
+                
+                'biaya layanan (gratis ongkir + cashback)' => 'BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)',
+                'biaya layanan' => 'BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)',
+                'biaya layanan/ biaya 5' => 'BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)',
+                'layanan' => 'BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)',
+                
+                'diskon 5' => 'DISKON 5',
+                'biaya 5' => 'DISKON 5',
+                'diskon5' => 'DISKON 5',
+                'biaya5' => 'DISKON 5',
+                
+                'diskon 6' => 'DISKON 6',
+                'biaya 6' => 'DISKON 6',
+                'diskon6' => 'DISKON 6',
+                'biaya6' => 'DISKON 6',
+                
+                'diskon 7' => 'DISKON 7',
+                'biaya 7' => 'DISKON 7',
+                'diskon7' => 'DISKON 7',
+                'biaya7' => 'DISKON 7',
+                
+                'diskon 8' => 'DISKON 8',
+                'biaya 8' => 'DISKON 8',
+                'diskon8' => 'DISKON 8',
+                'biaya8' => 'DISKON 8',
+                
+                'diskon 9' => 'DISKON 9',
+                'biaya 9' => 'DISKON 9',
+                'diskon9' => 'DISKON 9',
+                'biaya9' => 'DISKON 9',
+                
+                'diskon 10' => 'DISKON 10',
+                'biaya 10' => 'DISKON 10',
+                'diskon10' => 'DISKON 10',
+                'biaya10' => 'DISKON 10',
+                
+                'diskon 11' => 'DISKON 11',
+                'biaya 11' => 'DISKON 11',
+                'diskon11' => 'DISKON 11',
+                'biaya11' => 'DISKON 11',
+                
+                'diskon 12' => 'DISKON 12',
+                'biaya 12' => 'DISKON 12',
+                'diskon12' => 'DISKON 12',
+                'biaya12' => 'DISKON 12',
+            ];
+            
+            // Map the headers to standard names
+            $mappedHeaders = [];
+            foreach ($headers as $index => $header) {
+                // Convert to lowercase for case-insensitive matching
+                $lowerHeader = strtolower($header);
+                if (isset($headerMapping[$lowerHeader])) {
+                    $mappedHeaders[$index] = $headerMapping[$lowerHeader];
+                    Log::info("Mapped header '{$header}' to '{$headerMapping[$lowerHeader]}'");
+                } else {
+                    $mappedHeaders[$index] = $header;
+                }
+            }
+            
+            // Replace original headers with mapped ones for further processing
+            $headers = $mappedHeaders;
+            Log::info("Mapped headers: " . json_encode($headers));
+            
             // Validasi header (hanya kolom esensial wajib)
             $requiredHeaders = [
                 'NOMOR PESANAN',
@@ -752,6 +857,12 @@ class PembayaranShopeeController extends Controller
                     $transaction->nominal_diskon4 = !empty($rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) ? -abs((float)$rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) : 0;
                     $transaction->nominal_diskon5 = !empty($rowData['DISKON 5']) ? -abs((float)$rowData['DISKON 5']) : 0;
                     $transaction->nominal_diskon6 = !empty($rowData['DISKON 6']) ? -abs((float)$rowData['DISKON 6']) : 0;
+                    $transaction->nominal_diskon7 = !empty($rowData['DISKON 7']) ? -abs((float)$rowData['DISKON 7']) : 0;
+                    $transaction->nominal_diskon8 = !empty($rowData['DISKON 8']) ? -abs((float)$rowData['DISKON 8']) : 0;
+                    $transaction->nominal_diskon9 = !empty($rowData['DISKON 9']) ? -abs((float)$rowData['DISKON 9']) : 0;
+                    $transaction->nominal_diskon10 = !empty($rowData['DISKON 10']) ? -abs((float)$rowData['DISKON 10']) : 0;
+                    $transaction->nominal_diskon11 = !empty($rowData['DISKON 11']) ? -abs((float)$rowData['DISKON 11']) : 0;
+                    $transaction->nominal_diskon12 = !empty($rowData['DISKON 12']) ? -abs((float)$rowData['DISKON 12']) : 0;
                     
                     // Set payment info
                     $transaction->tanggal_masuk_pembayaran = $rowData['TANGGAL MASUK PEMBAYARAN'];

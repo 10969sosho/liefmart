@@ -430,7 +430,7 @@
                         <td class="product-description">
                             {{ $product ? $product->name : 'Unknown Product' }}
                         </td>
-                        <td>{{ $product && $product->sku ? $product->sku : '-' }}</td>
+                        <td>{{ $product && $product->barcode ? $product->barcode : '-' }}</td>
                         <td class="text-center">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($qty), 2, ',', '.') }}</td>
                         <td class="text-right">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($price), 2, ',', '.') }}</td>
                         <td class="text-right discount-column">{!! $discountDisplay !!}</td>
@@ -491,7 +491,13 @@
             <div class="signature" style="text-align: right;">
                 <div>Hormat Kami,</div>
                 <div class="signature-line"></div>
-                <div>( PT. HARVEST GLOBAL NIAGA )</div>
+                <div>
+                    @if($taxId == 4)
+                        ( LAMOURAD )
+                    @else
+                        ( PT. HARVEST GLOBAL NIAGA )
+                    @endif
+                </div>
             </div>
         </div>
         
@@ -500,7 +506,11 @@
             @if($activeAccount)
                 {{ $activeAccount->bank_name }} {{ $activeAccount->account_number }} atas nama {{ $activeAccount->account_name }}
             @else
-                DANAMON ********** atas nama PT. HARVEST GLOBAL NIAGA
+                @if($taxId == 4)
+                    DANAMON ********** atas nama LAMOURAD
+                @else
+                    DANAMON ********** atas nama PT. HARVEST GLOBAL NIAGA
+                @endif
             @endif
             </p>
         </div>

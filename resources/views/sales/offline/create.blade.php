@@ -122,6 +122,35 @@
                             </div>
                         </div>
 
+                        <!-- Payment details (shown when status is paid) -->
+                        <div class="row mt-3" id="payment-details" style="display: none;">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="payment_date" class="form-control-label">Tanggal Pembayaran</label>
+                                    <input type="date" class="form-control @error('payment_date') is-invalid @enderror" 
+                                           id="payment_date" name="payment_date" value="{{ old('payment_date', date('Y-m-d')) }}">
+                                    @error('payment_date')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="payment_method" class="form-control-label">Metode Pembayaran</label>
+                                    <select class="form-control @error('payment_method') is-invalid @enderror" 
+                                            id="payment_method" name="payment_method">
+                                        <option value="cash" {{ old('payment_method') == 'cash' ? 'selected' : '' }}>Cash</option>
+                                        <option value="transfer" {{ old('payment_method') == 'transfer' ? 'selected' : '' }}>Transfer</option>
+                                        <option value="check" {{ old('payment_method') == 'check' ? 'selected' : '' }}>Check</option>
+                                        <option value="credit_card" {{ old('payment_method') == 'credit_card' ? 'selected' : '' }}>Credit Card</option>
+                                    </select>
+                                    @error('payment_method')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="row mt-3">
                             <div class="col-md-6">
                                 <div class="form-group">
@@ -758,6 +787,23 @@
         
         // Initialize with one item row
         addItemRow();
+        
+        // Toggle payment details based on status
+        const statusSelect = document.getElementById('status');
+        const paymentDetails = document.getElementById('payment-details');
+        
+        function togglePaymentDetails() {
+            if (statusSelect.value === 'paid') {
+                paymentDetails.style.display = 'block';
+            } else {
+                paymentDetails.style.display = 'none';
+            }
+        }
+        
+        statusSelect.addEventListener('change', togglePaymentDetails);
+        
+        // Initialize payment details visibility
+        togglePaymentDetails();
         
         // SJ Number will be generated automatically by backend when creating the sale
         // No need to generate it on the frontend since field was removed from form

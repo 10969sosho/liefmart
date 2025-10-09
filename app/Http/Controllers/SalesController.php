@@ -365,6 +365,16 @@ class SalesController extends Controller
             
             // Cek stok untuk setiap barang yang di-mapping
             foreach ($product->mappingBarang as $mapping) {
+                // Skip jika product tidak ada (sudah dihapus)
+                if (!$mapping->product) {
+                    \Log::warning('Mapping references non-existent product', [
+                        'platform_product_id' => $product->id,
+                        'mapping_id' => $mapping->id,
+                        'product_id' => $mapping->product_id,
+                    ]);
+                    continue;
+                }
+                
                 // Ambil total stok tersedia dari warehouse untuk produk ini
                 $totalStok = WarehouseStock::where('product_id', $mapping->product_id)
                     ->where('qty', '>', 0)
@@ -522,7 +532,7 @@ class SalesController extends Controller
             $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                 ->where('qty', '>', 0)
                 ->orderBy('created_at') // Layer 1: FIFO berdasarkan tanggal penerimaan
-                ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+                ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
                 ->get();
             
             // Hitung total stok tersedia
@@ -935,6 +945,8 @@ class SalesController extends Controller
             'tax_amount' => 'required|numeric|min:0',
             'total_amount' => 'required|numeric|min:0',
             'status' => 'required|in:pending,paid,cancelled',
+            'payment_date' => 'nullable|date|required_if:status,paid',
+            'payment_method' => 'nullable|string|required_if:status,paid',
             'product_id' => 'required|array',
             'product_id.*' => 'required|exists:products,id',
             'quantity' => 'required|array',
@@ -963,7 +975,7 @@ class SalesController extends Controller
                 $warehouseStocks = WarehouseStock::where('product_id', $productId)
                     ->where('qty', '>', 0)
                     ->orderBy('created_at')   // Layer 1: FIFO berdasarkan tanggal penerimaan
-                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+                    ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
                     ->get();
                 
                 if ($warehouseStocks->isEmpty()) {
@@ -1060,6 +1072,8 @@ class SalesController extends Controller
                     'customer_name' => $customer->name,
                     'customer_id' => $customer->id,
                     'status' => $request->status,
+                    'payment_date' => $request->payment_date,
+                    'payment_method' => $request->payment_method,
                     'subtotal' => $groupSubtotal,
                     'tax_amount' => $groupTaxAmount,
                     'total_amount' => $groupTotalAmount,
@@ -1292,7 +1306,7 @@ class SalesController extends Controller
                     ->where('qty', '>', 0)
                     ->with(['lokasi'])
                     ->orderBy('created_at')   // Layer 1: FIFO berdasarkan tanggal penerimaan
-                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+                    ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
                     ->get()
                     ->map(function($stock) {
                         return [

@@ -102,11 +102,10 @@ class UnpaidOrdersExport implements WithMultipleSheets
         // Get normal unpaid orders
         $normalUnpaidOrders = $query->orderBy($sortBy, $sortOrder)->get();
         
-        // Get fully returned orders that previously had payments for this platform
-        $fullyReturnedOrders = $this->getFullyReturnedOrdersForPlatform($platform);
-        
-        // Combine and return unique orders
-        $allOrders = $normalUnpaidOrders->concat($fullyReturnedOrders)->unique('id');
+        // Filter out fully returned orders
+        $allOrders = $normalUnpaidOrders->filter(function($order) {
+            return !$order->isFullyReturned();
+        });
         
         // Sort collection
         $allOrders = $allOrders->sortBy([
@@ -114,46 +113,5 @@ class UnpaidOrdersExport implements WithMultipleSheets
         ]);
         
         return $allOrders;
-    }
-    
-    private function getFullyReturnedOrdersForPlatform($platform)
-    {
-        $query = Order::with(['orderItems.platformProduct.mappingBarang', 'platform', 'mainCategory'])
-            ->where('platform_id', $platform->id)
-            ->where(function($q) {
-                $q->whereHas('shopeeFinancialTransactions')
-                  ->orWhereHas('tokopediaFinancialTransactions')
-                  ->orWhereHas('tiktokFinancialTransactions')
-                  ->orWhereHas('blibliFinancialTransactions');
-            });
-            
-        // Apply date filters if specified
-        if (!empty($this->filters['from_date'])) {
-            $query->whereDate('tanggal', '>=', $this->filters['from_date']);
-        }
-        if (!empty($this->filters['to_date'])) {
-            $query->whereDate('tanggal', '<=', $this->filters['to_date']);
-        }
-        if (!empty($this->filters['order_number'])) {
-            $query->where('order_number', 'like', '%' . $this->filters['order_number'] . '%');
-        }
-        if (!empty($this->filters['customer_name'])) {
-            $query->where('customer_name', 'like', '%' . $this->filters['customer_name'] . '%');
-        }
-        
-        $orders = $query->get();
-        
-        // Filter only fully returned orders
-        $fullyReturnedOrders = $orders->filter(function($order) {
-            return $order->isFullyReturned();
-        });
-        
-        // Mark them as return unpaid orders
-        $fullyReturnedOrders->each(function($order) {
-            $order->is_return_unpaid = true;
-            $order->unpaid_reason = 'RETUR FULL';
-        });
-        
-        return $fullyReturnedOrders;
     }
 } 

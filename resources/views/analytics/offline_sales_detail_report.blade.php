@@ -268,6 +268,19 @@
                                 </div>
                             </a>
                         </div>
+                        <div class="col-md-3 mb-4">
+                            <a href="{{ route('analytics.offline.gross-profit') }}" class="analytics-menu-card">
+                                <div class="card h-100">
+                                    <div class="card-body text-center">
+                                        <div class="card-icon">
+                                            <i class="bi bi-graph-up"></i>
+                                        </div>
+                                        <h5 class="card-title">Gross Profit</h5>
+                                        <p class="card-text">Analisis profit dan margin penjualan offline</p>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -406,7 +419,60 @@
                 </div>
             </div>
             
-            <!-- Sales List -->
+            <!-- Additional Summary Row for PPN -->
+            <div class="row mb-4">
+                @php
+                    // Calculate PPN for HGN items only
+                    $hgnValue = 0;
+                    $lmValue = 0;
+                    $totalPPNAmount = 0;
+                    
+                    foreach($sales as $sale) {
+                        foreach($sale->items as $item) {
+                            if($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
+                                // HGN/PKP items - add PPN
+                                $hgnValue += $item->subtotal ?? 0;
+                            } else {
+                                // LM/Non-PKP items - no PPN
+                                $lmValue += $item->subtotal ?? 0;
+                            }
+                        }
+                    }
+                    
+                    // Calculate PPN amount for HGN items only
+                    $totalPPNAmount = $hgnValue * 0.11;
+                    $totalWithPPN = $hgnValue + $totalPPNAmount + $lmValue; // HGN + PPN + LM
+                @endphp
+                <div class="col-md-4">
+                    <div class="card bg-warning text-dark h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">Total + PPN</h5>
+                            <h2 class="display-5">Rp {{ number_format($totalWithPPN, 0, ',', '.') }}</h2>
+                            <p>HGN + PPN + LM</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-info text-white h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">PPN Amount</h5>
+                            <h2 class="display-5">Rp {{ number_format($totalPPNAmount, 0, ',', '.') }}</h2>
+                            <p>11% dari HGN items</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-success text-white h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">Base Value (DPP)</h5>
+                            <h2 class="display-5">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
+                            <p>HGN: Rp {{ number_format($hgnValue, 0, ',', '.') }} | LM: Rp {{ number_format($lmValue, 0, ',', '.') }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sales List - All Items with PPN Column -->
             <h5 class="mb-3">Daftar Penjualan Offline</h5>
             <div class="table-responsive disable-fixed-scrollbar" style="max-height: 65vh; overflow-y: auto; overflow-x: auto;">
                 <table class="table table-striped table-bordered">
@@ -416,7 +482,8 @@
                             <th>Tanggal</th>
                             <th>No. Surat Jalan</th>
                             <th>Customer</th>
-                            <th class="text-end">Value</th>
+                            <th class="text-end">Value (DPP)</th>
+                            <th class="text-end">Nominal + PPN</th>
                             <th class="text-end">Volume</th>
                             <th class="text-end">QTY Retur</th>
                             <th>Status</th>
@@ -424,6 +491,36 @@
                     </thead>
                     <tbody>
                         @forelse($sales as $index => $sale)
+                        @php
+                            // Calculate PPN for this sale
+                            $hgnValue = 0;
+                            $lmValue = 0;
+                            $totalValue = 0;
+                            $ppnAmount = 0;
+                            $totalWithPPN = 0;
+                            
+                            foreach($sale->items as $item) {
+                                $itemValue = $item->subtotal ?? 0;
+                                $totalValue += $itemValue;
+                                
+                                if($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
+                                    // HGN/PKP items - add PPN
+                                    $hgnValue += $itemValue;
+                                } else {
+                                    // LM/Non-PKP items - no PPN
+                                    $lmValue += $itemValue;
+                                }
+                            }
+                            
+                            // Calculate PPN for HGN items only
+                            $ppnAmount = $hgnValue * 0.11;
+                            $totalWithPPN = $hgnValue + $ppnAmount + $lmValue; // HGN + PPN + LM
+                            
+                            // Use pre-calculated values from controller
+                            $qtyRetur = $sale->total_retur_qty ?? 0;
+                            $hargaTotal = $sale->value_after_returns ?? 0;
+                            $totalVolumeAfterRetur = $sale->total_volume_after_returns ?? $sale->total_volume;
+                        @endphp
                         <tr class="table-row-hover">
                             <td class="text-center">{{ $index + 1 }}</td>
                             <td>{{ $sale->sale_date ? $sale->sale_date->format('d-m-Y') : 'N/A' }}</td>
@@ -433,13 +530,8 @@
                                     {{ $sale->customerInfo ? $sale->customerInfo->name : 'Unknown' }}
                                 </div>
                             </td>
-                            @php
-                                // Use pre-calculated values from controller
-                                $qtyRetur = $sale->total_retur_qty ?? 0;
-                                $hargaTotal = $sale->value_after_returns ?? 0;
-                                $totalVolumeAfterRetur = $sale->total_volume_after_returns ?? $sale->total_volume;
-                            @endphp
                             <td class="text-end fw-medium">Rp {{ number_format($hargaTotal, 0, ',', '.') }}</td>
+                            <td class="text-end fw-medium">Rp {{ number_format($totalWithPPN, 0, ',', '.') }}</td>
                             <td class="text-end">
                                 {{ number_format($totalVolumeAfterRetur) }} pcs
                                 @if($qtyRetur > 0)
@@ -461,7 +553,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="7" class="text-center">Tidak ada data penjualan</td>
+                            <td colspan="9" class="text-center">Tidak ada data penjualan</td>
                         </tr>
                         @endforelse
                     </tbody>
@@ -484,10 +576,7 @@
         
         // Get today's date in YYYY-MM-DD format
         const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        const todayFormatted = `${year}-${month}-${day}`;
+        const todayFormatted = getTodayYYYYMMDD();
         
         // Set default values if empty
         if (!startDateInput.value) {

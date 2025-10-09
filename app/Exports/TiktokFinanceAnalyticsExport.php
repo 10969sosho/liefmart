@@ -157,7 +157,7 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             'No. Order',
             'No. Invoice',
             'Status',
-            'HPP (Rp)',
+            'Harga (Rp)',
             'Biaya Admin (Rp)',
             'Affiliate (Rp)',
             'Shipping (Rp)',
@@ -171,6 +171,7 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             'Biaya 11 (Rp)',
             'Biaya 12 (Rp)',
             'Adjustment (Rp)',
+            'Keterangan Adjustment',
             'Nominal Fix (Rp)',
             'Saldo Masuk (Rp)',
             'Tanggal Pembayaran',
@@ -256,6 +257,7 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             $transaction->nominal_diskon11 ?? 0, // BIAYA 11
             $transaction->nominal_diskon12 ?? 0, // BIAYA 12
             $transaction->adjustment ?? 0,
+            $transaction->adjustment_description ?? '-',
             $transaction->nominal_fix ?? 0,
             $transaction->saldo_masuk ?? 0,
             $transaction->tanggal_masuk_pembayaran ? Carbon::parse($transaction->tanggal_masuk_pembayaran)->format('d/m/Y') : '-',

@@ -207,6 +207,51 @@ class SubBrandController extends Controller
     }
 
     /**
+     * Store a newly created sub brand via API.
+     */
+    public function storeApi(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'name' => 'required|string|max:255',
+                'brand_id' => 'required|exists:brands,id',
+                'description' => 'nullable|string',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $data = [
+                'name' => $request->name,
+                'brand_id' => $request->brand_id,
+                'description' => $request->description,
+                'is_active' => true,
+            ];
+
+            $subBrand = SubBrand::create($data);
+
+            return response()->json([
+                'success' => true,
+                'id' => $subBrand->id,
+                'name' => $subBrand->name,
+                'message' => 'Sub Brand berhasil ditambahkan'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create SubBrand via API: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Fix subbrands with missing brands
      */
     public function fixMissingBrands()

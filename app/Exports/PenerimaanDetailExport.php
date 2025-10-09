@@ -195,7 +195,7 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
                     $potongan = $subtotal * ($diskonPersen / 100);
                     $subtotal -= $potongan;
                     $totalDiskonPersen += $diskonPersen;
-                    $discountPercentages[] = number_format($diskonPersen, 0) . '%'; // Store individual percentage
+                    $discountPercentages[] = number_format($diskonPersen, 2) . '%'; // Store individual percentage with 2 decimal places
                 } elseif ($diskonNominal > 0) {
                     $subtotal -= $diskonNominal;
                     $totalDiskonNominal += $diskonNominal;

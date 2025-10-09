@@ -412,11 +412,12 @@
                                 <table class="table align-middle" id="tabelDetailBarang">
                                     <thead class="bg-light">
                                         <tr>
-                                            <th style="width: 35%" class="ps-4">Nama Barang</th>
-                                            <th style="width: 10%" class="text-center">Qty</th>
-                                            <th style="width: 15%" class="text-center">Satuan</th>
-                                            <th style="width: 15%" class="text-end">Harga</th>
+                                            <th style="width: 30%" class="ps-4">Nama Barang</th>
+                                            <th style="width: 8%" class="text-center">Qty</th>
+                                            <th style="width: 12%" class="text-center">Satuan</th>
+                                            <th style="width: 12%" class="text-end">Harga</th>
                                             <th style="width: 15%" class="text-end">Diskon</th>
+                                            <th style="width: 13%" class="text-end">Sub Total</th>
                                             <th style="width: 10%" class="text-center pe-4">Aksi</th>
                                         </tr>
                                     </thead>
@@ -500,6 +501,15 @@
                                                             value="{{ $detail->diskon_nominal_5 }}">
                                                         <input type="hidden" name="is_free[]"
                                                             value="{{ $detail->is_free ? 1 : 0 }}">
+                                                    </td>
+                                                    <td class="text-end">
+                                                        @if ($detail->is_free)
+                                                            <span class="badge bg-secondary rounded-pill">Free</span>
+                                                        @else
+                                                            Rp {{ number_format($detail->subtotal, 0, ',', '.') }}
+                                                        @endif
+                                                        <input type="hidden" name="subtotal[]"
+                                                            value="{{ $detail->subtotal }}">
                                                     </td>
                                                     <td class="text-center pe-4">
                                                         <button type="button" class="btn-delete"
@@ -1211,6 +1221,10 @@
                         <input type="hidden" name="diskon_persen_5[]" value="${diskonPersen[4]}">
                         <input type="hidden" name="diskon_nominal_5[]" value="${diskonNominal[4]}">
                         <input type="hidden" name="is_free[]" value="${isFree ? 1 : 0}">
+                    </td>
+                    <td class="text-end">
+                        ${isFree ? '<span class="badge bg-secondary rounded-pill">Free</span>' : `Rp ${formatRupiah(subtotal)}`}
+                        <input type="hidden" name="subtotal[]" value="${subtotal}">
                     </td>
                     <td class="text-center pe-4">
                         <button type="button" class="btn-delete" data-id="${itemCounter}" title="Hapus item">

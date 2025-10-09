@@ -131,11 +131,13 @@ class UnpaidOrdersController extends Controller
         $ordersNonBlibli = $queryNonBlibli ? $queryNonBlibli->get() : collect();
         $ordersBlibli = $queryBlibli ? $queryBlibli->get() : collect();
         
-        // Get fully returned orders (these should be moved to unpaid orders)
-        $fullyReturnedOrders = $this->getFullyReturnedOrdersWithPayments($filters);
-        
         // Combine all orders
-        $allOrders = $ordersNonBlibli->concat($ordersBlibli)->concat($fullyReturnedOrders)->unique('id');
+        $allOrders = $ordersNonBlibli->concat($ordersBlibli)->unique('id');
+        
+        // Filter out fully returned orders
+        $allOrders = $allOrders->filter(function($order) {
+            return !$order->isFullyReturned();
+        });
 
         // Sort collection
         $sortBy = $filters['sort_by'] === 'tanggal' ? 'tanggal' : 'order_number';
@@ -285,6 +287,11 @@ class UnpaidOrdersController extends Controller
         $ordersNonBlibli = $queryNonBlibli ? $queryNonBlibli->get() : collect();
         $ordersBlibli = $queryBlibli ? $queryBlibli->get() : collect();
         $allOrders = $ordersNonBlibli->concat($ordersBlibli)->unique('id');
+        
+        // Filter out fully returned orders
+        $allOrders = $allOrders->filter(function($order) {
+            return !$order->isFullyReturned();
+        });
 
         // Sort collection
         $sortBy = $request->get('sort_by', 'tanggal') === 'tanggal' ? 'tanggal' : 'order_number';
@@ -423,56 +430,4 @@ class UnpaidOrdersController extends Controller
         ];
     }
 
-    /**
-     * Get fully returned orders that have financial transactions
-     * These should be moved to unpaid orders list with "RETUR" note
-     */
-    private function getFullyReturnedOrdersWithPayments($filters)
-    {
-        // Get orders that have financial transactions but are fully returned
-        $query = Order::with(['orderItems.platformProduct.mappingBarang', 'platform', 'mainCategory'])
-            ->where(function($q) {
-                // Must have at least one financial transaction
-                $q->whereHas('shopeeFinancialTransactions')
-                  ->orWhereHas('tokopediaFinancialTransactions')
-                  ->orWhereHas('tiktokFinancialTransactions')
-                  ->orWhereHas('blibliFinancialTransactions');
-            });
-
-        // Apply platform filter if specified
-        if ($filters['platform']) {
-            $query->whereHas('platform', function($q) use ($filters) {
-                $q->whereRaw('LOWER(name) = ?', [strtolower($filters['platform'])]);
-            });
-        }
-
-        // Apply date filters
-        if ($filters['from_date']) {
-            $query->whereDate('tanggal', '>=', $filters['from_date']);
-        }
-        if ($filters['to_date']) {
-            $query->whereDate('tanggal', '<=', $filters['to_date']);
-        }
-        if ($filters['order_number']) {
-            $query->where('order_number', 'like', '%' . $filters['order_number'] . '%');
-        }
-        if ($filters['customer_name']) {
-            $query->where('customer_name', 'like', '%' . $filters['customer_name'] . '%');
-        }
-
-        $orders = $query->get();
-        
-        // Filter to only fully returned orders
-        $fullyReturnedOrders = $orders->filter(function($order) {
-            return $order->isFullyReturned();
-        });
-
-        // Add special marker for these orders to show they are returns
-        $fullyReturnedOrders->each(function($order) {
-            $order->is_return_unpaid = true;
-            $order->unpaid_reason = 'RETUR FULL';
-        });
-
-        return $fullyReturnedOrders;
-    }
 } 

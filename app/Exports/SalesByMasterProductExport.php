@@ -167,7 +167,7 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
                 $textColumns = ['B', 'C', 'G']; // No Pesanan, No Invoice, SKU
                 
                 foreach ($textColumns as $column) {
-                    for ($row = 10; $row <= $lastRow; $row++) {
+                    for ($row = 11; $row <= $lastRow; $row++) {
                         $cell = $column . $row;
                         $value = $sheet->getCell($cell)->getValue();
                         
@@ -184,7 +184,7 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
     public function styles(Worksheet $sheet)
     {
         // Style header row - CLEAN STYLING
-        $sheet->getStyle('A9:V9')->applyFromArray([
+        $sheet->getStyle('A10:V10')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['rgb' => 'FFFFFF'],
@@ -210,7 +210,7 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         // Apply clean styling to prevent unwanted highlights
 
         // Add summary information at the top - CLEAN STYLING
-        $sheet->insertNewRowBefore(1, 8);
+        $sheet->insertNewRowBefore(1, 9);
         
         // Title styling
         $sheet->setCellValue('A1', 'ANALISIS GROSS PROFIT PER MASTER PRODUK');
@@ -248,8 +248,8 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         ]);
         
         // Summary data styling - LEFT ALIGNED, NO CENTER
-        $summaryLabels = ['A4', 'A5', 'A6', 'A7', 'A8'];
-        $summaryValues = ['B4', 'B5', 'B6', 'B7', 'B8'];
+        $summaryLabels = ['A4', 'A5', 'A6', 'A7', 'A8', 'A9'];
+        $summaryValues = ['B4', 'B5', 'B6', 'B7', 'B8', 'B9'];
         
         $sheet->setCellValue('A4', 'Periode:');
         $sheet->setCellValue('B4', ($this->filters['start_date'] ?? date('Y-m-d')) . ' s/d ' . ($this->filters['end_date'] ?? date('Y-m-d')));
@@ -260,11 +260,14 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         $sheet->setCellValue('A6', 'Total Saldo Masuk:');
         $sheet->setCellValue('B6', 'Rp ' . number_format($this->summary['total_revenue'], 0, ',', '.'));
         
-        $sheet->setCellValue('A7', 'Total Modal:');
-        $sheet->setCellValue('B7', 'Rp ' . number_format($this->summary['total_capital'], 0, ',', '.'));
+        $sheet->setCellValue('A7', 'Total Saldo Masuk - PPN:');
+        $sheet->setCellValue('B7', 'Rp ' . number_format($this->summary['total_revenue'] / 1.11, 0, ',', '.'));
         
-        $sheet->setCellValue('A8', 'Gross Profit:');
-        $sheet->setCellValue('B8', 'Rp ' . number_format($this->summary['total_gross_profit'], 0, ',', '.'));
+        $sheet->setCellValue('A8', 'Total Modal:');
+        $sheet->setCellValue('B8', 'Rp ' . number_format($this->summary['total_capital'], 0, ',', '.'));
+        
+        $sheet->setCellValue('A9', 'Gross Profit:');
+        $sheet->setCellValue('B9', 'Rp ' . number_format(($this->summary['total_revenue'] / 1.11) - $this->summary['total_capital'], 0, ',', '.'));
         
         // Apply consistent styling to summary labels and values
         foreach ($summaryLabels as $cell) {
@@ -305,25 +308,25 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         $lastRow = $sheet->getHighestRow();
         $currencyColumns = ['J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T'];
         foreach ($currencyColumns as $col) {
-            $sheet->getStyle($col . '10:' . $col . $lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
+            $sheet->getStyle($col . '11:' . $col . $lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
         }
         
         // Format percentage columns (O, U, V)
         $percentageColumns = ['O', 'U', 'V'];
         foreach ($percentageColumns as $col) {
-            $sheet->getStyle($col . '10:' . $col . $lastRow)->getNumberFormat()->setFormatCode('0.00%');
+            $sheet->getStyle($col . '11:' . $col . $lastRow)->getNumberFormat()->setFormatCode('0.00%');
         }
         
         // Format text columns (B, C, G) to ensure they stay as text
         $textColumns = ['B', 'C', 'G'];
         foreach ($textColumns as $col) {
-            $sheet->getStyle($col . '10:' . $col . $lastRow)->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+            $sheet->getStyle($col . '11:' . $col . $lastRow)->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
         }
         
         // Format number columns (F, I) as numbers without decimal places
         $numberColumns = ['F', 'I'];
         foreach ($numberColumns as $col) {
-            $sheet->getStyle($col . '10:' . $col . $lastRow)->getNumberFormat()->setFormatCode('#,##0');
+            $sheet->getStyle($col . '11:' . $col . $lastRow)->getNumberFormat()->setFormatCode('#,##0');
         }
         
         // Remove any conditional formatting and ensure no blue highlights
@@ -342,7 +345,7 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         ]);
         
         // Apply clean styling to all data rows - NO BOLD TEXT, NO CENTER ALIGNMENT
-        $sheet->getStyle('A10:V' . $lastRow)->applyFromArray([
+        $sheet->getStyle('A11:V' . $lastRow)->applyFromArray([
             'fill' => [
                 'fillType' => 'none'
             ],
@@ -366,7 +369,7 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         // Special alignment for numeric columns (right aligned)
         $numericColumns = ['F', 'I', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T'];
         foreach ($numericColumns as $col) {
-            $sheet->getStyle($col . '10:' . $col . $lastRow)->applyFromArray([
+            $sheet->getStyle($col . '11:' . $col . $lastRow)->applyFromArray([
                 'alignment' => [
                     'horizontal' => 'right',
                     'vertical' => 'center'
@@ -377,7 +380,7 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         // Special alignment for percentage columns (right aligned)
         $percentageColumns = ['O', 'U', 'V'];
         foreach ($percentageColumns as $col) {
-            $sheet->getStyle($col . '10:' . $col . $lastRow)->applyFromArray([
+            $sheet->getStyle($col . '11:' . $col . $lastRow)->applyFromArray([
                 'alignment' => [
                     'horizontal' => 'right',
                     'vertical' => 'center'

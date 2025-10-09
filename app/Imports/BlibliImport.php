@@ -630,7 +630,7 @@ class BlibliImport extends DefaultValueBinder implements ToCollection, WithMulti
             $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                 ->where('qty', '>', 0)
                 ->orderBy('created_at', 'asc') // Layer 1: FIFO berdasarkan tanggal penerimaan
-                ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+                ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
                 ->get();
 
             $remainingQty = $qtyToReduce;

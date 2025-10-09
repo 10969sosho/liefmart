@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name', 'Laravel') }}</title>
     
     <!-- Fonts -->
@@ -225,6 +226,9 @@
             padding: 0.75rem 1.5rem;
             border-radius: 0.75rem;
             box-shadow: var(--card-shadow);
+            min-height: 60px !important;
+            height: auto !important;
+            max-height: none !important;
         }
         
         .navbar-toggler {
@@ -240,6 +244,16 @@
         
         .navbar-toggler:focus {
             box-shadow: none;
+        }
+        
+        /* Ensure navbar is not affected by other styling */
+        .navbar * {
+            box-sizing: border-box;
+        }
+        
+        .navbar .container-fluid {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
         }
         
         .card {
@@ -497,6 +511,53 @@
             background-color: white;
             z-index: 10;
         }
+        
+        /* Tom Select Dropdown Fix - Ensure dropdown appears above other elements */
+        .ts-dropdown {
+            z-index: 9999 !important;
+            position: absolute !important;
+        }
+        
+        .ts-control {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Ensure form containers don't clip dropdowns */
+        .form-group {
+            position: relative;
+            overflow: visible !important;
+        }
+        
+        .card-body {
+            overflow: visible !important;
+        }
+        
+        .input-group {
+            position: relative;
+            overflow: visible !important;
+        }
+        
+        /* Modal dropdown fix */
+        .modal .ts-dropdown {
+            z-index: 10000 !important;
+        }
+        
+        /* Ensure dropdowns in cards are visible */
+        .card {
+            overflow: visible !important;
+        }
+        
+        /* Fix for nested dropdowns */
+        .ts-wrapper {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .ts-dropdown-content {
+            max-height: 200px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -709,6 +770,9 @@
             }, 1000);
         });
     </script>
+    
+    <!-- Date Format Handler -->
+    <script src="{{ asset('js/date-format.js') }}"></script>
     
     @stack('scripts')
 </body>

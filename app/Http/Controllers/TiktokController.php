@@ -107,6 +107,14 @@ public function importExcel()
                 \Log::info('Duplicate orders found: ' . count($duplicateOrders));
             }
             
+            // Set main category ke Kosmetik sebelum validasi stok
+            session(['main_category_id' => 2]);
+            session(['main_category_name' => 'Kosmetik']);
+            
+            // Debug logging
+            $mainCategoryId = \App\Helpers\MainCategoryHelper::getSelectedMainCategoryId();
+            \Log::info('TikTok PreviewImport - Main Category set to: ' . ($mainCategoryId ?: 'NULL'));
+            
             // Cek ketersediaan stok dengan detail yang lebih lengkap
             $insufficientStockProducts = [];
             $ordersWithStockIssues = [];

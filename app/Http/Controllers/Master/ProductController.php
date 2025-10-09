@@ -172,6 +172,9 @@ class ProductController extends Controller
                 'discount_percentage' => 'nullable|numeric|min:0|max:100',
             ]);
 
+            // Validasi hierarki - pastikan semua relasi konsisten
+            $this->validateHierarchy($validated);
+
             // Pastikan value is_active selalu ada
             // Jika hidden input ada dan checkbox tidak di-check, gunakan nilai 0
             // Jika checkbox di-check, gunakan nilai 1
@@ -313,6 +316,9 @@ class ProductController extends Controller
                 'discount_percentage' => 'nullable|numeric|min:0|max:100',
             ]);
             
+            // Validasi hierarki - pastikan semua relasi konsisten
+            $this->validateHierarchy($validated);
+            
             // Pastikan value is_active selalu ada
             $validated['is_active'] = $request->has('is_active') ? 1 : 0;
             
@@ -431,5 +437,57 @@ class ProductController extends Controller
             ->get();
             
         return response()->json($productTypes);
+    }
+    
+    /**
+     * Validate hierarchy consistency
+     *
+     * @param  array  $validated
+     * @return void
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    private function validateHierarchy($validated)
+    {
+        // Validasi Brand -> Sub Brand
+        $subBrand = SubBrand::find($validated['sub_brand_id']);
+        if (!$subBrand || $subBrand->brand_id != $validated['brand_id']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'sub_brand_id' => 'Sub Brand tidak sesuai dengan Brand yang dipilih.'
+            ]);
+        }
+        
+        // Validasi Sub Brand -> Product Category
+        $productCategory = ProductCategory::find($validated['product_category_id']);
+        if (!$productCategory || $productCategory->sub_brand_id != $validated['sub_brand_id']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'product_category_id' => 'Kategori Produk tidak sesuai dengan Sub Brand yang dipilih.'
+            ]);
+        }
+        
+        // Validasi Product Category -> Product Type
+        $productType = ProductType::find($validated['product_type_id']);
+        if (!$productType || $productType->product_category_id != $validated['product_category_id']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'product_type_id' => 'Tipe Produk tidak sesuai dengan Kategori Produk yang dipilih.'
+            ]);
+        }
+        
+        // Validasi Product Type -> Product Size
+        $productSize = ProductSize::find($validated['product_size_id']);
+        if (!$productSize || $productSize->product_type_id != $validated['product_type_id']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'product_size_id' => 'Ukuran Produk tidak sesuai dengan Tipe Produk yang dipilih.'
+            ]);
+        }
+        
+        // Validasi Product Size -> Product Variant (jika ada)
+        if (!empty($validated['product_variant_id'])) {
+            $productVariant = ProductVariant::find($validated['product_variant_id']);
+            if (!$productVariant || $productVariant->product_size_id != $validated['product_size_id']) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'product_variant_id' => 'Varian Produk tidak sesuai dengan Ukuran Produk yang dipilih.'
+                ]);
+            }
+        }
     }
 } 

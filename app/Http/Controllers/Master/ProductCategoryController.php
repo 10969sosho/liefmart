@@ -137,6 +137,51 @@ class ProductCategoryController extends Controller
     }
 
     /**
+     * Store a newly created product category via API.
+     */
+    public function storeApi(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'name' => 'required|string|max:255',
+                'sub_brand_id' => 'required|exists:sub_brands,id',
+                'description' => 'nullable|string',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $data = [
+                'name' => $request->name,
+                'sub_brand_id' => $request->sub_brand_id,
+                'description' => $request->description,
+                'is_active' => true,
+            ];
+
+            $productCategory = ProductCategory::create($data);
+
+            return response()->json([
+                'success' => true,
+                'id' => $productCategory->id,
+                'name' => $productCategory->name,
+                'message' => 'Kategori Produk berhasil ditambahkan'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create ProductCategory via API: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Remove the specified product category from storage.
      */
     public function destroy(ProductCategory $productCategory)

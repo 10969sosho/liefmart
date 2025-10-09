@@ -206,7 +206,7 @@
                                         <span class="input-group-text">Rp</span>
                                         <input class="form-control @error('initial_price') is-invalid @enderror" 
                                             type="number" id="initial_price" name="initial_price" 
-                                            value="{{ old('initial_price', $product->initial_price) }}" 
+                                            value="{{ old('initial_price', $product->initial_price ?? 0) }}" 
                                             min="0" step="0.01" placeholder="0">
                                     </div>
                                     @error('initial_price')
@@ -221,7 +221,7 @@
                                     <div class="input-group">
                                         <input class="form-control @error('discount_percentage') is-invalid @enderror" 
                                             type="number" id="discount_percentage" name="discount_percentage" 
-                                            value="{{ old('discount_percentage', $product->discount_percentage) }}" 
+                                            value="{{ old('discount_percentage', $product->discount_percentage ?? 0) }}" 
                                             min="0" max="100" step="0.01" placeholder="0">
                                         <span class="input-group-text">%</span>
                                     </div>
@@ -237,7 +237,7 @@
                             <div class="input-group">
                                 <span class="input-group-text">Rp</span>
                                 <input type="text" class="form-control" id="final_price" readonly 
-                                    value="{{ $product->initial_price ? number_format($product->initial_price * (1 - ($product->discount_percentage ?? 0) / 100), 0, ',', '.') : '0' }}">
+                                    value="{{ number_format(($product->initial_price ?? 0) * (1 - ($product->discount_percentage ?? 0) / 100), 0, ',', '.') }}">
                             </div>
                             <small class="form-text text-muted">Harga akhir akan dihitung otomatis berdasarkan harga awal dan diskon</small>
                         </div>

@@ -137,53 +137,138 @@ class ShopeeController extends Controller
             $skippedRows = array_filter($skippedRows);
             \Log::info('Skipped rows: ' . json_encode($skippedRows));
 
-            // Cek order yang sudah ada di database
-            $duplicateOrders = [];
-            if (!empty($data)) {
-                $orderNumbers = array_unique(array_column($data, 'no_order'));
-                \Log::info('Unique order numbers: ' . count($orderNumbers));
-
-                foreach ($orderNumbers as $orderNumber) {
-                    $existingOrder = Order::where('order_number', $orderNumber)
-                        ->exists();
-
-                    if ($existingOrder) {
-                        $duplicateOrders[] = $orderNumber;
-                    }
-                }
+            // Ambil data duplikat dari import
+            $duplicateOrders = $import->getDuplicateOrders();
+            $duplicateOrdersInFile = $import->getDuplicateOrdersInFile();
+            $duplicateOrdersInDatabase = $import->getDuplicateOrdersInDatabase();
+            
+            if (!empty($duplicateOrders)) {
                 \Log::info('Duplicate orders found: ' . count($duplicateOrders));
             }
+            if (!empty($duplicateOrdersInFile)) {
+                \Log::info('Duplicate orders in file: ' . count($duplicateOrdersInFile));
+            }
+            if (!empty($duplicateOrdersInDatabase)) {
+                \Log::info('Duplicate orders in database: ' . count($duplicateOrdersInDatabase));
+            }
             
-            // Cek ketersediaan stok
+            // Set main category ke Kosmetik sebelum validasi stok
+            session(['main_category_id' => 2]);
+            session(['main_category_name' => 'Kosmetik']);
+            
+            // Debug logging
+            $mainCategoryId = \App\Helpers\MainCategoryHelper::getSelectedMainCategoryId();
+            \Log::info('PreviewImport - Main Category set to: ' . ($mainCategoryId ?: 'NULL'));
+            
+            // Validasi lengkap untuk semua kemungkinan error
             $insufficientStockProducts = [];
+            $stockErrors = [];
+            $mappingErrors = [];
+            $dataErrors = [];
+            
             if (!empty($data)) {
-                // Kelompokkan data berdasarkan product_id
-                $productQuantities = [];
+                // Kelompokkan data berdasarkan platform_product_id
+                $platformProductQuantities = [];
                 foreach ($data as $row) {
-                    if (isset($row['product_id'])) {
-                        if (!isset($productQuantities[$row['product_id']])) {
-                            $productQuantities[$row['product_id']] = 0;
+                    if (isset($row['platform_product_id'])) {
+                        if (!isset($platformProductQuantities[$row['platform_product_id']])) {
+                            $platformProductQuantities[$row['platform_product_id']] = 0;
                         }
-                        $productQuantities[$row['product_id']] += $row['qty'];
+                        $platformProductQuantities[$row['platform_product_id']] += $row['qty'];
                     }
                 }
                 
-                // Cek stok untuk setiap produk
-                foreach ($productQuantities as $productId => $requiredQty) {
-                    $availableStock = \App\Models\WarehouseStock::where('product_id', $productId)
-                        ->sum('qty');
+                // Cek stok untuk setiap platform product menggunakan mapping
+                foreach ($platformProductQuantities as $platformProductId => $quantity) {
+                    // Ambil semua mapping barang untuk platform product ini
+                    $mappings = \App\Models\MappingBarang::where('platform_product_id', $platformProductId)->get();
                     
-                    if ($availableStock < $requiredQty) {
-                        // Ambil informasi produk
-                        $product = \App\Models\Product::find($productId);
-                        $insufficientStockProducts[] = [
-                            'product_name' => $product ? $product->name : "Product ID: {$productId}",
-                            'required_qty' => $requiredQty,
-                            'available_qty' => $availableStock
+                    if ($mappings->isEmpty()) {
+                        $platformProduct = \App\Models\PlatformProduct::find($platformProductId);
+                        $mappingErrors[] = [
+                            'platform_product_id' => $platformProductId,
+                            'platform_product_name' => $platformProduct ? $platformProduct->name : "Unknown",
+                            'error' => 'Tidak ada mapping barang untuk platform product ini'
+                        ];
+                        continue;
+                    }
+                    
+                    foreach ($mappings as $mapping) {
+                        // Hitung jumlah yang perlu dikurangi dari stok
+                        $qtyToReduce = $quantity * $mapping->quantity;
+                        
+                        // Ambil total stok yang tersedia (global scope akan otomatis filter main_category_id)
+                        $availableStock = \App\Models\WarehouseStock::where('product_id', $mapping->product_id)
+                            ->where('qty', '>', 0)
+                            ->sum('qty');
+                        
+                        // Debug logging untuk stok
+                        \Log::info("Preview Stock Check - Product ID: {$mapping->product_id}, Required: {$qtyToReduce}, Available: {$availableStock}, Main Category: {$mainCategoryId}");
+                        
+                        // Jika stok tidak cukup, catat sebagai insufficient
+                        if ($availableStock < $qtyToReduce) {
+                            $product = \App\Models\Product::find($mapping->product_id);
+                            $platformProduct = \App\Models\PlatformProduct::find($platformProductId);
+                            
+                            $insufficientStockProducts[] = [
+                                'product_name' => $product ? $product->name : "Product ID: {$mapping->product_id}",
+                                'platform_product_name' => $platformProduct ? $platformProduct->name : "Platform Product ID: {$platformProductId}",
+                                'required_qty' => $qtyToReduce,
+                                'available_qty' => $availableStock,
+                                'mapping_quantity' => $mapping->quantity,
+                                'shortage' => $qtyToReduce - $availableStock
+                            ];
+                            
+                            $stockErrors[] = [
+                                'order_affected' => $this->getOrdersAffectedByProduct($data, $platformProductId),
+                                'product_name' => $product ? $product->name : "Product ID: {$mapping->product_id}",
+                                'required_qty' => $qtyToReduce,
+                                'available_qty' => $availableStock,
+                                'shortage' => $qtyToReduce - $availableStock
+                            ];
+                        }
+                    }
+                }
+                
+                // Validasi data tambahan
+                foreach ($data as $index => $row) {
+                    $rowErrors = [];
+                    
+                    // Cek tanggal
+                    if (empty($row['tanggal'])) {
+                        $rowErrors[] = 'Tanggal kosong';
+                    }
+                    
+                    // Cek nomor order
+                    if (empty($row['no_order'])) {
+                        $rowErrors[] = 'Nomor order kosong';
+                    }
+                    
+                    // Cek quantity
+                    if (empty($row['qty']) || $row['qty'] <= 0) {
+                        $rowErrors[] = 'Quantity tidak valid';
+                    }
+                    
+                    // Cek harga
+                    if (empty($row['harga_setelah_diskon']) || $row['harga_setelah_diskon'] <= 0) {
+                        $rowErrors[] = 'Harga tidak valid';
+                    }
+                    
+                    if (!empty($rowErrors)) {
+                        $dataErrors[] = [
+                            'row' => $index + 1,
+                            'order_number' => $row['no_order'] ?? 'N/A',
+                            'errors' => $rowErrors
                         ];
                     }
                 }
-                \Log::info('Insufficient stock products: ' . count($insufficientStockProducts));
+                
+                \Log::info('Validation results:', [
+                    'insufficient_stock' => count($insufficientStockProducts),
+                    'mapping_errors' => count($mappingErrors),
+                    'data_errors' => count($dataErrors),
+                    'stock_errors' => count($stockErrors)
+                ]);
             }
 
             // Jika ada masalah dengan header, tampilkan pesan error
@@ -214,26 +299,58 @@ class ShopeeController extends Controller
             session(['preview_data' => $data]);
             session(['unmapped_products' => $unmappedProducts]);
             session(['insufficient_stock_products' => $insufficientStockProducts]);
+            session(['stock_errors' => $stockErrors]);
+            session(['mapping_errors' => $mappingErrors]);
+            session(['data_errors' => $dataErrors]);
             session(['total_rows' => $totalRows]);
             session(['skipped_rows' => $skippedRows]);
             session(['duplicate_orders' => $duplicateOrders]);
+            session(['duplicate_orders_in_file' => $duplicateOrdersInFile]);
+            session(['duplicate_orders_in_database' => $duplicateOrdersInDatabase]);
             session(['invalid_data' => $invalidData]);
             session(['orders_with_unmapped_products' => $ordersWithUnmappedProducts]);
+            
+            // Debug logging untuk memastikan data tersimpan
+            \Log::info('PreviewImport - Data saved to session:', [
+                'preview_data_count' => count($data),
+                'unmapped_products_count' => count($unmappedProducts),
+                'insufficient_stock_count' => count($insufficientStockProducts),
+                'session_id' => session()->getId(),
+                'session_saved' => session()->has('preview_data')
+            ]);
+            
             \Log::info('Data saved to session, redirecting to preview');
 
+            // Tentukan apakah bisa proceed berdasarkan peraturan baru:
+            // - Jika ada error selain duplikat maka tidak bisa diproses
+            // - Jika hanya duplikat (baik dalam file maupun database) masih bisa diproses dan skip duplikat
+            $hasErrors = !empty($invalidData) || 
+                        !empty($insufficientStockProducts) || 
+                        !empty($unmappedProducts) || 
+                        !empty($stockErrors) || 
+                        !empty($mappingErrors) || 
+                        !empty($dataErrors);
+            
+            // Duplikat (baik dalam file maupun database) tidak menghalangi proses (akan di-skip)
+            
             // Tampilkan preview dengan semua data yang diperlukan
             return view('sales.shopee.preview-import', [
                 'data' => $data,
                 'unmappedProducts' => $unmappedProducts,
                 'invalidData' => $invalidData,
-                'canProceed' => empty($invalidData) && empty($insufficientStockProducts) && empty($unmappedProducts),
+                'canProceed' => !$hasErrors,
                 'totalRows' => $totalRows,
                 'skippedRows' => $skippedRows,
                 'duplicateOrders' => $duplicateOrders,
+                'duplicateOrdersInFile' => $duplicateOrdersInFile,
+                'duplicateOrdersInDatabase' => $duplicateOrdersInDatabase,
                 'insufficientStockProducts' => $insufficientStockProducts,
-                'ordersWithUnmappedProducts' => $ordersWithUnmappedProducts
-            ])->with('warning', !empty($unmappedProducts) ? 'Beberapa produk perlu dimapping terlebih dahulu. Pesanan dengan produk tersebut akan dilewati.' : 
-                    (!empty($insufficientStockProducts) ? 'Beberapa produk memiliki stok tidak mencukupi.' : null));
+                'stockErrors' => $stockErrors,
+                'mappingErrors' => $mappingErrors,
+                'dataErrors' => $dataErrors,
+                'ordersWithUnmappedProducts' => $ordersWithUnmappedProducts,
+                'hasErrors' => $hasErrors
+            ])->with('warning', $this->generateWarningMessage($unmappedProducts, $insufficientStockProducts, $stockErrors, $mappingErrors, $dataErrors, $duplicateOrdersInDatabase));
         } catch (\Exception $e) {
             \Log::error('Exception in previewImport: ' . $e->getMessage());
             \Log::error('Exception type: ' . get_class($e));
@@ -255,10 +372,22 @@ class ShopeeController extends Controller
         $unmappedProducts = session('unmapped_products');
         $insufficientStockProducts = session('insufficient_stock_products', []);
 
+        // Debug logging
+        \Log::info('ProcessImport - Session data check:', [
+            'has_preview_data' => !empty($data),
+            'has_unmapped_products' => !empty($unmappedProducts),
+            'has_insufficient_stock' => !empty($insufficientStockProducts),
+            'session_id' => session()->getId(),
+            'all_session_keys' => array_keys(session()->all()),
+            'preview_data_type' => gettype($data),
+            'preview_data_size' => is_array($data) ? count($data) : 'not_array'
+        ]);
+
         // Jika tidak ada data, kembalikan ke halaman import
         if (! $data) {
+            \Log::warning('ProcessImport - No preview data found in session');
             return redirect()->route('sales.shopee.import-excel')
-                ->with('error', 'Data preview tidak ditemukan. Silakan upload ulang file Excel.');
+                ->with('error', 'Data preview tidak ditemukan. Silakan upload file Excel terlebih dahulu.');
         }
 
         // Jika masih ada produk dengan stok tidak mencukupi, tampilkan error
@@ -299,6 +428,14 @@ class ShopeeController extends Controller
         }
 
         try {
+            // Set main category ke Kosmetik sebelum import
+            session(['main_category_id' => 2]);
+            session(['main_category_name' => 'Kosmetik']);
+            
+            // Debug logging
+            $mainCategoryId = \App\Helpers\MainCategoryHelper::getSelectedMainCategoryId();
+            \Log::info('ProcessImport - Main Category set to: ' . ($mainCategoryId ?: 'NULL'));
+            
             // Register our modified sales import handler
             \App\Models\WarehouseStock::$consolidateOrderItemsByProduct = true;
             \Log::info('Enabling order item consolidation for tax_id differences');
@@ -438,10 +575,19 @@ class ShopeeController extends Controller
         $insufficientStockProducts = session('insufficient_stock_products', []);
         $ordersWithUnmappedProducts = session('orders_with_unmapped_products', []);
 
+        // Debug logging
+        \Log::info('ShowPreview - Session data check:', [
+            'has_preview_data' => !empty($data),
+            'has_unmapped_products' => !empty($unmappedProducts),
+            'has_insufficient_stock' => !empty($insufficientStockProducts),
+            'session_id' => session()->getId()
+        ]);
+
         // If no data in session, redirect to import page
         if (!$data) {
+            \Log::warning('ShowPreview - No preview data found in session');
             return redirect()->route('sales.shopee.import-excel')
-                ->with('error', 'Tidak ada data preview. Silakan upload file terlebih dahulu.');
+                ->with('error', 'Tidak ada data preview. Silakan upload file Excel terlebih dahulu melalui menu Import Excel Shopee.');
         }
 
         return view('sales.shopee.preview-import', [
@@ -455,5 +601,53 @@ class ShopeeController extends Controller
             'insufficientStockProducts' => $insufficientStockProducts,
             'ordersWithUnmappedProducts' => $ordersWithUnmappedProducts
         ]);
+    }
+    
+    /**
+     * Helper method untuk mendapatkan order yang terpengaruh oleh produk
+     */
+    private function getOrdersAffectedByProduct($data, $platformProductId)
+    {
+        $affectedOrders = [];
+        foreach ($data as $row) {
+            if (isset($row['platform_product_id']) && $row['platform_product_id'] == $platformProductId) {
+                $affectedOrders[] = $row['no_order'] ?? 'N/A';
+            }
+        }
+        return array_unique($affectedOrders);
+    }
+    
+    /**
+     * Helper method untuk generate warning message
+     */
+    private function generateWarningMessage($unmappedProducts, $insufficientStockProducts, $stockErrors, $mappingErrors, $dataErrors, $duplicateOrdersInDatabase = [])
+    {
+        $messages = [];
+        
+        if (!empty($unmappedProducts)) {
+            $messages[] = 'Beberapa produk perlu dimapping terlebih dahulu.';
+        }
+        
+        if (!empty($insufficientStockProducts)) {
+            $messages[] = 'Beberapa produk memiliki stok tidak mencukupi.';
+        }
+        
+        if (!empty($mappingErrors)) {
+            $messages[] = 'Beberapa produk tidak memiliki mapping barang.';
+        }
+        
+        if (!empty($dataErrors)) {
+            $messages[] = 'Beberapa data memiliki format yang tidak valid.';
+        }
+        
+        if (!empty($stockErrors)) {
+            $messages[] = 'Ada masalah dengan ketersediaan stok.';
+        }
+        
+        if (!empty($duplicateOrdersInDatabase)) {
+            $messages[] = 'Beberapa order sudah ada di database dan akan di-skip.';
+        }
+        
+        return !empty($messages) ? implode(' ', $messages) : null;
     }
 }

@@ -18,6 +18,7 @@ use App\Http\Controllers\Finance\PembayaranTiktokController;
 use App\Http\Controllers\Finance\PembayaranBlibliController;
 use App\Http\Controllers\Finance\ManualController;
 use App\Http\Controllers\Finance\OfflineInvoiceController;
+use App\Http\Controllers\Admin\DatabaseRestoreController;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
@@ -60,6 +61,18 @@ Route::get('/under-construction', function () {
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->name('dashboard')
     ->middleware(['auth', 'main.category', 'prevent-back-history']);
+
+// Database Restore routes (only for superadmin - role_id = 1)
+Route::middleware(['auth', 'main.category', 'prevent-back-history'])->group(function () {
+    Route::get('/database-restore', [DatabaseRestoreController::class, 'index'])->name('database-restore.index');
+    Route::post('/database-restore', [DatabaseRestoreController::class, 'restore'])->name('database-restore.restore');
+    Route::post('/database-restore/server', [DatabaseRestoreController::class, 'restoreFromServer'])->name('database-restore.server');
+    Route::get('/database-restore/download-backup', [DatabaseRestoreController::class, 'downloadBackup'])->name('database-restore.download-backup');
+    
+    // Chunked upload routes
+    Route::post('/chunked-upload', [ChunkedUploadController::class, 'uploadChunk'])->name('chunked-upload.chunk');
+    Route::post('/chunked-upload/merge', [ChunkedUploadController::class, 'mergeChunks'])->name('chunked-upload.merge');
+});
 
 // User management routes (only for superadmin)
 Route::middleware(['auth', 'role:superadmin', 'main.category', 'prevent-back-history'])->group(function () {
@@ -242,6 +255,11 @@ Route::prefix('master')->middleware(['auth', 'main.category', 'prevent-back-hist
     // Bank Accounts Routes
     Route::resource('bank-accounts', App\Http\Controllers\Master\BankAccountController::class);
     Route::post('bank-accounts/{bankAccount}/set-active', [App\Http\Controllers\Master\BankAccountController::class, 'setActive'])->name('bank-accounts.set-active');
+    
+    // Master Barang Platform Routes
+    Route::resource('barang-platform', App\Http\Controllers\MasterBarangPlatformController::class);
+    Route::get('barang-platform/by-platform/{platformId}', [App\Http\Controllers\MasterBarangPlatformController::class, 'getByPlatform'])->name('barang-platform.by-platform');
+    Route::post('barang-platform/create-from-mapping', [App\Http\Controllers\MasterBarangPlatformController::class, 'createFromMapping'])->name('barang-platform.create-from-mapping');
     
     Route::prefix('mapping')->name('master.mapping.')->group(function () {
         // Check unmapped products
@@ -501,12 +519,14 @@ Route::prefix('analytics')
             Route::get('/sales-by-customer', [App\Http\Controllers\AnalyticController::class, 'offlineSalesByCustomerReport'])->name('sales-by-customer');
             Route::get('/sales-detail-report', [App\Http\Controllers\AnalyticController::class, 'offlineSalesDetailReport'])->name('sales-detail-report');
             Route::get('/sales-by-product', [App\Http\Controllers\AnalyticController::class, 'offlineSalesByProductReport'])->name('sales-by-product');
+            Route::get('/gross-profit', [App\Http\Controllers\AnalyticController::class, 'grossProfitOfflineReport'])->name('gross-profit');
             
             // Export routes for offline analytics
             Route::get('/monthly-sales-summary/export', [App\Http\Controllers\AnalyticController::class, 'exportOfflineMonthlySales'])->name('monthly-sales-summary.export');
             Route::get('/sales-by-customer/export', [App\Http\Controllers\AnalyticController::class, 'exportOfflineSalesByCustomer'])->name('sales-by-customer.export');
             Route::get('/sales-by-product/export', [App\Http\Controllers\AnalyticController::class, 'exportOfflineSalesByProduct'])->name('sales-by-product.export');
             Route::get('/sales-detail-report/export', [App\Http\Controllers\AnalyticController::class, 'exportOfflineSalesDetailReport'])->name('sales-detail-report.export');
+            Route::get('/gross-profit/export', [App\Http\Controllers\AnalyticController::class, 'exportGrossProfitOffline'])->name('gross-profit.export');
         });
     });
 

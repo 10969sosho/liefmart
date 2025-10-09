@@ -1,7 +1,7 @@
 {{-- resources/views/components/navbar.blade.php --}}
 
-<nav class="navbar navbar-expand-lg mb-4" style="background-color: #FFFFFF; border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.1), 0 2px 4px -1px rgba(99, 102, 241, 0.06);">
-    <div class="container-fluid px-0">
+<nav class="navbar navbar-expand-lg mb-4" style="background-color: #FFFFFF; border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.1), 0 2px 4px -1px rgba(99, 102, 241, 0.06); min-height: 60px; height: auto !important;">
+    <div class="container-fluid px-3">
         <button class="navbar-toggler" type="button" id="sidebarToggle" style="color: #6366F1;">
             <i class="fas fa-bars"></i>
         </button>

@@ -837,8 +837,48 @@
                                 // RETUR: Tidak ada harga karena ini adalah return (tidak ada biaya)
                                 hargaSatuan = 'Retur';
                             } else if (item.penerimaan_detail && item.penerimaan_detail.harga_hpp != null && !isNaN(item.penerimaan_detail.harga_hpp)) {
-                                // NORMAL: gunakan harga_hpp dari penerimaan_detail
-                                hargaSatuan = formatCurrency(item.penerimaan_detail.harga_hpp);
+                                // NORMAL: Hitung harga setelah diskon bertingkat
+                                let hppAsli = parseFloat(item.penerimaan_detail.harga_hpp);
+                                let hppSetelahDiskon = hppAsli;
+                                
+                                // Apply percentage discounts in sequence (tiered discounts)
+                                if (item.penerimaan_detail.diskon_persen_1 > 0) {
+                                    hppSetelahDiskon -= (hppSetelahDiskon * item.penerimaan_detail.diskon_persen_1 / 100);
+                                }
+                                if (item.penerimaan_detail.diskon_persen_2 > 0) {
+                                    hppSetelahDiskon -= (hppSetelahDiskon * item.penerimaan_detail.diskon_persen_2 / 100);
+                                }
+                                if (item.penerimaan_detail.diskon_persen_3 > 0) {
+                                    hppSetelahDiskon -= (hppSetelahDiskon * item.penerimaan_detail.diskon_persen_3 / 100);
+                                }
+                                if (item.penerimaan_detail.diskon_persen_4 > 0) {
+                                    hppSetelahDiskon -= (hppSetelahDiskon * item.penerimaan_detail.diskon_persen_4 / 100);
+                                }
+                                if (item.penerimaan_detail.diskon_persen_5 > 0) {
+                                    hppSetelahDiskon -= (hppSetelahDiskon * item.penerimaan_detail.diskon_persen_5 / 100);
+                                }
+                                
+                                // Apply nominal discounts
+                                if (item.penerimaan_detail.diskon_nominal_1 > 0) {
+                                    hppSetelahDiskon -= parseFloat(item.penerimaan_detail.diskon_nominal_1);
+                                }
+                                if (item.penerimaan_detail.diskon_nominal_2 > 0) {
+                                    hppSetelahDiskon -= parseFloat(item.penerimaan_detail.diskon_nominal_2);
+                                }
+                                if (item.penerimaan_detail.diskon_nominal_3 > 0) {
+                                    hppSetelahDiskon -= parseFloat(item.penerimaan_detail.diskon_nominal_3);
+                                }
+                                if (item.penerimaan_detail.diskon_nominal_4 > 0) {
+                                    hppSetelahDiskon -= parseFloat(item.penerimaan_detail.diskon_nominal_4);
+                                }
+                                if (item.penerimaan_detail.diskon_nominal_5 > 0) {
+                                    hppSetelahDiskon -= parseFloat(item.penerimaan_detail.diskon_nominal_5);
+                                }
+                                
+                                // Ensure price doesn't go negative
+                                hppSetelahDiskon = Math.max(0, hppSetelahDiskon);
+                                
+                                hargaSatuan = formatCurrency(hppSetelahDiskon);
                             }
                             const status = getStatusLabel(item);
                             
@@ -1226,6 +1266,15 @@
             const day = String(d.getDate()).padStart(2, '0');
             const month = String(d.getMonth() + 1).padStart(2, '0');
             const year = String(d.getFullYear()).slice(-2);
+            return `${day}/${month}/${year}`;
+        }
+        
+        function formatDateDDMMYYYY(date) {
+            if (!date) return '';
+            const d = new Date(date);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
             return `${day}/${month}/${year}`;
         }
         

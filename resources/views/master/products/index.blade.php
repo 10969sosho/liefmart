@@ -204,35 +204,25 @@
                                     </td>
                                     <td>
                                         <span class="text-secondary text-xs font-weight-bold">
-                                            @if($product->initial_price)
-                                                Rp {{ number_format($product->initial_price, 0, ',', '.') }}
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
+                                            Rp {{ number_format($product->initial_price ?? 0, 0, ',', '.') }}
                                         </span>
                                     </td>
                                     <td>
                                         <span class="text-secondary text-xs font-weight-bold">
-                                            @if($product->discount_percentage)
-                                                {{ number_format($product->discount_percentage, 1) }}%
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
+                                            {{ number_format($product->discount_percentage ?? 0, 1) }}%
                                         </span>
                                     </td>
                                     <td>
                                         <span class="text-success text-xs font-weight-bold">
-                                            @if($product->initial_price)
-                                                @php
-                                                    $finalPrice = $product->initial_price;
-                                                    if($product->discount_percentage > 0) {
-                                                        $finalPrice = $product->initial_price * (1 - $product->discount_percentage / 100);
-                                                    }
-                                                @endphp
-                                                Rp {{ number_format($finalPrice, 0, ',', '.') }}
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
+                                            @php
+                                                $initialPrice = $product->initial_price ?? 0;
+                                                $discountPercentage = $product->discount_percentage ?? 0;
+                                                $finalPrice = $initialPrice;
+                                                if($discountPercentage > 0) {
+                                                    $finalPrice = $initialPrice * (1 - $discountPercentage / 100);
+                                                }
+                                            @endphp
+                                            Rp {{ number_format($finalPrice, 0, ',', '.') }}
                                         </span>
                                     </td>
                                     <td class="align-middle">

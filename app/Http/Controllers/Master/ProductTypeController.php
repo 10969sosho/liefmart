@@ -145,6 +145,43 @@ class ProductTypeController extends Controller
     }
 
     /**
+     * Store a newly created product type via API.
+     */
+    public function storeApi(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'product_category_id' => 'required|exists:product_categories,id',
+                'description' => 'nullable|string',
+            ]);
+
+            $data = [
+                'name' => $request->name,
+                'product_category_id' => $request->product_category_id,
+                'description' => $request->description,
+                'is_active' => true,
+            ];
+
+            $productType = ProductType::create($data);
+
+            return response()->json([
+                'success' => true,
+                'id' => $productType->id,
+                'name' => $productType->name,
+                'message' => 'Tipe Produk berhasil ditambahkan'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create ProductType via API: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Remove the specified resource from storage.
      *
      * @param  int  $id

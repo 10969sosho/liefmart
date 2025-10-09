@@ -51,37 +51,27 @@
                                     <div class="row mb-3">
                                         <div class="col-md-4 text-sm text-secondary">Harga Awal</div>
                                         <div class="col-md-8 text-sm font-weight-bold">
-                                            @if($product->initial_price)
-                                                Rp {{ number_format($product->initial_price, 0, ',', '.') }}
-                                            @else
-                                                <span class="text-muted">Tidak ada</span>
-                                            @endif
+                                            Rp {{ number_format($product->initial_price ?? 0, 0, ',', '.') }}
                                         </div>
                                     </div>
                                     <div class="row mb-3">
                                         <div class="col-md-4 text-sm text-secondary">Diskon (%)</div>
                                         <div class="col-md-8 text-sm font-weight-bold">
-                                            @if($product->discount_percentage)
-                                                {{ number_format($product->discount_percentage, 1) }}%
-                                            @else
-                                                <span class="text-muted">Tidak ada</span>
-                                            @endif
+                                            {{ number_format($product->discount_percentage ?? 0, 1) }}%
                                         </div>
                                     </div>
                                     <div class="row mb-3">
                                         <div class="col-md-4 text-sm text-secondary">Harga Akhir</div>
                                         <div class="col-md-8 text-sm font-weight-bold text-success">
-                                            @if($product->initial_price)
-                                                @php
-                                                    $finalPrice = $product->initial_price;
-                                                    if($product->discount_percentage > 0) {
-                                                        $finalPrice = $product->initial_price * (1 - $product->discount_percentage / 100);
-                                                    }
-                                                @endphp
-                                                Rp {{ number_format($finalPrice, 0, ',', '.') }}
-                                            @else
-                                                <span class="text-muted">Tidak ada</span>
-                                            @endif
+                                            @php
+                                                $initialPrice = $product->initial_price ?? 0;
+                                                $discountPercentage = $product->discount_percentage ?? 0;
+                                                $finalPrice = $initialPrice;
+                                                if($discountPercentage > 0) {
+                                                    $finalPrice = $initialPrice * (1 - $discountPercentage / 100);
+                                                }
+                                            @endphp
+                                            Rp {{ number_format($finalPrice, 0, ',', '.') }}
                                         </div>
                                     </div>
                                     <div class="row mb-3">

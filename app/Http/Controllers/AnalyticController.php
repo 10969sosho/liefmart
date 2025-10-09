@@ -235,11 +235,8 @@ class AnalyticController extends Controller
                 // Ensure price doesn't go negative
                 $finalHpp = max(0, $hppSetelahDiskon);
                 
-                // Add tax for HGN (products purchased with tax) - same as platform product
-                if ($penerimaanDetail->penerimaan && $penerimaanDetail->penerimaan->taxCategory && $penerimaanDetail->penerimaan->taxCategory->name === 'HGN') {
-                    $taxPercentage = $penerimaanDetail->penerimaan->taxCategory->tax_percentage ?? 0;
-                    $finalHpp = $finalHpp * (1 + ($taxPercentage / 100));
-                }
+                // COGS calculation WITHOUT tax for accurate profit calculation
+                // Tax should not be included in COGS as it affects profit margin calculation
                 
                 $totalCost += $finalHpp * $qty;
                 $totalQty += $qty;
@@ -250,70 +247,353 @@ class AnalyticController extends Controller
         return $totalQty > 0 ? $totalCost / $totalQty : 0;
     }
 
+    /**
+     * Cache for master data prices to avoid repeated file reads
+     */
+    private static $masterDataCache = [];
+    
+    /**
+     * Get estimated count of paid orders for pagination
+     */
+    private function getEstimatedPaidOrdersCount($query, $startDate, $endDate, $selectedPlatform)
+    {
+        // Get a sample of orders to estimate the ratio of paid orders
+        $sampleSize = 100;
+        $sampleOrders = $query->limit($sampleSize)->get();
+        
+        $paidCount = 0;
+        foreach ($sampleOrders as $order) {
+            if (
+                $order->shopeeFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0 ||
+                $order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0 ||
+                $order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0 ||
+                $order->blibliFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0
+            ) {
+                $paidCount++;
+            }
+        }
+        
+        // Calculate ratio
+        $ratio = $sampleSize > 0 ? $paidCount / $sampleSize : 0;
+        
+        // Get total orders count
+        $totalOrders = $query->count();
+        
+        // Estimate total paid orders
+        return (int) ($totalOrders * $ratio);
+    }
+    
+    /**
+     * Get master data price for a product from CSV import data
+     * This method reads the master data CSV files to get the standardized price
+     */
+    private function getMasterDataPrice($productName)
+    {
+        // Check cache first
+        if (isset(self::$masterDataCache[$productName])) {
+            return self::$masterDataCache[$productName];
+        }
+        
+        $price = null;
+        
+        // Try to find the product in PKP master data first
+        $pkpFile = storage_path('app/imports/barangdatang/MASTER - PKP.csv');
+        if (file_exists($pkpFile)) {
+            $handle = fopen($pkpFile, 'r');
+            if ($handle) {
+                while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                    if (count($data) >= 3 && trim($data[0]) === $productName) {
+                        $price = (float) str_replace(',', '.', $data[2]);
+                        break;
+                    }
+                }
+                fclose($handle);
+            }
+        }
+        
+        // Try NON PKP master data if not found in PKP
+        if ($price === null) {
+            $nonPkpFile = storage_path('app/imports/barangdatang/MASTER - NON PKP.csv');
+            if (file_exists($nonPkpFile)) {
+                $handle = fopen($nonPkpFile, 'r');
+                if ($handle) {
+                    while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                        if (count($data) >= 3 && trim($data[0]) === $productName) {
+                            $price = (float) str_replace(',', '.', $data[2]);
+                            break;
+                        }
+                    }
+                    fclose($handle);
+                }
+            }
+        }
+        
+        // Cache the result (even if null)
+        self::$masterDataCache[$productName] = $price;
+        
+        return $price;
+    }
+
     private function getTotalModalFromBarangKeluar($orderItemId, $productId)
     {
-        // Get all barang_keluar records for this order item and product
-        $barangKeluarItems = \App\Models\BarangKeluar::where('order_item_id', $orderItemId)
+        // Get product name for master data lookup
+        $product = \App\Models\Product::find($productId);
+        if (!$product) {
+            return 0;
+        }
+        
+        // Try to get master data price first
+        $masterDataPrice = $this->getMasterDataPrice($product->name);
+        if ($masterDataPrice !== null) {
+            // Get total quantity from barang keluar using SUM aggregation
+            $totalQty = \App\Models\BarangKeluar::where('order_item_id', $orderItemId)
+                ->whereHas('warehouseStock', function($query) use ($productId) {
+                    $query->where('product_id', $productId);
+                })
+                ->sum('qty');
+            
+            // Use master data price
+            return $masterDataPrice * $totalQty;
+        }
+        
+        // FIXED: Use SUM aggregation at database level instead of PHP loop
+        // This ensures proper aggregation and prevents single record issues
+        $totalCost = \App\Models\BarangKeluar::where('order_item_id', $orderItemId)
             ->whereHas('warehouseStock', function($query) use ($productId) {
                 $query->where('product_id', $productId);
             })
             ->with(['warehouseStock.penerimaanDetail.penerimaan.taxCategory'])
-            ->get();
-            
-        if ($barangKeluarItems->isEmpty()) {
-            return 0; // Return 0 if no barang keluar found, will use fallback
-        }
-        
-        $totalCost = 0;
-        
-        foreach ($barangKeluarItems as $barangKeluar) {
-            if ($barangKeluar->warehouseStock && $barangKeluar->warehouseStock->penerimaanDetail) {
-                $penerimaanDetail = $barangKeluar->warehouseStock->penerimaanDetail;
-                $qty = $barangKeluar->qty;
-                
-                // Calculate HPP after discounts (same logic as above)
-                $hppAsli = $penerimaanDetail->harga_hpp;
-                $hppSetelahDiskon = $hppAsli;
-                
-                // Apply percentage discounts in sequence
-                if ($penerimaanDetail->diskon_persen_1 > 0) {
-                    $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_1 / 100);
+            ->get()
+            ->sum(function($barangKeluar) {
+                if ($barangKeluar->warehouseStock && $barangKeluar->warehouseStock->penerimaanDetail) {
+                    $penerimaanDetail = $barangKeluar->warehouseStock->penerimaanDetail;
+                    $qty = $barangKeluar->qty;
+                    
+                    // Calculate HPP after discounts (same logic as above)
+                    $hppAsli = $penerimaanDetail->harga_hpp;
+                    $hppSetelahDiskon = $hppAsli;
+                    
+                    // Apply percentage discounts in sequence
+                    if ($penerimaanDetail->diskon_persen_1 > 0) {
+                        $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_1 / 100);
+                    }
+                    if ($penerimaanDetail->diskon_persen_2 > 0) {
+                        $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_2 / 100);
+                    }
+                    if ($penerimaanDetail->diskon_persen_3 > 0) {
+                        $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_3 / 100);
+                    }
+                    if ($penerimaanDetail->diskon_persen_4 > 0) {
+                        $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_4 / 100);
+                    }
+                    if ($penerimaanDetail->diskon_persen_5 > 0) {
+                        $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_5 / 100);
+                    }
+                    
+                    // Apply nominal discounts
+                    $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_1;
+                    $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_2;
+                    $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_3;
+                    $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_4;
+                    $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_5;
+                    
+                    // Ensure price doesn't go negative
+                    $finalHpp = max(0, $hppSetelahDiskon);
+                    
+                    // COGS calculation WITHOUT tax for accurate profit calculation
+                    // Tax should not be included in COGS as it affects profit margin calculation
+                    
+                    return $finalHpp * $qty;
                 }
-                if ($penerimaanDetail->diskon_persen_2 > 0) {
-                    $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_2 / 100);
-                }
-                if ($penerimaanDetail->diskon_persen_3 > 0) {
-                    $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_3 / 100);
-                }
-                if ($penerimaanDetail->diskon_persen_4 > 0) {
-                    $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_4 / 100);
-                }
-                if ($penerimaanDetail->diskon_persen_5 > 0) {
-                    $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_5 / 100);
-                }
-                
-                // Apply nominal discounts
-                $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_1;
-                $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_2;
-                $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_3;
-                $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_4;
-                $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_5;
-                
-                // Ensure price doesn't go negative
-                $finalHpp = max(0, $hppSetelahDiskon);
-                
-                // Add tax for HGN (products purchased with tax) - same as platform product
-                if ($penerimaanDetail->penerimaan && $penerimaanDetail->penerimaan->taxCategory && $penerimaanDetail->penerimaan->taxCategory->name === 'HGN') {
-                    $taxPercentage = $penerimaanDetail->penerimaan->taxCategory->tax_percentage ?? 0;
-                    $finalHpp = $finalHpp * (1 + ($taxPercentage / 100));
-                }
-                
-                $totalCost += $finalHpp * $qty;
-            }
-        }
+                return 0;
+            });
         
         // Return total cost directly (not average)
         return $totalCost;
+    }
+
+    /**
+     * Get modal cost for individual barang keluar record (for separate rows)
+     */
+    private function getModalFromBarangKeluar($barangKeluar)
+    {
+        if ($barangKeluar->warehouseStock && $barangKeluar->warehouseStock->penerimaanDetail) {
+            $penerimaanDetail = $barangKeluar->warehouseStock->penerimaanDetail;
+            $qty = $barangKeluar->qty;
+            
+            // Calculate HPP after discounts
+            $hppAsli = $penerimaanDetail->harga_hpp;
+            $hppSetelahDiskon = $hppAsli;
+            
+            // Apply percentage discounts in sequence
+            if ($penerimaanDetail->diskon_persen_1 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_1 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_2 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_2 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_3 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_3 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_4 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_4 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_5 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_5 / 100);
+            }
+            
+            // Apply nominal discounts
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_1;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_2;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_3;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_4;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_5;
+            
+            // Ensure price doesn't go negative
+            $finalHpp = max(0, $hppSetelahDiskon);
+            
+            // COGS calculation WITHOUT tax for accurate profit calculation
+            return $finalHpp * $qty;
+        }
+        
+        return 0;
+    }
+
+    /**
+     * Calculate COGS per unit for a specific barang keluar record
+     */
+    private function getCogsPerUnitFromBarangKeluar($barangKeluar)
+    {
+        if ($barangKeluar->warehouseStock && $barangKeluar->warehouseStock->penerimaanDetail) {
+            $penerimaanDetail = $barangKeluar->warehouseStock->penerimaanDetail;
+            
+            // Calculate HPP after discounts
+            $hppAsli = $penerimaanDetail->harga_hpp;
+            $hppSetelahDiskon = $hppAsli;
+            
+            // Apply percentage discounts in sequence
+            if ($penerimaanDetail->diskon_persen_1 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_1 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_2 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_2 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_3 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_3 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_4 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_4 / 100);
+            }
+            if ($penerimaanDetail->diskon_persen_5 > 0) {
+                $hppSetelahDiskon -= ($hppSetelahDiskon * $penerimaanDetail->diskon_persen_5 / 100);
+            }
+            
+            // Apply nominal discounts
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_1;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_2;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_3;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_4;
+            $hppSetelahDiskon -= $penerimaanDetail->diskon_nominal_5;
+            
+            // Ensure price doesn't go negative
+            return max(0, $hppSetelahDiskon);
+        }
+        
+        return 0;
+    }
+
+    /**
+     * Calculate total order value for a specific order (without filtering)
+     * This ensures percentage calculation is consistent regardless of filters
+     */
+    private function calculateTotalOrderValue($orderId)
+    {
+        $totalOrderValue = 0;
+        
+        $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($q) use ($orderId) {
+            $q->where('order_id', $orderId);
+        })->with(['warehouseStock.product'])->get();
+        
+        foreach ($barangKeluarItems as $barangKeluar) {
+            $product = $barangKeluar->warehouseStock->product;
+            if ($product) {
+                $masterProductValue = ($product->initial_price ?? 0) * $barangKeluar->qty;
+                $totalOrderValue += $masterProductValue;
+            }
+        }
+        
+        return $totalOrderValue;
+    }
+
+    /**
+     * Calculate consistent revenue distribution for products
+     * FIXED: Correct allocation calculation following the 8-step process
+     */
+    private function calculateConsistentRevenueDistribution($orderMasterProducts, $totalSaldoMasuk, $totalOrderValue)
+    {
+        // Use provided total order value (constant, not affected by filtering)
+        $totalPricelistOrder = $totalOrderValue;
+        
+        $result = [];
+        
+        // Calculate allocation for each line item individually following the 8-step process
+        foreach ($orderMasterProducts as $masterProductData) {
+            $masterValue = $masterProductData['master_value'];
+            $qtyMaster = $masterProductData['master_qty'];
+            $initialPrice = $masterProductData['selling_price'];
+            
+            // Step 2: Hitung percent_in_order
+            $percentInOrder = $totalPricelistOrder > 0 ? 
+                ($masterValue / $totalPricelistOrder) * 100 : 0;
+            
+            // Step 3: Hitung alloc_total
+            $allocTotal = $totalSaldoMasuk * ($percentInOrder / 100);
+            
+            // Step 4: Bagi alloc_total sesuai qty di baris tersebut
+            $allocPerPiece = $qtyMaster > 0 ? $allocTotal / $qtyMaster : 0;
+            
+            // Step 5: Hitung alloc_per_piece_net (hapus PPN)
+            $allocPerPieceNet = $allocPerPiece / 1.11;
+            
+            // Get COGS per piece
+            $cogsPerPiece = $this->getCogsPerUnitFromBarangKeluar($masterProductData['barang_keluar']);
+            
+            // Step 6: Hitung profit_per_piece
+            $profitPerPiece = $allocPerPieceNet - $cogsPerPiece;
+            
+            // Step 7: Hitung gross_profit
+            $grossProfit = $profitPerPiece * $qtyMaster;
+            
+            // Step 8: Hitung margin_per_piece
+            $marginPerPiece = $allocPerPieceNet > 0 ? 
+                ($profitPerPiece / $allocPerPieceNet) * 100 : 0;
+            
+            $result[] = [
+                'master_product_data' => $masterProductData,
+                'product_percentage' => $percentInOrder,
+                'per_unit_allocation' => $allocPerPiece,
+                'line_allocation' => $allocTotal,
+                'alloc_per_piece_net' => $allocPerPieceNet,
+                'cogs_per_unit' => $cogsPerPiece,
+                'profit_per_piece' => $profitPerPiece,
+                'gross_profit' => $grossProfit,
+                'margin_per_piece' => $marginPerPiece
+            ];
+        }
+        
+        return $result;
+    }
+
+    /**
+     * Get total quantity from barang keluar for proper aggregation
+     */
+    private function getTotalQtyFromBarangKeluar($orderItemId, $productId)
+    {
+        return \App\Models\BarangKeluar::where('order_item_id', $orderItemId)
+            ->whereHas('warehouseStock', function($query) use ($productId) {
+                $query->where('product_id', $productId);
+            })
+            ->sum('qty');
     }
 
     /**
@@ -1943,10 +2223,26 @@ class AnalyticController extends Controller
 
     public function salesByMasterProductReport(Request $request)
     {
-        $platforms = Platform::all();
-        $productCategories = \App\Models\ProductCategory::orderBy('name')->get();
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->subMonth()->format('Y-m-d');
-        $endDate = $request->filled('end_date') ? $request->input('end_date') : now()->format('Y-m-d');
+        try {
+            // Increase execution time for large datasets
+            set_time_limit(120); // 2 minutes
+            
+            $platforms = Platform::all();
+            $productCategories = \App\Models\ProductCategory::orderBy('name')->get();
+            $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->subMonth()->format('Y-m-d');
+            $endDate = $request->filled('end_date') ? $request->input('end_date') : now()->format('Y-m-d');
+            
+            // Validate date range
+            if ($startDate > $endDate) {
+                return redirect()->back()->with('error', 'Tanggal mulai tidak boleh lebih besar dari tanggal akhir.');
+            }
+            
+            // Limit date range to prevent performance issues
+            $startDateObj = \Carbon\Carbon::parse($startDate);
+            $endDateObj = \Carbon\Carbon::parse($endDate);
+            if ($startDateObj->diffInDays($endDateObj) > 90) {
+                return redirect()->back()->with('error', 'Rentang tanggal tidak boleh lebih dari 90 hari untuk performa yang optimal.');
+            }
         
         if ($request->filled('quick_range')) {
             $range = $request->input('quick_range');
@@ -1972,6 +2268,7 @@ class AnalyticController extends Controller
         $productVariants = \App\Models\ProductVariant::orderBy('name')->get();
         
         // Get selected values from request (main categories removed)
+        $selectedMainCategories = (array) $request->input('main_categories', []); // Add this line to fix undefined variable
         $selectedBrands = (array) $request->input('brands', []);
         $selectedSubBrands = (array) $request->input('sub_brands', []);
         $selectedProductCategories = (array) $request->input('product_categories', []);
@@ -1988,18 +2285,21 @@ class AnalyticController extends Controller
         $query = Order::with([
             'platform',
             'orderItems.platformProduct.mappingBarang.product',
-            'orderItems.platformProduct.mappingBarang.product.mainCategory',
-            'orderItems.platformProduct.mappingBarang.product.brand',
-            'orderItems.platformProduct.mappingBarang.product.subBrand',
-            'orderItems.platformProduct.mappingBarang.product.productCategory',
-            'orderItems.platformProduct.mappingBarang.product.productType',
-            'orderItems.platformProduct.mappingBarang.product.productSize',
-            'orderItems.platformProduct.mappingBarang.product.productVariant',
-            'shopeeFinancialTransactions',
-            'tiktokFinancialTransactions',
-            'tokopediaFinancialTransactions',
-            'blibliFinancialTransactions',
-        ])->whereBetween('tanggal', [$startDate, $endDate]);
+            'shopeeFinancialTransactions' => function($q) {
+                $q->where('saldo_masuk', '>', 0);
+            },
+            'tiktokFinancialTransactions' => function($q) {
+                $q->where('saldo_masuk', '>', 0);
+            },
+            'tokopediaFinancialTransactions' => function($q) {
+                $q->where('saldo_masuk', '>', 0);
+            },
+            'blibliFinancialTransactions' => function($q) {
+                $q->where('saldo_masuk', '>', 0);
+            },
+        ])
+        ->whereBetween('tanggal', [$startDate, $endDate])
+        ->orderBy('tanggal', 'desc'); // Add ordering for consistent results
         
         if ($selectedPlatform) $query->where('platform_id', $selectedPlatform);
         if ($orderNumber) $query->where('order_number', 'like', "%$orderNumber%");
@@ -2043,6 +2343,7 @@ class AnalyticController extends Controller
             });
         }
         
+        // Get all orders (simple approach)
         $allOrders = $query->get();
         
         // --- ONLY PAID ORDERS ---
@@ -2093,8 +2394,8 @@ class AnalyticController extends Controller
                     ->value('no_invoice');
             }
             
-            // Calculate total order value from products table (not platform prices)
-            $totalOrderValueFromProducts = 0;
+            // Calculate total order value from products table (CONSTANT - not affected by filtering)
+            $totalOrderValueFromProducts = $this->calculateTotalOrderValue($order->id);
             $orderMasterProducts = collect();
             
         // First pass: collect all master products and their selling prices from barang_keluar
@@ -2133,12 +2434,11 @@ class AnalyticController extends Controller
             
             // Use initial_price directly for pricelist (without discount applied)
             
-            // Calculate master product quantity from barang_keluar qty
-            $masterProductQty = $barangKeluar->qty;
-            
-            // Calculate total value for this master product using pricelist
+            // FIXED: Create separate rows for each barang_keluar record (different PO = different COGS)
+            // Each barang_keluar represents a different PO with potentially different costs
+            $masterProductQty = $barangKeluar->qty; // Use individual qty, not aggregated
             $masterProductValue = ($product->initial_price ?? 0) * $masterProductQty;
-            $totalOrderValueFromProducts += $masterProductValue;
+            // NOTE: Don't add to totalOrderValueFromProducts here - it's already calculated as constant
             
             $orderMasterProducts->push([
                 'order_item' => $orderItem,
@@ -2154,8 +2454,13 @@ class AnalyticController extends Controller
             
             if ($orderMasterProducts->isEmpty()) continue;
             
+            // Use consistent revenue distribution for products with same SKU
+            // Pass total order value as constant parameter
+            $consistentDistribution = $this->calculateConsistentRevenueDistribution($orderMasterProducts, $totalSaldoMasuk, $totalOrderValueFromProducts);
+            
             // Second pass: calculate revenue distribution and create rows
-            foreach ($orderMasterProducts as $masterProductData) {
+            foreach ($consistentDistribution as $distributionData) {
+                $masterProductData = $distributionData['master_product_data'];
                 $orderItem = $masterProductData['order_item'];
                 $platformProduct = $masterProductData['platform_product'];
                 $product = $masterProductData['product'];
@@ -2164,33 +2469,21 @@ class AnalyticController extends Controller
                 $masterValue = $masterProductData['master_value'];
                 $barangKeluar = $masterProductData['barang_keluar'];
                 
-                // Calculate revenue distribution percentage based on pricelist
-                // Persentase = (Harga Pricelist 1 Barang / Total Harga Pricelist 1 Order) × 100%
-                $revenueDistributionPercent = $totalOrderValueFromProducts > 0 ? 
-                    ($masterValue / $totalOrderValueFromProducts) * 100 : 0;
-                
-                // Calculate proportional saldo masuk
-                $proportionalSaldoMasuk = $totalSaldoMasuk * ($revenueDistributionPercent / 100);
-                
-                // Get actual modal cost from barang keluar records (more accurate)
-                // Calculate total modal directly from barang keluar, not average
-                $totalModal = $this->getTotalModalFromBarangKeluar($orderItem->id, $product->id);
+                // Use consistent distribution values
+                $revenueDistributionPercent = $distributionData['product_percentage'];
+                $proportionalSaldoMasuk = $distributionData['line_allocation'];
+                $modalPerUnit = $distributionData['cogs_per_unit'];
+                $totalModal = $modalPerUnit * $masterQty;
                 
                 // If no barang keluar found, fallback to latest purchase cost
-                if ($totalModal == 0) {
+                if ($modalPerUnit == 0) {
                     $modalPerUnit = $this->getLatestPurchaseCost($product->id);
                     $totalModal = $modalPerUnit * $masterQty;
                 }
                 
-                $modalPerUnit = $masterQty > 0 ? $totalModal / $masterQty : 0;
-                
-                // Calculate gross profit using new formula
-                // Gross profit per unit = (saldo masuk / qty) - modal per unit
-                $grossProfitPerUnit = $masterQty > 0 ? ($proportionalSaldoMasuk / $masterQty) - $modalPerUnit : 0;
-                
-                // Gross profit total = total saldo masuk order - modal total order
-                // For individual product row, we need to calculate proportional gross profit
-                $grossProfitTotal = $proportionalSaldoMasuk - $totalModal;
+                // Use pre-calculated values from 8-step process
+                $grossProfitPerUnit = $distributionData['profit_per_piece'];
+                $grossProfitTotal = $distributionData['gross_profit'];
                 
                 // Check if product is from package
                 $isPackageItem = $platformProduct->mappingBarang->count() > 1;
@@ -2221,7 +2514,7 @@ class AnalyticController extends Controller
                     'capital' => $totalModal, // Total modal (modal per unit × qty)
                     'gross_profit_per_unit' => $grossProfitPerUnit, // (saldo masuk / qty) - modal per unit
                     'gross_profit_total' => $grossProfitTotal, // saldo masuk - modal x qty
-                    'margin_percent' => $proportionalSaldoMasuk > 0 ? ($grossProfitTotal / $proportionalSaldoMasuk) * 100 : 0,
+                    'margin_percent' => $distributionData['margin_per_piece'],
                     'proportion_percent' => round($revenueDistributionPercent, 2),
                     'invoice_number' => $invoiceNumber,
                     'product_name' => $product->name,
@@ -2303,6 +2596,13 @@ class AnalyticController extends Controller
             'selectedProductSizes' => $selectedProductSizes,
             'selectedProductVariants' => $selectedProductVariants,
         ]);
+        
+        } catch (\Exception $e) {
+            \Log::error('Error in salesByMasterProductReport: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            
+            return redirect()->back()->with('error', 'Terjadi kesalahan saat memproses data. Silakan coba lagi atau hubungi administrator.');
+        }
     }
 
     public function salesByPlatformProductReport(Request $request)
@@ -2501,11 +2801,8 @@ class AnalyticController extends Controller
                                     // Ensure price doesn't go negative
                                     $finalHpp = max(0, $hppSetelahDiskon);
                                     
-                                    // Add tax for HGN (products purchased with tax)
-                                    if ($penerimaanDetail->penerimaan && $penerimaanDetail->penerimaan->taxCategory && $penerimaanDetail->penerimaan->taxCategory->name === 'HGN') {
-                                        $taxPercentage = $penerimaanDetail->penerimaan->taxCategory->tax_percentage ?? 0;
-                                        $finalHpp = $finalHpp * (1 + ($taxPercentage / 100));
-                                    }
+                                    // COGS calculation WITHOUT tax for accurate profit calculation
+                                    // Tax should not be included in COGS as it affects profit margin calculation
                                     
                                     $itemCost = $finalHpp * $qty;
                                     $totalProductCost += $itemCost;
@@ -4309,6 +4606,9 @@ class AnalyticController extends Controller
                 $invoiceNumber = $order->invoice_number ?? '-';
             }
             
+            // Calculate total order value from products table (CONSTANT - not affected by filtering)
+            $totalOrderValueFromProducts = $this->calculateTotalOrderValue($order->id);
+            
             // First pass: collect all master products and their selling prices from barang_keluar
             // This ensures we get the correct mapping for each order item
             $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($q) use ($order) {
@@ -4316,7 +4616,6 @@ class AnalyticController extends Controller
             })->with(['orderItem.platformProduct', 'warehouseStock.product'])->get();
             
             $orderMasterProducts = collect();
-            $totalOrderValueFromProducts = 0;
             
             foreach ($barangKeluarItems as $barangKeluar) {
                 $orderItem = $barangKeluar->orderItem;
@@ -4348,12 +4647,11 @@ class AnalyticController extends Controller
                 
                 // Use initial_price directly for pricelist (without discount applied)
                 
-                // Calculate master product quantity from barang_keluar qty
-                $masterProductQty = $barangKeluar->qty;
-                
-                // Calculate total value for this master product using pricelist
+                // FIXED: Create separate rows for each barang_keluar record (different PO = different COGS)
+                // Each barang_keluar represents a different PO with potentially different costs
+                $masterProductQty = $barangKeluar->qty; // Use individual qty, not aggregated
                 $masterProductValue = ($product->initial_price ?? 0) * $masterProductQty;
-                $totalOrderValueFromProducts += $masterProductValue;
+                // NOTE: Don't add to totalOrderValueFromProducts here - it's already calculated as constant
                 
                 $orderMasterProducts->push([
                     'order_item' => $orderItem,
@@ -4369,8 +4667,13 @@ class AnalyticController extends Controller
             
             if ($orderMasterProducts->isEmpty()) continue;
             
+            // Use consistent revenue distribution for products with same SKU
+            // Pass total order value as constant parameter
+            $consistentDistribution = $this->calculateConsistentRevenueDistribution($orderMasterProducts, $totalSaldoMasuk, $totalOrderValueFromProducts);
+            
             // Second pass: calculate revenue distribution and create rows
-            foreach ($orderMasterProducts as $masterProductData) {
+            foreach ($consistentDistribution as $distributionData) {
+                $masterProductData = $distributionData['master_product_data'];
                 $orderItem = $masterProductData['order_item'];
                 $platformProduct = $masterProductData['platform_product'];
                 $mapping = $masterProductData['mapping'];
@@ -4378,34 +4681,23 @@ class AnalyticController extends Controller
                 $actualPrice = $masterProductData['selling_price'];
                 $masterQty = $masterProductData['master_qty'];
                 $masterValue = $masterProductData['master_value'];
+                $barangKeluar = $masterProductData['barang_keluar'];
                 
-                // Calculate revenue distribution percentage based on pricelist
-                // Persentase = (Harga Pricelist 1 Barang / Total Harga Pricelist 1 Order) × 100%
-                $revenueDistributionPercent = $totalOrderValueFromProducts > 0 ? 
-                    ($masterValue / $totalOrderValueFromProducts) * 100 : 0;
-                
-                // Calculate proportional saldo masuk
-                $proportionalSaldoMasuk = $totalSaldoMasuk * ($revenueDistributionPercent / 100);
-                
-                // Get actual modal cost from barang keluar records (more accurate)
-                // Calculate total modal directly from barang keluar, not average
-                $totalModal = $this->getTotalModalFromBarangKeluar($orderItem->id, $product->id);
+                // Use consistent distribution values
+                $revenueDistributionPercent = $distributionData['product_percentage'];
+                $proportionalSaldoMasuk = $distributionData['line_allocation'];
+                $modalPerUnit = $distributionData['cogs_per_unit'];
+                $totalModal = $modalPerUnit * $masterQty;
                 
                 // If no barang keluar found, fallback to latest purchase cost
-                if ($totalModal == 0) {
+                if ($modalPerUnit == 0) {
                     $modalPerUnit = $this->getLatestPurchaseCost($product->id);
                     $totalModal = $modalPerUnit * $masterQty;
                 }
                 
-                $modalPerUnit = $masterQty > 0 ? $totalModal / $masterQty : 0;
-                
-                // Calculate gross profit using new formula
-                // Gross profit per unit = (saldo masuk / qty) - modal per unit
-                $grossProfitPerUnit = $masterQty > 0 ? ($proportionalSaldoMasuk / $masterQty) - $modalPerUnit : 0;
-                
-                // Gross profit total = total saldo masuk order - modal total order
-                // For individual product row, we need to calculate proportional gross profit
-                $grossProfitTotal = $proportionalSaldoMasuk - $totalModal;
+                // Use pre-calculated values from 8-step process
+                $grossProfitPerUnit = $distributionData['profit_per_piece'];
+                $grossProfitTotal = $distributionData['gross_profit'];
                 
                 // Check if product is from package
                 $isPackageItem = $platformProduct->mappingBarang->count() > 1;
@@ -4436,7 +4728,7 @@ class AnalyticController extends Controller
                     'capital' => $totalModal, // Total modal (modal per unit × qty)
                     'gross_profit_per_unit' => $grossProfitPerUnit, // (saldo masuk / qty) - modal per unit
                     'gross_profit_total' => $grossProfitTotal, // saldo masuk - modal x qty
-                    'margin_percent' => $proportionalSaldoMasuk > 0 ? ($grossProfitTotal / $proportionalSaldoMasuk) * 100 : 0,
+                    'margin_percent' => $distributionData['margin_per_piece'],
                     'proportion_percent' => round($revenueDistributionPercent, 2),
                     'invoice_number' => $invoiceNumber,
                     'product_name' => $product->name,
@@ -5138,5 +5430,318 @@ class AnalyticController extends Controller
         
         // Flatten the grouped results back to a collection
         return $sortedGroups->flatten(1);
+    }
+
+    /**
+     * Gross Profit Offline Analytics
+     */
+    public function grossProfitOfflineReport(Request $request)
+    {
+        // Set default date range
+        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
+        $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
+        
+        // Get filter parameters
+        $selectedInvoice = $request->input('invoice_number');
+        $selectedPO = $request->input('po_number');
+        $selectedSKU = $request->input('sku');
+        $selectedCustomer = $request->input('customer_id');
+        
+        // Get all customers for the filter
+        $customers = \App\Models\Customer::orderBy('name')->get();
+        
+        // Build the query for offline sales with finance data
+        $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
+            ->where('status', 'paid') // Only show paid sales
+            ->with([
+                'items', 
+                'items.product', 
+                'items.warehouseStock',
+                'items.warehouseStock.penerimaanDetail',
+                'customerInfo',
+            ]);
+            
+        // Apply date filter
+        if ($startDate && $endDate) {
+            $query->whereBetween('sale_date', [$startDate, $endDate]);
+        }
+        
+        // Apply filters
+        if ($selectedCustomer) {
+            $query->where('customer_id', $selectedCustomer);
+        }
+        
+        if ($selectedInvoice) {
+            $query->whereHas('financeOffline', function($q) use ($selectedInvoice) {
+                $q->where('invoice_number', 'like', '%' . $selectedInvoice . '%');
+            });
+        }
+        
+        if ($selectedPO) {
+            $query->where('surat_jalan_number', 'like', '%' . $selectedPO . '%');
+        }
+        
+        if ($selectedSKU) {
+            $query->whereHas('items.product', function($q) use ($selectedSKU) {
+                $q->where('sku', 'like', '%' . $selectedSKU . '%');
+            });
+        }
+        
+        // Get the sales
+        $sales = $query->get();
+        
+        // Process sales data for profit calculation
+        $profitData = $sales->map(function ($sale) {
+            $totalPaymentAmount = 0;
+            $paymentDate = null;
+            
+            // Get payment information
+            $financeOffline = $sale->finance_offline; // Use the accessor
+            if ($financeOffline && $financeOffline->isNotEmpty()) {
+                $totalPaymentAmount = $financeOffline->sum(function($invoice) {
+                    return $invoice->payments ? $invoice->payments->sum('amount') : 0;
+                });
+                $paymentDate = $financeOffline->first()?->payments?->first()?->payment_date ?? $sale->sale_date;
+            }
+            
+            // Calculate total cost price for all items in this sale
+            $totalCostPriceForSale = 0;
+            foreach ($sale->items as $saleItem) {
+                if ($saleItem->warehouseStock && $saleItem->warehouseStock->penerimaanDetail) {
+                    $penerimaanDetail = $saleItem->warehouseStock->penerimaanDetail;
+                    $subtotal = $penerimaanDetail->subtotal ?? 0;
+                    $diskon = $penerimaanDetail->diskon ?? 0;
+                    $qty = $penerimaanDetail->qty ?? 1;
+                    
+                    if ($qty > 0) {
+                        $costPricePerUnit = ($subtotal - $diskon) / $qty;
+                        $totalCostPriceForSale += $costPricePerUnit * $saleItem->quantity;
+                    }
+                }
+            }
+            
+            // Process each item in the sale
+            return $sale->items->map(function ($item) use ($sale, $totalPaymentAmount, $paymentDate, $financeOffline, $totalCostPriceForSale) {
+                // Calculate cost price from penerimaan detail
+                $costPrice = 0;
+                if ($item->warehouseStock && $item->warehouseStock->penerimaanDetail) {
+                    $penerimaanDetail = $item->warehouseStock->penerimaanDetail;
+                    $subtotal = $penerimaanDetail->subtotal ?? 0;
+                    $diskon = $penerimaanDetail->diskon ?? 0;
+                    $qty = $penerimaanDetail->qty ?? 1;
+                    
+                    if ($qty > 0) {
+                        $costPrice = ($subtotal - $diskon) / $qty;
+                    }
+                }
+                
+                // Calculate profit per unit
+                $sellingPrice = $item->unit_price;
+                $profitPerUnit = $sellingPrice - $costPrice;
+                
+                // Calculate total cost price
+                $totalCostPrice = $costPrice * $item->quantity;
+                
+                // Calculate profit per invoice (proportional to item value)
+                $itemValue = $item->subtotal;
+                $totalSaleValue = $sale->total_amount;
+                $proportionalPayment = $totalSaleValue > 0 ? ($itemValue / $totalSaleValue) * $totalPaymentAmount : 0;
+                $profitPerInvoice = $proportionalPayment - $totalCostPrice;
+                
+                // Payment per product is the unit price (selling price)
+                $paymentPerProduct = $sellingPrice;
+                
+                // Calculate margins
+                $marginPerUnit = $sellingPrice > 0 ? (($profitPerUnit / $sellingPrice) * 100) : 0;
+                $marginPerInvoice = $paymentPerProduct > 0 ? (($profitPerInvoice / $paymentPerProduct) * 100) : 0;
+                
+                return [
+                    'payment_date' => $paymentDate,
+                    'po_number' => $sale->surat_jalan_number,
+                    'invoice_number' => $financeOffline && $financeOffline->isNotEmpty() ? $financeOffline->first()->invoice_number : '-',
+                    'product_name' => $item->product ? $item->product->name : 'Unknown Product',
+                    'quantity' => $item->quantity,
+                    'sku' => $item->product ? $item->product->sku : '-',
+                    'payment_per_invoice' => $totalPaymentAmount,
+                    'payment_per_product' => $paymentPerProduct,
+                    'cost_price' => $costPrice,
+                    'total_cost_price' => $totalCostPriceForSale,
+                    'profit_per_unit' => $profitPerUnit,
+                    'profit_per_invoice' => $profitPerInvoice,
+                    'margin_per_unit' => $marginPerUnit,
+                    'margin_per_invoice' => $marginPerInvoice,
+                    'sale' => $sale,
+                    'item' => $item
+                ];
+            });
+        })->flatten(1);
+        
+        // Calculate summary cards
+        $totalSales = $sales->count();
+        $totalRevenue = $sales->sum('total_amount');
+        $totalProfit = $profitData->sum('profit_per_invoice');
+        $averageMargin = $profitData->avg('margin_per_invoice');
+        
+        return view('analytics.gross_profit_offline', compact(
+            'profitData',
+            'customers',
+            'startDate',
+            'endDate',
+            'selectedInvoice',
+            'selectedPO',
+            'selectedSKU',
+            'selectedCustomer',
+            'totalSales',
+            'totalRevenue',
+            'totalProfit',
+            'averageMargin'
+        ));
+    }
+
+    /**
+     * Export Gross Profit Offline Analytics
+     */
+    public function exportGrossProfitOffline(Request $request)
+    {
+        // Set default date range
+        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
+        $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
+        
+        // Get filter parameters
+        $selectedInvoice = $request->input('invoice_number');
+        $selectedPO = $request->input('po_number');
+        $selectedSKU = $request->input('sku');
+        $selectedCustomer = $request->input('customer_id');
+        
+        // Build the query for offline sales with finance data
+        $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
+            ->where('status', 'paid') // Only show paid sales
+            ->with([
+                'items', 
+                'items.product', 
+                'items.warehouseStock',
+                'items.warehouseStock.penerimaanDetail',
+                'customerInfo',
+            ]);
+            
+        // Apply date filter
+        if ($startDate && $endDate) {
+            $query->whereBetween('sale_date', [$startDate, $endDate]);
+        }
+        
+        // Apply filters
+        if ($selectedCustomer) {
+            $query->where('customer_id', $selectedCustomer);
+        }
+        
+        if ($selectedInvoice) {
+            $query->whereHas('financeOffline', function($q) use ($selectedInvoice) {
+                $q->where('invoice_number', 'like', '%' . $selectedInvoice . '%');
+            });
+        }
+        
+        if ($selectedPO) {
+            $query->where('surat_jalan_number', 'like', '%' . $selectedPO . '%');
+        }
+        
+        if ($selectedSKU) {
+            $query->whereHas('items.product', function($q) use ($selectedSKU) {
+                $q->where('sku', 'like', '%' . $selectedSKU . '%');
+            });
+        }
+        
+        // Get the sales
+        $sales = $query->get();
+        
+        // Process sales data for profit calculation
+        $profitData = $sales->map(function ($sale) {
+            $totalPaymentAmount = 0;
+            $paymentDate = null;
+            
+            // Get payment information
+            $financeOffline = $sale->finance_offline; // Use the accessor
+            if ($financeOffline && $financeOffline->isNotEmpty()) {
+                $totalPaymentAmount = $financeOffline->sum(function($invoice) {
+                    return $invoice->payments ? $invoice->payments->sum('amount') : 0;
+                });
+                $paymentDate = $financeOffline->first()?->payments?->first()?->payment_date ?? $sale->sale_date;
+            }
+            
+            // Calculate total cost price for all items in this sale
+            $totalCostPriceForSale = 0;
+            foreach ($sale->items as $saleItem) {
+                if ($saleItem->warehouseStock && $saleItem->warehouseStock->penerimaanDetail) {
+                    $penerimaanDetail = $saleItem->warehouseStock->penerimaanDetail;
+                    $subtotal = $penerimaanDetail->subtotal ?? 0;
+                    $diskon = $penerimaanDetail->diskon ?? 0;
+                    $qty = $penerimaanDetail->qty ?? 1;
+                    
+                    if ($qty > 0) {
+                        $costPricePerUnit = ($subtotal - $diskon) / $qty;
+                        $totalCostPriceForSale += $costPricePerUnit * $saleItem->quantity;
+                    }
+                }
+            }
+            
+            // Process each item in the sale
+            return $sale->items->map(function ($item) use ($sale, $totalPaymentAmount, $paymentDate, $financeOffline, $totalCostPriceForSale) {
+                // Calculate cost price from penerimaan detail
+                $costPrice = 0;
+                if ($item->warehouseStock && $item->warehouseStock->penerimaanDetail) {
+                    $penerimaanDetail = $item->warehouseStock->penerimaanDetail;
+                    $subtotal = $penerimaanDetail->subtotal ?? 0;
+                    $diskon = $penerimaanDetail->diskon ?? 0;
+                    $qty = $penerimaanDetail->qty ?? 1;
+                    
+                    if ($qty > 0) {
+                        $costPrice = ($subtotal - $diskon) / $qty;
+                    }
+                }
+                
+                // Calculate profit per unit
+                $sellingPrice = $item->unit_price;
+                $profitPerUnit = $sellingPrice - $costPrice;
+                
+                // Calculate total cost price
+                $totalCostPrice = $costPrice * $item->quantity;
+                
+                // Calculate profit per invoice (proportional to item value)
+                $itemValue = $item->subtotal;
+                $totalSaleValue = $sale->total_amount;
+                $proportionalPayment = $totalSaleValue > 0 ? ($itemValue / $totalSaleValue) * $totalPaymentAmount : 0;
+                $profitPerInvoice = $proportionalPayment - $totalCostPrice;
+                
+                // Payment per product is the unit price (selling price)
+                $paymentPerProduct = $sellingPrice;
+                
+                // Calculate margins
+                $marginPerUnit = $sellingPrice > 0 ? (($profitPerUnit / $sellingPrice) * 100) : 0;
+                $marginPerInvoice = $paymentPerProduct > 0 ? (($profitPerInvoice / $paymentPerProduct) * 100) : 0;
+                
+                return [
+                    'payment_date' => $paymentDate,
+                    'po_number' => $sale->surat_jalan_number,
+                    'invoice_number' => $financeOffline && $financeOffline->isNotEmpty() ? $financeOffline->first()->invoice_number : '-',
+                    'product_name' => $item->product ? $item->product->name : 'Unknown Product',
+                    'quantity' => $item->quantity,
+                    'sku' => $item->product ? $item->product->sku : '-',
+                    'payment_per_invoice' => $totalPaymentAmount,
+                    'payment_per_product' => $paymentPerProduct,
+                    'cost_price' => $costPrice,
+                    'total_cost_price' => $totalCostPriceForSale,
+                    'profit_per_unit' => $profitPerUnit,
+                    'profit_per_invoice' => $profitPerInvoice,
+                    'margin_per_unit' => $marginPerUnit,
+                    'margin_per_invoice' => $marginPerInvoice,
+                    'sale' => $sale,
+                    'item' => $item
+                ];
+            });
+        })->flatten(1);
+        
+        // Generate filename
+        $filename = 'Gross_Profit_Offline_' . $startDate . '_to_' . $endDate . '.xlsx';
+        
+        return Excel::download(new \App\Exports\GrossProfitOfflineExport($profitData), $filename);
     }
 } 

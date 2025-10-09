@@ -216,10 +216,48 @@ class ShopeeFinancialTransaction extends Model
      */
     public function calculatePercentages()
     {
-        if ($this->nominal_fix > 0) {
-            $this->percentage_paid = ($this->saldo_masuk ?? 0) / $this->nominal_fix * 100;
-            $this->percentage_outstanding = ($this->outstanding ?? 0) / $this->nominal_fix * 100;
+        if ($this->nominal_harga > 0) {
+            $this->persentase_diskon1 = ($this->nominal_diskon1 / $this->nominal_harga) * 100;
+            $this->persentase_diskon2 = ($this->nominal_diskon2 / $this->nominal_harga) * 100;
+            $this->persentase_diskon3 = ($this->nominal_diskon3 / $this->nominal_harga) * 100;
+            $this->persentase_diskon4 = ($this->nominal_diskon4 / $this->nominal_harga) * 100;
+            $this->persentase_diskon5 = ($this->nominal_diskon5 / $this->nominal_harga) * 100;
+            $this->persentase_diskon6 = ($this->nominal_diskon6 / $this->nominal_harga) * 100;
+            $this->persentase_diskon7 = ($this->nominal_diskon7 / $this->nominal_harga) * 100;
+            $this->persentase_diskon8 = ($this->nominal_diskon8 / $this->nominal_harga) * 100;
+            $this->persentase_diskon9 = ($this->nominal_diskon9 / $this->nominal_harga) * 100;
+            $this->persentase_diskon10 = ($this->nominal_diskon10 / $this->nominal_harga) * 100;
+            $this->persentase_diskon11 = ($this->nominal_diskon11 / $this->nominal_harga) * 100;
+            $this->persentase_diskon12 = ($this->nominal_diskon12 / $this->nominal_harga) * 100;
+            $this->total_persentase = $this->persentase_diskon1 + $this->persentase_diskon2 + 
+                                     $this->persentase_diskon3 + $this->persentase_diskon4 + 
+                                     $this->persentase_diskon5 + $this->persentase_diskon6 +
+                                     $this->persentase_diskon7 + $this->persentase_diskon8 +
+                                     $this->persentase_diskon9 + $this->persentase_diskon10 +
+                                     $this->persentase_diskon11 + $this->persentase_diskon12;
+                                     
+            // Calculate percentages for payment and outstanding
+            if ($this->nominal_fix > 0) {
+                $this->percentage_paid = ($this->saldo_masuk ?? 0) / $this->nominal_fix * 100;
+                $this->percentage_outstanding = ($this->outstanding ?? 0) / $this->nominal_fix * 100;
+            } else {
+                $this->percentage_paid = 0;
+                $this->percentage_outstanding = 0;
+            }
         } else {
+            $this->persentase_diskon1 = 0;
+            $this->persentase_diskon2 = 0;
+            $this->persentase_diskon3 = 0;
+            $this->persentase_diskon4 = 0;
+            $this->persentase_diskon5 = 0;
+            $this->persentase_diskon6 = 0;
+            $this->persentase_diskon7 = 0;
+            $this->persentase_diskon8 = 0;
+            $this->persentase_diskon9 = 0;
+            $this->persentase_diskon10 = 0;
+            $this->persentase_diskon11 = 0;
+            $this->persentase_diskon12 = 0;
+            $this->total_persentase = 0;
             $this->percentage_paid = 0;
             $this->percentage_outstanding = 0;
         }

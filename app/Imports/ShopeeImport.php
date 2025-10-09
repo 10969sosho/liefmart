@@ -39,6 +39,10 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
     protected $skippedOrders = 0;
 
     protected $duplicateOrders = 0;
+    
+    protected $duplicateOrdersInFile = [];
+    
+    protected $duplicateOrdersInDatabase = [];
 
     protected $skippedForMissingDate = 0;
 
@@ -171,11 +175,54 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 // Cek apakah produk dan variasi sudah di-mapping
                 $this->checkProductMapping($processedRow['nama_barang'], $processedRow['variasi'] ?? null);
 
-                // Jika data yang sama dalam satu file, gunakan data yang pertama
-                if (! isset($orderNumbersInFile[$processedRow['no_order']])) {
-                    $orderNumbersInFile[$processedRow['no_order']] = 1;
+                // Cari platform product ID untuk validasi stok di preview
+                $platformProduct = PlatformProduct::where('platform_id', $this->platform->id)
+                    ->where('platform_product_name', $processedRow['nama_barang'])
+                    ->where('variant', $processedRow['variasi'] ?? '')
+                    ->first();
+                
+                if ($platformProduct) {
+                    $processedRow['platform_product_id'] = $platformProduct->id;
                 }
 
+                // Logic duplikat baru:
+                // 1. Jika dalam 1 Excel no order sama bisa diproses jika barang berbeda
+                // 2. Jika berbeda Excel no order sama langsung ditolak
+                $orderNumber = $processedRow['no_order'];
+                $productName = $processedRow['nama_barang'];
+                $variation = $processedRow['variasi'] ?? '';
+                $fullProductName = !empty($variation) ? "$productName - $variation" : $productName;
+                
+                // Cek duplikat dalam file (no order + produk sama)
+                $duplicateKey = $orderNumber . '|' . $fullProductName;
+                if (isset($orderNumbersInFile[$duplicateKey])) {
+                    // Duplikat dalam file - skip
+                    $this->duplicateOrders++;
+                    $this->duplicateOrdersInFile[] = [
+                        'order_number' => $orderNumber,
+                        'product_name' => $fullProductName,
+                        'row' => $i
+                    ];
+                    \Log::info("Duplicate order+product in file: {$orderNumber} - {$fullProductName}");
+                    continue; // Skip duplikat dalam file
+                }
+                
+                // Cek duplikat di database (no order sama)
+                $existingOrder = \App\Models\Order::where('order_number', $orderNumber)->first();
+                if ($existingOrder) {
+                    // Duplikat di database - skip tapi tetap catat
+                    $this->duplicateOrdersInDatabase[] = [
+                        'order_number' => $orderNumber,
+                        'product_name' => $fullProductName,
+                        'row' => $i
+                    ];
+                    \Log::info("Duplicate order in database: {$orderNumber} - will be skipped");
+                    continue; // Skip duplikat di database
+                }
+                
+                // Tandai order+produk ini sudah diproses
+                $orderNumbersInFile[$duplicateKey] = 1;
+                
                 // Tambahkan ke data yang valid
                 $this->data[] = $processedRow;
             } catch (\Exception $e) {
@@ -706,6 +753,7 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
             'duplicates' => 0,
             'skipped' => 0,
             'unmapped_skipped' => 0,
+            'failed_orders' => [],
         ];
 
         // Jika ada data yang tidak valid, return error
@@ -955,10 +1003,16 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                     $results['success']++;
                     \Log::info("Successfully processed order: $orderNumber");
                 } catch (\Exception $e) {
-                    $results['errors'][] = "Error memproses order $orderNumber: ".$e->getMessage();
-                    \Log::error("Import error for order $orderNumber: ".$e->getMessage());
-                    \Log::error($e->getTraceAsString());
-                    throw $e;
+                    $errorMessage = "Error memproses order $orderNumber: " . $e->getMessage();
+                    $results['errors'][] = $errorMessage;
+                    $results['failed_orders'][] = [
+                        'order_number' => $orderNumber,
+                        'error' => $e->getMessage()
+                    ];
+                    \Log::error("Import error for order $orderNumber: " . $e->getMessage());
+                    // Don't throw the exception, just log it and continue with next order
+                    // This prevents the entire transaction from being rolled back
+                    continue;
                 }
             }
             
@@ -968,16 +1022,20 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 \Log::info(count($ordersWithUnmappedProducts) . " orders skipped due to unmapped products");
             }
 
-            // Jika tidak ada error, commit transaksi
-            DB::commit();
-            \Log::info("Database transaction committed successfully");
+            // Commit transaksi jika ada setidaknya satu order yang berhasil diproses
+            if ($results['success'] > 0) {
+                DB::commit();
+                \Log::info("Transaction committed successfully. {$results['success']} orders imported.");
+            } else {
+                // Jika tidak ada order yang berhasil, rollback
+                DB::rollBack();
+                \Log::warning("No orders were successfully imported. Transaction rolled back.");
+            }
         } catch (\Exception $e) {
-            // Jika ada error, rollback semua perubahan
+            // Jika ada error kritis, rollback semua perubahan
             DB::rollBack();
-            \Log::error("Database transaction rolled back due to error");
-            $results['errors'][] = 'Error dalam transaksi: '.$e->getMessage();
-            \Log::error('Transaction error in processImport: '.$e->getMessage());
-            \Log::error($e->getTraceAsString());
+            $results['errors'][] = 'Error dalam transaksi: ' . $e->getMessage();
+            \Log::error('Transaction error in processImport: ' . $e->getMessage());
         }
 
         // Tambahkan informasi tentang order yang dilewati
@@ -998,6 +1056,10 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
      */
     protected function checkStock($platformProduct, $quantity)
     {
+        // Debug logging untuk main category
+        $mainCategoryId = \App\Helpers\MainCategoryHelper::getSelectedMainCategoryId();
+        \Log::info("CheckStock - Main Category ID: " . ($mainCategoryId ?: 'NULL'));
+        
         // Ambil semua mapping barang untuk platform product ini
         $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)->get();
 
@@ -1010,10 +1072,15 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 ->where('qty', '>', 0)
                 ->sum('qty');
 
+            // Debug logging untuk stok
+            \Log::info("CheckStock - Product ID: {$mapping->product_id}, Required: {$qtyToReduce}, Available: {$availableStock}");
+
             // Jika stok tidak cukup, return error
             if ($availableStock < $qtyToReduce) {
                 $product = Product::find($mapping->product_id);
                 $productName = $product ? $product->name : 'Unknown Product';
+
+                \Log::error("CheckStock - Insufficient stock: {$productName}, Required: {$qtyToReduce}, Available: {$availableStock}");
 
                 return [
                     'success' => false,
@@ -1085,7 +1152,7 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                     ->where('qty', '>', 0)
                     ->orderBy('created_at') // Layer 1: FIFO berdasarkan tanggal penerimaan
-                    ->orderBy('tax_id', 'desc') // Layer 2: HGN (PKP) dulu, baru LM (Non-PKP)
+                    ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
                     ->get();
                 \Log::info('Found stock records: '.$stocks->count());
 
@@ -1177,7 +1244,8 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 // Jika masih ada sisa quantity yang perlu dikurangi, stok tidak cukup
                 if ($remainingQty > 0) {
                     \Log::warning("Insufficient stock for product ID: {$mapping->product_id}, Missing qty: {$remainingQty}");
-                    throw new \Exception("Stok tidak cukup untuk produk {$mapping->product->name}");
+                    $productName = $mapping->product ? $mapping->product->name : "Product ID: {$mapping->product_id}";
+                    throw new \Exception("Stok tidak cukup untuk produk {$productName}");
                 }
             }
         } catch (\Exception $e) {
@@ -1416,16 +1484,44 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
             // Debug: Tidak menemukan platform product
             \Log::warning("No platform product found for: $fullProductName");
 
-            // Tambahkan ke unmapped jika tidak ditemukan
-            // Simpan dalam format array untuk mempertahankan nama dan variant terpisah
-            $productData = [
-                'name' => $productName,
-                'variant' => $variation,
-                'full_name' => $fullProductName
-            ];
-            
-            if (! in_array($productData, $this->unmappedProducts)) {
-                $this->unmappedProducts[] = $productData;
+            // Auto-create PlatformProduct baru jika tidak ditemukan
+            try {
+                \Log::info("Auto-creating new PlatformProduct for: $fullProductName");
+                
+                $newPlatformProduct = PlatformProduct::create([
+                    'platform_id' => $this->platform->id,
+                    'platform_product_name' => $productName,
+                    'variant' => $variation,
+                ]);
+                
+                \Log::info("Successfully created PlatformProduct with ID: " . $newPlatformProduct->id);
+                
+                // Setelah dibuat, produk ini akan tetap unmapped karena belum ada mapping
+                // User perlu melakukan mapping manual melalui interface
+                $productData = [
+                    'name' => $productName,
+                    'variant' => $variation,
+                    'full_name' => $fullProductName,
+                    'platform_product_id' => $newPlatformProduct->id
+                ];
+                
+                if (! in_array($productData, $this->unmappedProducts)) {
+                    $this->unmappedProducts[] = $productData;
+                }
+                
+            } catch (\Exception $e) {
+                \Log::error("Failed to auto-create PlatformProduct: " . $e->getMessage());
+                
+                // Fallback: tambahkan ke unmapped tanpa auto-create
+                $productData = [
+                    'name' => $productName,
+                    'variant' => $variation,
+                    'full_name' => $fullProductName
+                ];
+                
+                if (! in_array($productData, $this->unmappedProducts)) {
+                    $this->unmappedProducts[] = $productData;
+                }
             }
         }
     }
@@ -1466,5 +1562,35 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
         }
         
         return $result;
+    }
+    
+    /**
+     * Get total duplicate orders count
+     * 
+     * @return int
+     */
+    public function getDuplicateOrders()
+    {
+        return $this->duplicateOrders;
+    }
+    
+    /**
+     * Get duplicate orders in file
+     * 
+     * @return array
+     */
+    public function getDuplicateOrdersInFile()
+    {
+        return $this->duplicateOrdersInFile;
+    }
+    
+    /**
+     * Get duplicate orders in database
+     * 
+     * @return array
+     */
+    public function getDuplicateOrdersInDatabase()
+    {
+        return $this->duplicateOrdersInDatabase;
     }
 }

@@ -612,7 +612,7 @@ class ReturPembelianController extends Controller
                     'Tanggal Retur' => $retur->tanggal_retur ? $retur->tanggal_retur->format('d/m/Y') : '-',
                     'Tipe Retur' => ucfirst($retur->tipe_retur),
                     'Nama Produk' => $detail->product->name ?? '-',
-                    'Harga HPP' => round($hargaHpp, 2),
+                    'Harga' => round($hargaHpp, 2),
                     'Qty Retur' => round($detail->qty, 2),
                     'Satuan' => $detail->satuan->name ?? '-',
                     'Total Nominal' => round($totalNominal, 2),
@@ -645,7 +645,7 @@ class ReturPembelianController extends Controller
                     'Tanggal Retur',
                     'Tipe Retur',
                     'Nama Produk',
-                    'Harga HPP',
+                    'Harga',
                     'Qty Retur',
                     'Satuan',
                     'Total Nominal',
@@ -658,7 +658,7 @@ class ReturPembelianController extends Controller
             public function columnFormats(): array
             {
                 return [
-                    'G' => '#,##0.00', // Harga HPP
+                    'G' => '#,##0.00', // Harga
                     'H' => '#,##0.00', // Qty Retur
                     'J' => '#,##0.00', // Total Nominal
                 ];

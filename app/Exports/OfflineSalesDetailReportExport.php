@@ -126,7 +126,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
             $percentField = "discount_percent_" . $i;
             $discountPercent = (float)($item->$percentField ?? 0);
             if($discountPercent > 0) {
-                $discounts[] = number_format($discountPercent, 0) . '%';
+                $discounts[] = number_format($discountPercent, 2) . '%';
             }
         }
         
@@ -152,6 +152,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
         return [
             'No',
             'Tanggal Penjualan',
+            'No. Invoice',
             'No. Surat Jalan',
             'Customer',
             'Nama Produk',
@@ -163,6 +164,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
             'Subtotal',
             'Total Diskon',
             'Total Setelah Diskon',
+            'Nominal + PPN',
             'QTY Retur',
             'Catatan'
         ];
@@ -215,9 +217,32 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
                 $orderTotalQtyRetur += $qtyRetur;
             }
             
+            // Calculate PPN for this sale
+            $hgnValue = 0;
+            $lmValue = 0;
+            $totalPPNAmount = 0;
+            $totalWithPPN = 0;
+            
+            foreach ($sale->items as $item) {
+                $itemValue = $this->calculateTotalAfterDiscounts($item);
+                
+                if($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
+                    // HGN/PKP items - add PPN
+                    $hgnValue += $itemValue;
+                } else {
+                    // LM/Non-PKP items - no PPN
+                    $lmValue += $itemValue;
+                }
+            }
+            
+            // Calculate PPN for HGN items only
+            $totalPPNAmount = $hgnValue * 0.11;
+            $totalWithPPN = $hgnValue + $totalPPNAmount + $lmValue; // HGN + PPN + LM
+            
             return [
                 'PENJUALAN OFFLINE',
                 $sale->sale_date ? $sale->sale_date->format('d/m/Y') : '-',
+                $sale->financeOffline ? $sale->financeOffline->invoice_number : '-',
                 $sale->surat_jalan_number,
                 $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
                 'Status: ' . $sale->status,
@@ -229,6 +254,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
                 'Total Subtotal: Rp ' . number_format($orderTotalSubtotal, 0, ',', '.'),
                 'Total Diskon: Rp ' . number_format($orderTotalDiscount, 0, ',', '.'),
                 'Total Value: Rp ' . number_format($sale->value_after_returns ?? 0, 0, ',', '.'),
+                'Total + PPN: Rp ' . number_format($totalWithPPN, 0, ',', '.'),
                 'Total Retur: ' . $orderTotalQtyRetur,
                 ''
             ];
@@ -259,7 +285,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
                     $potongan = $subtotal * ($diskonPersen / 100);
                     $subtotal -= $potongan;
                     $totalDiskonPersen += $diskonPersen;
-                    $discountPercentages[] = number_format($diskonPersen, 0) . '%'; // Store individual percentage
+                    $discountPercentages[] = number_format($diskonPersen, 2) . '%'; // Store individual percentage with 2 decimal places
                 } elseif ($diskonNominal > 0) {
                     $subtotal -= $diskonNominal;
                     $totalDiskonNominal += $diskonNominal;
@@ -269,26 +295,37 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
             $totalDiskon = $subtotalSebelumDiskon - $subtotal;
             $hargaTotalSetelahDiskon = $subtotal;
             
+            // Calculate PPN for this item
+            $itemWithPPN = $hargaTotalSetelahDiskon;
+            if($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
+                // HGN/PKP items - add PPN
+                $ppnAmount = $hargaTotalSetelahDiskon * 0.11;
+                $itemWithPPN = $hargaTotalSetelahDiskon + $ppnAmount;
+            }
+            // LM/Non-PKP items - no PPN (itemWithPPN = hargaTotalSetelahDiskon)
+            
             return [
                 $this->getCounter(),
                 $sale->sale_date ? $sale->sale_date->format('d/m/Y') : '-',
+                $sale->financeOffline ? $sale->financeOffline->invoice_number : '-',
                 $sale->surat_jalan_number,
                 $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
                 $item->product ? $item->product->name : 'Unknown Product',
                 (int) $item->quantity,
                 $item->product && $item->product->satuan ? $item->product->satuan->name : '-',
                 round((float) $item->unit_price, 2),
-                empty($discountPercentages) ? '-' : implode('+', $discountPercentages), // Format individual percentages like "4%+1%"
+                empty($discountPercentages) ? '-' : implode(' + ', $discountPercentages), // Format individual percentages like "4% + 1%"
                 round((float) $totalDiskonNominal, 2), // Diskon nominal 2 desimal
                 round((float) $subtotalSebelumDiskon, 2), // Subtotal 2 desimal
                 round((float) $totalDiskon, 2), // Total diskon 2 desimal
                 round((float) $hargaTotalSetelahDiskon, 2), // Total setelah diskon 2 desimal
+                round((float) $itemWithPPN, 2), // Nominal + PPN
                 (int) $qtyRetur, // QTY Retur
                 $item->notes ?? '-' // Catatan
             ];
         } else {
             // Spacer row
-            return array_fill(0, 15, '');
+            return array_fill(0, 17, '');
         }
     }
 
@@ -314,7 +351,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
                 ]
             ],
             // Apply borders to all cells
-            'A1:O1000' => [
+            'A1:P1000' => [
                 'borders' => [
                     'allBorders' => [
                         'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
@@ -330,7 +367,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
     public function columnFormats(): array
     {
         return [
-            'H:O' => '#,##0.00', // Format currency columns
+            'H:P' => '#,##0.00', // Format currency columns
         ];
     }
 
@@ -344,7 +381,7 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
                     $cellValue = $event->sheet->getCell('A' . $row)->getValue();
                     if ($cellValue === 'PENJUALAN OFFLINE') {
                         // Apply green styling to header row
-                        $event->sheet->getStyle('A' . $row . ':O' . $row)->applyFromArray([
+                        $event->sheet->getStyle('A' . $row . ':P' . $row)->applyFromArray([
                             'fill' => [
                                 'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
                                 'startColor' => ['rgb' => '00FF00'] // Bright green

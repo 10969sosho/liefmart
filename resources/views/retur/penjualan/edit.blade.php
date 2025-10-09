@@ -88,7 +88,7 @@
                                                     $index = $loop->parent->index . '_' . $loop->index;
                                                 @endphp
                                                 <tr>
-                                                    <td>{{ $mapping->product->name }}</td>
+                                                    <td>{{ $mapping->product ? $mapping->product->name : 'Product tidak ditemukan (ID: ' . $mapping->product_id . ')' }}</td>
                                                     <td>
                                                         <input type="hidden" name="details[{{ $index }}][order_item_id]" value="{{ $orderItem->id }}">
                                                         <input type="hidden" name="details[{{ $index }}][product_id]" value="{{ $mapping->product_id }}">

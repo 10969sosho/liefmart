@@ -293,7 +293,11 @@
                                     <i class="fas fa-exclamation-triangle me-2"></i> Stok Tidak Mencukupi!
                                 </h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                <p class="mb-3">Beberapa produk memiliki stok yang tidak mencukupi untuk import ini:</p>
+                                <p><strong>Beberapa produk memiliki stok yang tidak mencukupi dan tidak bisa dilanjutkan:</strong></p>
+                                <p class="text-danger mb-3">
+                                    <i class="fas fa-exclamation-circle me-1"></i>
+                                    <strong>Contoh:</strong> Barang ini QTY 100, diperlukan 102, tidak bisa dilanjutkan
+                                </p>
                                 
                                 <div class="table-responsive mb-3">
                                     <table class="table table-sm table-bordered">

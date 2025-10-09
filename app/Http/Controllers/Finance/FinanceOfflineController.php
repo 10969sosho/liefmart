@@ -493,16 +493,49 @@ class FinanceOfflineController extends Controller
                 // Set main_category_id from offlineSale or session
                 $mainCategoryId = $offlineSale->main_category_id ?? session('main_category_id', null);
                 
+                // Determine invoice status based on offline sale status
+                $invoiceStatus = 'unpaid';
+                $tanggalBayar = null;
+                if ($offlineSale->status === 'paid') {
+                    $invoiceStatus = 'paid';
+                    $tanggalBayar = $offlineSale->sale_date; // Set payment date to sale date
+                }
+                
                 // Create a single finance offline record for this tax group
                 $financeOffline = new FinanceOffline([
                     'invoice_number' => $invoiceNumber,
                     'nominal' => $nominal,
-                    'tanggal_invoice' => Carbon::now(),
-                    'status' => 'unpaid',
+                    'tanggal_invoice' => $offlineSale->sale_date, // Use sale_date instead of current date
+                    'status' => $invoiceStatus,
+                    'tanggal_bayar' => $tanggalBayar,
                     'main_category_id' => $mainCategoryId
                 ]);
                 
                 $financeOffline->save();
+                
+                // If the offline sale is marked as paid, create a payment record
+                if ($offlineSale->status === 'paid') {
+                    // Use payment_date if available, otherwise use sale_date
+                    $paymentDate = $offlineSale->payment_date ?? $offlineSale->sale_date;
+                    $paymentMethod = $offlineSale->payment_method ?? 'cash';
+                    
+                    // Calculate total payment amount including PPN for PKP items
+                    $totalPaymentAmount = $nominal; // Start with DPP
+                    if ($taxId == 3) { // PKP items
+                        $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($nominal);
+                        $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                        $totalPaymentAmount = \App\Helpers\NumberFormatter::calculateGrandTotal($nominal, $ppn);
+                    }
+                    
+                    $payment = new \App\Models\InvoicePayment([
+                        'finance_offline_id' => $financeOffline->id,
+                        'amount' => $totalPaymentAmount, // Full amount including PPN for PKP items
+                        'payment_date' => $paymentDate,
+                        'payment_method' => $paymentMethod,
+                        'notes' => 'Pembayaran lunas saat penjualan offline',
+                    ]);
+                    $payment->save();
+                }
                 
                 // Associate all barangKeluar items with this invoice
                 foreach ($barangKeluarItems as $barangKeluar) {

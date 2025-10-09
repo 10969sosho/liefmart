@@ -34,7 +34,7 @@
                     <table class="table table-info">
                         <tr>
                             <th>Nama Produk</th>
-                            <td>{{ $mapping->product->name }}</td>
+                            <td>{{ $mapping->product ? $mapping->product->name : 'Product tidak ditemukan (ID: ' . $mapping->product_id . ')' }}</td>
                         </tr>
                         <tr>
                             <th>Quantity Ratio</th>

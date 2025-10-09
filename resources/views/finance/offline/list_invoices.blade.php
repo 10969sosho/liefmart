@@ -115,7 +115,7 @@
                                     <p>
                                         <i class="fas fa-calendar me-1"></i>
                                         @if(request('date_start') && request('date_end'))
-                                            {{ \Carbon\Carbon::parse(request('date_start'))->format('d M Y') }} - {{ \Carbon\Carbon::parse(request('date_end'))->format('d M Y') }}
+                                            {{ \Carbon\Carbon::parse(request('date_start'))->format('d/m/Y') }} - {{ \Carbon\Carbon::parse(request('date_end'))->format('d/m/Y') }}
                                         @else
                                             Semua Periode
                                         @endif
@@ -202,6 +202,8 @@
                                             <th width="120" class="text-end">DPP (Rp)</th>
                                             <th width="120" class="text-end">PPN (Rp)</th>
                                             <th width="120" class="text-end">Total (Rp)</th>
+                                            <th width="120" class="text-end">Dibayar (Rp)</th>
+                                            <th width="120" class="text-end">Sisa Tagihan (Rp)</th>
                                             <th width="90" class="text-center">Status</th>
                                             <th width="80" class="text-center">Aksi</th>
                                         </tr>
@@ -290,6 +292,8 @@
                                             <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($dpp) }}</td>
                                             <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($ppn) }}</td>
                                             <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($grandTotal) }}</td>
+                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($totalPaid) }}</td>
+                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($remainingAmount) }}</td>
                                             <td class="text-center">
                                                 <span class="badge {{ $statusBadgeClass }}">{{ $statusLabel }}</span>
                                                 @if($invoice->print_count > 0)
@@ -310,7 +314,7 @@
                                         </tr>
                                         @empty
                                         <tr>
-                                            <td colspan="11" class="text-center py-4">
+                                            <td colspan="13" class="text-center py-4">
                                                 <div class="d-flex flex-column align-items-center">
                                                     <i class="fas fa-file-invoice-dollar fa-3x text-muted mb-3"></i>
                                                     <h6 class="fw-normal mb-1">Tidak ada data invoice</h6>

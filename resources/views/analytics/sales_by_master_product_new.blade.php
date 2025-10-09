@@ -131,6 +131,38 @@
             border-radius: 10px;
             color: white;
             height: 100%;
+            min-height: 120px;
+        }
+        
+        .summary-card .card-body {
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .summary-card h6 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        
+        .summary-card h3, .summary-card h4 {
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+            text-align: center;
+            word-break: break-all;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .summary-card small {
+            font-size: 0.75rem;
+            text-align: center;
+            line-height: 1.2;
         }
         
         .bg-primary {
@@ -147,6 +179,10 @@
         
         .bg-dark {
             background-color: var(--dark-color) !important;
+        }
+        
+        .bg-warning {
+            background-color: #f59e0b !important;
         }
         
         /* Platform badges */
@@ -511,9 +547,9 @@
                         <div class="col-md-4">
                             <div class="mb-2">
                                 <span class="fw-semibold">Periode:</span> 
-                                {{ \Carbon\Carbon::parse($startDate)->format('d M Y') }}
+                                {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }}
                                 @if($startDate != $endDate)
-                                 - {{ \Carbon\Carbon::parse($endDate)->format('d M Y') }}
+                                 - {{ \Carbon\Carbon::parse($endDate)->format('d/m/Y') }}
                                 @endif
                             </div>
                         </div>
@@ -559,40 +595,58 @@
                 </div>
                 
                 <!-- Summary Cards -->
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card bg-primary summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Barang Keluar</h5>
-                                <h2 class="display-5">{{ number_format($summary['total_products']) }}</h2>
-                                <p>Jumlah barang keluar dari gudang</p>
+                <div class="row mb-4 g-2">
+                    <div class="col">
+                        <div class="card bg-primary summary-card h-100">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-2">Barang Keluar</h6>
+                                <h3 class="mb-1">{{ number_format($summary['total_products']) }}</h3>
+                                <small class="opacity-75">Jumlah barang keluar dari gudang</small>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card bg-success summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Total Saldo Masuk</h5>
-                                <h2 class="display-5">Rp {{ number_format($summary['total_revenue'], 0, ',', '.') }}</h2>
-                                <p>Uang Masuk</p>
+                    <div class="col">
+                        <div class="card bg-success summary-card h-100">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-2">Total Saldo Masuk</h6>
+                                <h4 class="mb-1" style="font-size: 1.1rem; line-height: 1.2;">Rp {{ number_format($summary['total_revenue'], 0, ',', '.') }}</h4>
+                                <small class="opacity-75">Uang Masuk</small>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card bg-info summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Total Modal</h5>
-                                <h2 class="display-5">Rp {{ number_format($summary['total_capital'], 0, ',', '.') }}</h2>
-                                <p>Modal</p>
+                    <div class="col">
+                        <div class="card bg-warning summary-card h-100">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-2">Saldo Masuk - PPN</h6>
+                                @php
+                                    $totalRevenueWithoutPPN = $summary['total_revenue'] / 1.11;
+                                @endphp
+                                <h4 class="mb-1" style="font-size: 1.1rem; line-height: 1.2;">Rp {{ number_format($totalRevenueWithoutPPN, 0, ',', '.') }}</h4>
+                                <small class="opacity-75">Setelah PPN 11%</small>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card bg-dark summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Gross Profit</h5>
-                                <h2 class="display-5">Rp {{ number_format($summary['total_gross_profit'], 0, ',', '.') }}</h2>
-                                <p>Margin: {{ number_format($summary['profit_margin'], 2) }}%</p>
+                    <div class="col">
+                        <div class="card bg-info summary-card h-100">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-2">Total Modal</h6>
+                                <h4 class="mb-1" style="font-size: 1.1rem; line-height: 1.2;">Rp {{ number_format($summary['total_capital'], 0, ',', '.') }}</h4>
+                                <small class="opacity-75">Modal</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card bg-dark summary-card h-100">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-2">Gross Profit</h6>
+                                @php
+                                    // Perhitungan Gross Profit yang sederhana:
+                                    // Total Saldo Masuk - PPN (11%) - Total Modal
+                                    $grossProfitSimple = $totalRevenueWithoutPPN - $summary['total_capital'];
+                                    $profitMarginSimple = $totalRevenueWithoutPPN > 0 ? ($grossProfitSimple / $totalRevenueWithoutPPN) * 100 : 0;
+                                @endphp
+                                <h4 class="mb-1" style="font-size: 1.1rem; line-height: 1.2;">Rp {{ number_format($grossProfitSimple, 0, ',', '.') }}</h4>
+                                <small class="opacity-75">Margin: {{ number_format($profitMarginSimple, 2) }}%</small>
                             </div>
                         </div>
                     </div>
@@ -603,35 +657,23 @@
                     <div class="alert alert-info mb-4">
                         <h5 class="alert-heading"><i class="bi bi-info-circle-fill me-2"></i>Informasi Perhitungan</h5>
                         <p>
-                            <strong>Keterangan Kolom:</strong>
+                            <strong>Perhitungan Gross Profit (Sederhana):</strong>
                         </p>
                         <ul>
-                            <li><strong>Jumlah QTY (PCS) (Platform):</strong> Jumlah yang diorder di platform</li>
-                            <li><strong>QTY (Master Barang):</strong> Jumlah master barang (platform qty × mapping qty)</li>
-                            <li><strong>Jumlah Masuk Pembayaran:</strong> Total saldo masuk dari order (ambil dari finance)</li>
-                            <li><strong>Jumlah Masuk Pembayaran - PPN:</strong> Jumlah masuk pembayaran ÷ 1.11</li>
-                            <li><strong>Harga Pricelist per Item:</strong> Harga jual produk dari tabel products (initial_price)</li>
-                            <li><strong>Harga Pricelist per Item X QTY:</strong> Harga pricelist per item × QTY master barang</li>
-                            <li><strong>Total Harga Pricelist:</strong> Total nilai order berdasarkan harga pricelist dari tabel products</li>
-                            <li><strong>Persen dalam Order:</strong> (Harga pricelist per item X QTY ÷ Total harga pricelist) × 100%</li>
-                            <li><strong>Masuk Pembayaran per Produk:</strong> (Jumlah masuk pembayaran × Persen dalam order) ÷ QTY master barang</li>
-                            <li><strong>Masuk Pembayaran per Produk - PPN:</strong> Masuk pembayaran per produk ÷ 1.11</li>
-                            <li><strong>Harga Modal (COGS):</strong> Harga beli produk dari penerimaan</li>
-                            <li><strong>Profit per PCS:</strong> Masuk pembayaran produk-PPN - harga modal</li>
-                            <li><strong>Gross Profit Total:</strong> Profit per PCS × QTY master produk</li>
-                            <li><strong>Margin per PCS:</strong> (Profit per PCS ÷ Masuk pembayaran produk-PPN) × 100%</li>
-                            <li><strong>Margin per Item:</strong> (Gross Profit Total ÷ (Masuk pembayaran produk-PPN × QTY master produk)) × 100%</li>
+                            <li><strong>Total Saldo Masuk:</strong> Total uang masuk dari semua order</li>
+                            <li><strong>Total Saldo Masuk - PPN:</strong> Total saldo masuk ÷ 1.11 (menghilangkan PPN 11%)</li>
+                            <li><strong>Total Modal:</strong> Total biaya modal untuk semua produk</li>
+                            <li><strong>Gross Profit:</strong> (Total Saldo Masuk - PPN) - Total Modal</li>
+                            <li><strong>Margin:</strong> (Gross Profit ÷ Total Saldo Masuk - PPN) × 100%</li>
                         </ul>
                         <hr>
                         <p class="mb-0">
-                            <strong>Contoh Perhitungan:</strong><br>
-                            • Masuk pembayaran per produk-PPN: Rp 15.756,51<br>
-                            • Harga modal: Rp 13.457,66<br>
-                            • Profit per PCS: Rp 15.756,51 - Rp 13.457,66 = Rp 2.298,85<br>
-                            • QTY master produk: 12<br>
-                            • Gross Profit Total: Rp 2.298,85 × 12 = Rp 27.586,20<br>
-                            • Margin per PCS: (Rp 2.298,85 ÷ Rp 15.756,51) × 100% = 14,59%<br>
-                            • Margin per Item: (Rp 27.586,20 ÷ (Rp 15.756,51 × 12)) × 100% = 14,59%
+                            <strong>Contoh Perhitungan Gross Profit:</strong><br>
+                            • Total Saldo Masuk: Rp 1.558.100<br>
+                            • Total Saldo Masuk - PPN: Rp 1.558.100 ÷ 1.11 = Rp 1.403.693,69<br>
+                            • Total Modal: Rp 1.284.323<br>
+                            • Gross Profit: Rp 1.403.693,69 - Rp 1.284.323 = Rp 119.370,69<br>
+                            • Margin: (Rp 119.370,69 ÷ Rp 1.403.693,69) × 100% = 8,51%
                         </p>
                     </div>
                     
@@ -685,11 +727,11 @@
                                     @endphp
                                     <tr class="{{ $rowClass }}">
                                         @php
-                                            // Perhitungan sesuai permintaan yang benar
-                                            $paymentAmount = $revenue; // jumlah masuk pembayaran
-                                            $paymentAmountWithoutPPN = $paymentAmount / 1.11; // tanpa PPN
-                                            $paymentPerProduct = $paymentAmount * ($proportionPercent / 100); // total pembayaran per produk
-                                            $paymentPerProductWithoutPPN = $paymentPerProduct / 1.11; // per produk tanpa PPN
+                                            // Perhitungan yang benar menggunakan data dari backend
+                                            // $revenue sudah merupakan alokasi pembayaran untuk produk ini (alloc_total dari backend)
+                                            $paymentPerProduct = $revenue; // total pembayaran per produk (alloc_total)
+                                            $paymentPerProductPerPcs = $qty > 0 ? $revenue / $qty : 0; // per pcs (alloc_per_piece)
+                                            $paymentPerProductWithoutPPN = $paymentPerProductPerPcs / 1.11; // per pcs tanpa PPN (alloc_per_piece_net)
                                             $profitPerPCS = $paymentPerProductWithoutPPN - $unitCost; // profit per pcs
                                             
                                             // RUMUS YANG DIPERBAIKI:
@@ -702,7 +744,7 @@
                                             // 3. Margin per Item = (gross profit total / (masuk pembayaran produk-PPN X QTY master produk)) x 100%
                                             $marginPerItem = ($paymentPerProductWithoutPPN * $qty) > 0 ? ($grossProfitTotalCorrected / ($paymentPerProductWithoutPPN * $qty)) * 100 : 0;
                                         @endphp
-                                        <td>{{ \Carbon\Carbon::parse($row['order_date'] ?? null)->format('d M Y') }}</td>
+                                        <td>{{ \Carbon\Carbon::parse($row['order_date'] ?? null)->format('d/m/Y') }}</td>
                                         <td>{{ $row['order_number'] ?? '-' }}</td>
                                         <td>{{ $row['invoice_number'] ?? '-' }}</td>
                                         <td>{{ $row['platform_product_name'] ?? '-' }}</td>
@@ -726,7 +768,7 @@
                                         <td class="text-end">{{ number_format(($row['price'] ?? 0) * $qty, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format($row['total_order_value_from_products'] ?? 0, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format($row['proportion_percent'] ?? 0, 2) }}%</td>
-                                        <td class="text-end">{{ number_format($paymentPerProduct, 0, ',', '.') }}</td>
+                                        <td class="text-end">{{ number_format($paymentPerProductPerPcs, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format($paymentPerProductWithoutPPN, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format($unitCost, 0, ',', '.') }}</td>
                                         <td class="text-end fw-bold {{ $profitPerPCS < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($profitPerPCS, 0, ',', '.') }}</td>
@@ -752,7 +794,7 @@
                                     <td class="text-end">-</td>
                                     <td class="text-end"><strong>{{ number_format($summary['total_capital'], 0, ',', '.') }}</strong></td>
                                     <td class="text-end">-</td>
-                                    <td class="text-end"><strong>{{ number_format($summary['total_gross_profit'], 0, ',', '.') }}</strong></td>
+                                    <td class="text-end"><strong>{{ number_format(($summary['total_revenue'] / 1.11) - $summary['total_capital'], 0, ',', '.') }}</strong></td>
                                     <td class="text-end">-</td>
                                     <td class="text-end">-</td>
                                 </tr>
@@ -762,9 +804,9 @@
                     
                     <!-- Pagination -->
                     <div class="d-flex justify-content-between align-items-center mt-4">
-                        <div class="text-muted small">
-                            Menampilkan {{ $productRows->firstItem() ?? 0 }} - {{ $productRows->lastItem() ?? 0 }} dari {{ number_format($summary['total_rows']) }} data ({{ number_format($summary['total_products']) }} barang keluar)
-                        </div>
+                    <div class="text-muted small">
+                        Menampilkan {{ $productRows->firstItem() ?? 0 }} - {{ $productRows->lastItem() ?? 0 }} dari {{ number_format($summary['total_rows']) }} data ({{ number_format($summary['total_products']) }} barang keluar)
+                    </div>
                         <div>
                             {{ $productRows->links('pagination::bootstrap-5') }}
                         </div>
@@ -772,7 +814,12 @@
                 @else
                     <div class="alert alert-warning">
                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        Tidak ada data yang tersedia untuk kriteria filter yang dipilih.
+                        @if(request('page') && request('page') > 1)
+                            Tidak ada data pada halaman {{ request('page') }}. 
+                            <a href="{{ request()->fullUrlWithQuery(['page' => 1]) }}" class="alert-link">Kembali ke halaman 1</a>
+                        @else
+                            Tidak ada data yang tersedia untuk kriteria filter yang dipilih.
+                        @endif
                     </div>
                 @endif
             </div>
@@ -1167,10 +1214,7 @@
             
             // Get today's date in YYYY-MM-DD format
             const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const day = String(today.getDate()).padStart(2, '0');
-            const todayFormatted = `${year}-${month}-${day}`;
+            const todayFormatted = getTodayYYYYMMDD();
             
             // Set default values if empty
             if (!startDateInput.value) {
@@ -1215,10 +1259,14 @@
             // Financial calculations dengan rumus yang benar
             const capitalPerUnit = qty > 0 ? capital / qty : 0;
             const totalPrice = price * qty;
-            const paymentAmount = revenue; // jumlah masuk pembayaran
+            const paymentAmount = revenue; // jumlah masuk pembayaran total
             const paymentAmountWithoutPPN = paymentAmount / 1.11;
-            const paymentPerProduct = paymentAmount * (proportionPercent / 100); // total pembayaran per produk
-            const paymentPerProductWithoutPPN = paymentPerProduct / 1.11;
+            
+            // Gunakan nilai yang sudah dihitung dengan benar dari backend
+            // $revenue sudah merupakan alokasi pembayaran untuk produk ini (alloc_total dari backend)
+            const paymentPerProduct = revenue; // total pembayaran per produk (alloc_total)
+            const paymentPerProductPerPcs = qty > 0 ? revenue / qty : 0; // per pcs (alloc_per_piece)
+            const paymentPerProductWithoutPPN = paymentPerProductPerPcs / 1.11; // per pcs tanpa PPN (alloc_per_piece_net)
             const profitPerPCS = paymentPerProductWithoutPPN - capitalPerUnit;
             
             // RUMUS YANG DIPERBAIKI:
@@ -1253,7 +1301,7 @@
             document.getElementById('modal-payment-amount').textContent = formatRupiah(paymentAmount);
             document.getElementById('modal-payment-amount-no-ppn').textContent = formatRupiah(paymentAmountWithoutPPN);
             document.getElementById('modal-proportion').textContent = formatPercent(proportionPercent);
-            document.getElementById('modal-payment-per-product').textContent = formatRupiah(paymentPerProduct);
+            document.getElementById('modal-payment-per-product').textContent = formatRupiah(paymentPerProductPerPcs);
             document.getElementById('modal-payment-per-product-no-ppn').textContent = formatRupiah(paymentPerProductWithoutPPN);
             document.getElementById('modal-capital-per-unit').textContent = formatRupiah(capitalPerUnit);
             document.getElementById('modal-profit-per-pcs').textContent = formatRupiah(profitPerPCS);

@@ -58,7 +58,7 @@
                     <p>
                         <i class="fas fa-calendar me-1"></i>
                         @if(request('date_start') && request('date_end'))
-                            {{ \Carbon\Carbon::parse(request('date_start'))->format('d M Y') }} - {{ \Carbon\Carbon::parse(request('date_end'))->format('d M Y') }}
+                            {{ \Carbon\Carbon::parse(request('date_start'))->format('d/m/Y') }} - {{ \Carbon\Carbon::parse(request('date_end'))->format('d/m/Y') }}
                         @else
                             Semua Periode
                         @endif

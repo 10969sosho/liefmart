@@ -11,6 +11,7 @@ use App\Models\ShopeeFinancialTransaction;
 use App\Models\TokopediaFinancialTransaction;
 use App\Models\TiktokFinancialTransaction;
 use App\Models\BlibliFinancialTransaction;
+use App\Models\OfflineSale;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -32,19 +33,22 @@ class DashboardController extends Controller
         $tokopediaSales = $this->getPlatformSales('tokopedia', $currentMonth);
         $tiktokSales = $this->getPlatformSales('tiktok', $currentMonth);
         $blibliSales = $this->getPlatformSales('blibli', $currentMonth);
+        $offlineSales = $this->getOfflineSales($currentMonth);
         
         // Calculate growth percentages
         $shopeeGrowth = $this->calculateGrowth('shopee', $currentMonth, $previousMonth);
         $tokopediaGrowth = $this->calculateGrowth('tokopedia', $currentMonth, $previousMonth);
         $tiktokGrowth = $this->calculateGrowth('tiktok', $currentMonth, $previousMonth);
         $blibliGrowth = $this->calculateGrowth('blibli', $currentMonth, $previousMonth);
+        $offlineGrowth = $this->calculateOfflineGrowth($currentMonth, $previousMonth);
         
         // Calculate platform distribution percentages
-        $totalSales = $shopeeSales + $tokopediaSales + $tiktokSales + $blibliSales;
+        $totalSales = $shopeeSales + $tokopediaSales + $tiktokSales + $blibliSales + $offlineSales;
         $shopeePercentage = $totalSales > 0 ? round(($shopeeSales / $totalSales) * 100, 1) : 0;
         $tokopediaPercentage = $totalSales > 0 ? round(($tokopediaSales / $totalSales) * 100, 1) : 0;
         $tiktokPercentage = $totalSales > 0 ? round(($tiktokSales / $totalSales) * 100, 1) : 0;
         $blibliPercentage = $totalSales > 0 ? round(($blibliSales / $totalSales) * 100, 1) : 0;
+        $offlinePercentage = $totalSales > 0 ? round(($offlineSales / $totalSales) * 100, 1) : 0;
         
         // Get chart data
         $chartData = $this->getChartData();
@@ -60,14 +64,17 @@ class DashboardController extends Controller
             'tokopediaSales',
             'tiktokSales',
             'blibliSales',
+            'offlineSales',
             'shopeeGrowth',
             'tokopediaGrowth',
             'tiktokGrowth',
             'blibliGrowth',
+            'offlineGrowth',
             'shopeePercentage',
             'tokopediaPercentage',
             'tiktokPercentage',
             'blibliPercentage',
+            'offlinePercentage',
             'chartData',
             'recentTransactions',
             'lowStockProducts'
@@ -132,7 +139,10 @@ class DashboardController extends Controller
                     ->sum('nominal_fix') +
                    BlibliFinancialTransaction::whereMonth('tanggal_order', $month->month)
                     ->whereYear('tanggal_order', $month->year)
-                    ->sum('nominal_fix');
+                    ->sum('nominal_fix') +
+                   OfflineSale::whereMonth('sale_date', $month->month)
+                    ->whereYear('sale_date', $month->year)
+                    ->sum('total_amount');
         })->toArray();
         
         return [
@@ -199,5 +209,28 @@ class DashboardController extends Controller
                     'min_stock' => 10 // You might want to make this configurable
                 ];
             });
+    }
+    
+    /**
+     * Get offline sales for a specific month
+     */
+    private function getOfflineSales($month)
+    {
+        return OfflineSale::whereMonth('sale_date', $month->month)
+                          ->whereYear('sale_date', $month->year)
+                          ->sum('total_amount');
+    }
+    
+    /**
+     * Calculate growth percentage for offline sales
+     */
+    private function calculateOfflineGrowth($currentMonth, $previousMonth)
+    {
+        $currentSales = $this->getOfflineSales($currentMonth);
+        $previousSales = $this->getOfflineSales($previousMonth);
+        
+        if ($previousSales == 0) return 0;
+        
+        return round((($currentSales - $previousSales) / $previousSales) * 100, 1);
     }
 }
