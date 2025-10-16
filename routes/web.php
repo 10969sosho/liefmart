@@ -7,6 +7,7 @@ use App\Http\Controllers\SalesController;
 use App\Http\Controllers\TokopediaController;
 use App\Http\Controllers\ShopeeController;
 use App\Http\Controllers\TiktokController;
+use App\Http\Controllers\LazadaController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\HomeController;
@@ -248,6 +249,32 @@ Route::prefix('sales')->middleware(['auth', 'main.category', 'prevent-back-histo
         Route::get('/history/{id}', [PembayaranTiktokController::class, 'history'])->name('history');
         Route::post('/lock/{id}', [PembayaranTiktokController::class, 'lock'])->name('lock');
         Route::post('/unlock/{id}', [PembayaranTiktokController::class, 'unlock'])->name('unlock');
+    });
+    
+    // Lazada specific routes
+    Route::prefix('lazada')->group(function () {
+        Route::get('/', [LazadaController::class, 'platform'])->name('sales.lazada.platform');
+        Route::get('/import', [LazadaController::class, 'import'])->name('sales.lazada.import');
+        Route::post('/import/preview', [LazadaController::class, 'previewImport'])->name('sales.lazada.preview-import');
+        Route::post('/import/process', [LazadaController::class, 'processImport'])->name('sales.lazada.import.process');
+        Route::get('/manual', [LazadaController::class, 'manual'])->name('sales.lazada.manual');
+        Route::post('/manual/store', [LazadaController::class, 'storeManual'])->name('sales.lazada.manual.store');
+        Route::get('/index', [LazadaController::class, 'index'])->name('sales.lazada.index');
+        Route::get('/platform-product', [LazadaController::class, 'platformProduct'])->name('sales.lazada.platform-product');
+        Route::post('/platform-product', [LazadaController::class, 'storePlatformProduct'])->name('sales.lazada.platform-product.store');
+        Route::get('/mapping', [LazadaController::class, 'mapping'])->name('sales.lazada.mapping');
+        Route::post('/mapping', [LazadaController::class, 'storeMapping'])->name('sales.lazada.mapping.store');
+        Route::delete('/mapping/{id}', [LazadaController::class, 'deleteMapping'])->name('sales.lazada.mapping.delete');
+    });
+    
+    // Lazada Financial Transactions Routes
+    Route::prefix('lazada')->group(function () {
+        Route::get('/financial', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'index'])->name('finance.lazada.index');
+        Route::get('/financial/import', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'import'])->name('finance.lazada.import');
+        Route::post('/financial/preview', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'preview'])->name('finance.lazada.preview');
+        Route::post('/financial/process', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'process'])->name('finance.lazada.process');
+        Route::get('/financial/{transaction}', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'show'])->name('finance.lazada.show');
+        Route::delete('/financial/{transaction}', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'destroy'])->name('finance.lazada.destroy');
     });
 });
 

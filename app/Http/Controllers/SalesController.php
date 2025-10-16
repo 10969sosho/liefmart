@@ -224,7 +224,7 @@ class SalesController extends Controller
     public function platform($platform)
     {
         // Validasi platform yang diminta
-        if (!in_array($platform, ['shopee', 'tokopedia', 'tiktok', 'blibli'])) {
+        if (!in_array($platform, ['shopee', 'tokopedia', 'tiktok', 'blibli', 'lazada'])) {
             return redirect()->route('sales.online')->with('error', 'Platform tidak valid.');
         }
 
@@ -246,6 +246,11 @@ class SalesController extends Controller
         // Untuk Blibli, gunakan view khusus
         if ($platform === 'blibli') {
             return view('sales.blibli.platform');
+        }
+
+        // Untuk Lazada, gunakan view khusus
+        if ($platform === 'lazada') {
+            return view('sales.lazada.platform');
         }
 
         // Untuk platform lainnya, gunakan view umum
@@ -343,7 +348,7 @@ class SalesController extends Controller
     public function onlineInput($platform)
     {
         // Validasi platform yang diminta
-        if (!in_array($platform, ['shopee', 'tokopedia', 'tiktok', 'blibli'])) {
+        if (!in_array($platform, ['shopee', 'tokopedia', 'tiktok', 'blibli', 'lazada'])) {
             return redirect()->route('sales.online')->with('error', 'Platform tidak valid.');
         }
 
@@ -424,7 +429,7 @@ class SalesController extends Controller
     {
         // Validasi data input
         $validated = $request->validate([
-            'platform' => 'required|string|in:shopee,tokopedia,tiktok,blibli',
+            'platform' => 'required|string|in:shopee,tokopedia,tiktok,blibli,lazada',
             'no_order' => 'required|string|max:100',
             'order_date' => 'required|date',
             'day_status' => 'nullable|string|max:255', // Support multiple values separated by comma

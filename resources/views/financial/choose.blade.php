@@ -98,6 +98,28 @@
             </div>
         </div>
         <div class="col-md-3 col-12">
+            <div class="card h-100 shadow-sm border-0 hover-card">
+                <div class="card-body text-center p-4">
+                    <div class="platform-icon mb-3">
+                        <img src="{{ asset('images/logo/lazada.png') }}" alt="Lazada" class="img-fluid" style="max-height: 80px;" onerror="this.src='https://via.placeholder.com/150x80?text=Lazada'">
+                    </div>
+                    <h5 class="card-title fw-bold">Lazada</h5>
+                    <p class="card-text text-muted">Kelola data keuangan platform Lazada</p>
+                    <div class="d-grid gap-2">
+                        <a href="{{ route('finance.lazada.index') }}" class="btn btn-danger">
+                            <i class="fas fa-money-bill me-1"></i> Kelola Keuangan
+                        </a>
+                        <a href="{{ route('finance.lazada.import') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-file-import me-1"></i> Import Data
+                        </a>
+                        <a href="#" class="btn btn-outline-info disabled">
+                            <i class="fas fa-chart-line me-1"></i> Arus Kas (Coming Soon)
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-12">
             <div class="card h-100 shadow-sm border-0 hover-card bg-warning bg-opacity-10">
                 <div class="card-body text-center p-4">
                     <div class="platform-icon mb-3">

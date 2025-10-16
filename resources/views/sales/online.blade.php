@@ -71,12 +71,12 @@
                             <div class="card h-100 shadow-sm">
                                 <div class="card-body text-center d-flex flex-column">
                                     <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-primary"></i>
+                                        <img src="{{ asset('images/logo/lazada.png') }}" alt="Lazada" class="img-fluid" style="max-height: 100px; max-width: 160px;">
                                     </div>
-                                    <h5 class="card-title">Merchant 1</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
+                                    <h5 class="card-title">Lazada</h5>
+                                   
                                     <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
+                                        <a href="{{ route('sales.platform', ['platform' => 'lazada']) }}" class="btn btn-primary btn-sm">Pilih</a>
                                     </div>
                                 </div>
                             </div>

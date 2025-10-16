@@ -18,6 +18,7 @@ class PlatformSeeder extends Seeder
             ['name' => 'tokopedia'],
             ['name' => 'tiktok'],
             ['name' => 'blibli'],
+            ['name' => 'lazada'],
         ];
 
         foreach ($platforms as $platform) {
