@@ -7,44 +7,51 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 1.4;
+            font-size: 9px;
+            line-height: 1.2;
             color: #333;
             margin: 0;
-            padding: 15px;
+            padding: 10px;
         }
         
         .invoice-container {
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 10px;
             border: 1px solid #000;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
         
         .header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
         
         .title {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: bold;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             text-decoration: underline;
         }
         
         .invoice-info {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         
         .invoice-info div {
             flex: 1;
         }
         
+        .content-area {
+            flex: 1;
+        }
+        
         .table-container {
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
         
         table {
@@ -55,9 +62,9 @@
         
         th, td {
             border: 1px solid #000;
-            padding: 4px;
+            padding: 2px 3px;
             text-align: left;
-            font-size: 10px;
+            font-size: 8px;
         }
         
         th {
@@ -85,7 +92,8 @@
         }
         
         .signature-section {
-            margin-top: 30px;
+            margin-top: auto;
+            padding-top: 20px;
             display: flex;
             justify-content: space-between;
         }
@@ -97,8 +105,8 @@
         
         .signature-line {
             border-bottom: 1px solid #000;
-            height: 60px;
-            margin-bottom: 5px;
+            height: 40px;
+            margin-bottom: 3px;
         }
         
         .dotted-line {
@@ -145,6 +153,7 @@
             }
         @endphp
         
+        <div class="content-area">
         <div class="table-container">
             <table>
                 <thead>
@@ -234,7 +243,7 @@
                                 }
                                 
                                 $totalPrice = \App\Helpers\NumberFormatter::roundToTwoDecimals($currentTotal);
-                                $discountDisplay = !empty($discountInfo) ? implode(', ', $discountInfo) : '-';
+                                $discountDisplay = !empty($discountInfo) ? implode(' + ', $discountInfo) : '-';
                                 
                                 // Add to totals
                                 $totalQty += $originalQty;
@@ -253,7 +262,7 @@
                             <td class="text-center">{{ number_format($returQty, 0) }}</td>
                             <td class="text-center">{{ number_format($kirimQty, 0) }}</td>
                             <td class="text-right">{{ number_format($unitPrice, 0, ',', '.') }}</td>
-                            <td class="text-center">{{ $discountDisplay }}</td>
+                            <td class="text-right">{{ $discountDisplay }}</td>
                             <td class="text-right">{{ number_format($totalPrice, 0, ',', '.') }}</td>
                             <td>{{ $offlineSale && $offlineSale->customerInfo ? $offlineSale->customerInfo->name : 'N/A' }}</td>
                         </tr>
@@ -272,6 +281,7 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
         </div>
         
         <div class="dotted-line"></div>

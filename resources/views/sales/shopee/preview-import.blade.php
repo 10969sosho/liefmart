@@ -190,10 +190,15 @@
                             <p><strong>Beberapa nomor order sudah ada di database dan akan di-skip:</strong></p>
                             <div class="row">
                                 @foreach($duplicateOrdersInDatabase as $duplicate)
-                                    <div class="col-md-6 col-sm-12">
-                                        <span class="badge bg-warning text-dark border mb-2 py-2 px-3 w-100 text-start">
-                                            <i class="fas fa-skip-forward me-2"></i>{{ $duplicate['order_number'] }} - {{ $duplicate['product_name'] }}
-                                        </span>
+                                    <div class="col-md-6 col-sm-12 mb-2">
+                                        <div class="duplicate-order-item">
+                                            <span class="badge bg-warning text-dark border py-2 px-3 w-100 text-start d-block">
+                                                <i class="fas fa-skip-forward me-2"></i>
+                                                <span class="duplicate-order-text">
+                                                    {{ $duplicate['order_number'] }} - {{ $duplicate['product_name'] }}
+                                                </span>
+                                            </span>
+                                        </div>
                                     </div>
                                 @endforeach
                             </div>
@@ -743,6 +748,34 @@
         font-size: 0.85rem;
     }
     
+    /* Styling untuk duplicate order items */
+    .duplicate-order-item {
+        width: 100%;
+        overflow: hidden;
+    }
+    
+    .duplicate-order-text {
+        word-wrap: break-word;
+        word-break: break-word;
+        white-space: normal;
+        line-height: 1.4;
+        display: inline-block;
+        max-width: 100%;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+    
+    .duplicate-order-item .badge {
+        word-wrap: break-word;
+        word-break: break-word;
+        white-space: normal;
+        overflow-wrap: break-word;
+        hyphens: auto;
+        display: block;
+        text-align: left;
+        line-height: 1.4;
+    }
+    
     /* Media queries untuk responsive */
     @media (max-width: 992px) {
         .table {
@@ -771,6 +804,17 @@
         
         .product-name {
             max-width: 150px;
+        }
+        
+        /* Responsive styling untuk duplicate order items */
+        .duplicate-order-item .badge {
+            font-size: 0.75rem;
+            padding: 8px 12px;
+        }
+        
+        .duplicate-order-text {
+            font-size: 0.75rem;
+            line-height: 1.3;
         }
     }
 </style>

@@ -73,42 +73,31 @@ class FinanceOffline extends Model
      * Generate a new invoice number based on tax ID
      *
      * @param int $taxId
+     * @param string $orderDate Tanggal ORDER (format: Y-m-d)
      * @return string
      */
-    public static function generateInvoiceNumber($taxId)
+    public static function generateInvoiceNumber($taxId, $orderDate = null)
     {
-        // Format tahun-bulan saat ini (YYMM)
-        $yearMonth = Carbon::now()->format('ym');
-        
-        // Determine the suffix based on tax ID
-        $suffix = "";
-        if ($taxId == 3) { // HGN (PKP)
-            $suffix = "HGNSDA-KOS/01";
-        } elseif ($taxId == 4) { // LM (Non-PKP)
-            $suffix = "HGNSDA-KOS/02";
-        } elseif ($taxId == 5) { // Kopi PKP
-            $suffix = "HPNSDA-KOP/01";
-        } elseif ($taxId == 6) { // Kopi Non-PKP
-            $suffix = "HPNSDA-KOP/02";
-        } else {
-            // Default to HGN PKP
-            $suffix = "HGNSDA-KOS/01";
+        // Jika tidak ada tanggal ORDER, gunakan tanggal saat ini
+        if (!$orderDate) {
+            $orderDate = Carbon::now()->format('Y-m-d');
         }
         
-        // Find the latest invoice number for this format and year-month
-        $latestInvoice = self::where('invoice_number', 'like', "%/$yearMonth/$suffix")
-                            ->orderBy('invoice_number', 'desc')
-                            ->value('invoice_number');
+        // Tentukan kategori, jenis penjualan, dan status pajak berdasarkan tax_id
+        $category = ($taxId == 5 || $taxId == 6) 
+            ? InvoiceSequence::CATEGORY_KOPI 
+            : InvoiceSequence::CATEGORY_SKINCARE;
+            
+        $salesType = InvoiceSequence::SALES_OFFLINE;
         
-        if ($latestInvoice) {
-            // Extract the number part and increment
-            $lastNumber = (int) substr($latestInvoice, 0, 4);
-            $newNumber = $lastNumber + 1;
-        } else {
-            $newNumber = 1;
-        }
+        $taxStatus = in_array($taxId, [3, 5]) 
+            ? InvoiceSequence::TAX_PKP 
+            : InvoiceSequence::TAX_NON_PKP;
         
-        return str_pad($newNumber, 4, '0', STR_PAD_LEFT) . "/$yearMonth/$suffix";
+        // Mendapatkan nomor invoice dari InvoiceSequence dengan tanggal ORDER
+        $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate);
+        
+        return $invoiceData['invoice_number'];
     }
 
     /**

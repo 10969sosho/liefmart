@@ -118,12 +118,17 @@ class PembayaranTiktokController extends Controller
         $groupedTransactions = $transactions->groupBy('no_order');
         
         // Get all orders that don't have financial transactions
-        $missingOrders = Order::with('orderItems')->whereDoesntHave('tiktokFinancialTransactions')
+        $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
+            ->whereDoesntHave('tiktokFinancialTransactions')
             ->whereHas('platform', function($query) {
                 $query->where('name', 'tiktok');
             })
             ->orderBy('tanggal', 'desc') // Use tanggal instead of order_date
-            ->get();
+            ->get()
+            ->filter(function($order) {
+                // Filter out fully returned orders
+                return !$order->isFullyReturned();
+            });
             
         return view('financial.tiktok.index', compact(
             'transactions', 
@@ -451,7 +456,12 @@ class PembayaranTiktokController extends Controller
             $previewData = [];
             
             $totalRows = count($rows);
-            // Process all rows
+            
+            // Collect all order numbers first for batch query
+            $orderNumbers = [];
+            $processedRows = [];
+            
+            // First pass: collect order numbers and process basic data
             foreach ($rows as $row) {
                 $rowNumber++;
                 
@@ -480,6 +490,44 @@ class PembayaranTiktokController extends Controller
                 $rowData['BIAYA10'] = $getValue($row, 'BIAYA10') !== '' ? $getValue($row, 'BIAYA10') : 0;
                 $rowData['BIAYA11'] = $getValue($row, 'BIAYA11') !== '' ? $getValue($row, 'BIAYA11') : 0;
                 $rowData['BIAYA12'] = $getValue($row, 'BIAYA12') !== '' ? $getValue($row, 'BIAYA12') : 0;
+                
+                // Collect order number for batch query - gunakan trim()
+                if (!empty($rowData['NOMOR PESANAN'])) {
+                    $orderNumbers[] = trim($rowData['NOMOR PESANAN']);
+                }
+                
+                $processedRows[] = [
+                    'rowNumber' => $rowNumber,
+                    'rowData' => $rowData
+                ];
+            }
+            
+            // Batch query: Get all orders and their items in one query
+            $orders = [];
+            $existingTransactions = [];
+            
+            if (!empty($orderNumbers)) {
+                // Remove duplicates to avoid unnecessary queries
+                $orderNumbers = array_unique($orderNumbers);
+                
+                // Get all orders with their items in one query
+                $orders = Order::whereIn('order_number', $orderNumbers)
+                    ->with(['orderItems'])
+                    ->get()
+                    ->keyBy('order_number');
+                
+                // Get all existing transactions in one query
+                $existingTransactions = TiktokFinancialTransaction::whereIn('no_order', $orderNumbers)
+                    ->pluck('no_order')
+                    ->toArray();
+                
+                \Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
+            }
+            
+            // Second pass: process rows with pre-loaded data
+            foreach ($processedRows as $processedRow) {
+                $rowNumber = $processedRow['rowNumber'];
+                $rowData = $processedRow['rowData'];
                 
                 // Validate row data
                 $rowIssues = [];
@@ -546,10 +594,13 @@ class PembayaranTiktokController extends Controller
                     $rowIssues[] = 'Jumlah pembayaran kosong';
                 }
                 
-                // 5. Check if order exists in database
-                $order = Order::where('order_number', $rowData['NOMOR PESANAN'])->first();
+                // 5. Check if order exists in database (using pre-loaded data)
+                // Gunakan trim() untuk menghindari masalah spasi
+                $orderNumber = trim($rowData['NOMOR PESANAN']);
+                $order = $orders[$orderNumber] ?? null;
+                
                 if (!$order) {
-                    \Log::warning("Order tidak ditemukan: " . $rowData['NOMOR PESANAN']);
+                    \Log::warning("Order tidak ditemukan untuk nomor pesanan: {$orderNumber}");
                     $rowIssues[] = 'Nomor order tidak ditemukan di database';
                     
                     // Skip this transaction instead of creating placeholder data
@@ -563,26 +614,31 @@ class PembayaranTiktokController extends Controller
                     continue; // Skip to next transaction
                 }
                 
-                // 6. Check if transaction already exists
-                $transactionExists = TiktokFinancialTransaction::where('no_order', $rowData['NOMOR PESANAN'])->exists();
+                // 6. Check if transaction already exists (using pre-loaded data)
+                $transactionExists = in_array($orderNumber, $existingTransactions);
                 if ($transactionExists) {
-                    \Log::warning("Transaksi sudah ada untuk order: " . $rowData['NOMOR PESANAN']);
+                    \Log::warning("Transaksi sudah ada untuk order: {$orderNumber}");
                     $rowIssues[] = 'Transaksi untuk order ini sudah ada';
                 }
                 
                 // Create preview data even if transaction exists to show in the preview
-                // Calculate total price from order items considering quantity
+                // Ensure order date is always valid - ambil dari database berdasarkan order_number
+                $orderDate = $order->tanggal 
+                    ?? Order::where('order_number', $orderNumber)->value('tanggal')
+                    ?? throw new \Exception("Tanggal order tidak ditemukan untuk No Order {$orderNumber}");
+                
+                // Calculate total price from order items considering quantity (using pre-loaded data)
                 $nominal_harga = 0;
                 foreach ($order->orderItems as $item) {
                     $nominal_harga += $item->price_after_discount * $item->quantity;
                 }
                 
-                // Calculate total quantity across all order items
+                // Calculate total quantity across all order items (using pre-loaded data)
                 $totalQty = $order->orderItems->sum('quantity');
                 
                 // Preview data
                 $previewData[] = [
-                    'tanggal_order' => $order->tanggal,
+                    'tanggal_order' => $orderDate,
                     'hari_order' => $order->hari,
                     'no_order' => $order->order_number,
                     'no_invoice' => 'PREVIEW-' . $order->order_number,
@@ -728,6 +784,10 @@ class PembayaranTiktokController extends Controller
     public function process(Request $request)
     {
         try {
+            // Increase execution time limit for large imports
+            set_time_limit(300); // 5 minutes
+            ini_set('memory_limit', '512M');
+            
             Log::info('Starting TikTok financial import process');
             
             // Validate process token
@@ -765,80 +825,115 @@ class PembayaranTiktokController extends Controller
             
             Log::info('Processing ' . count($validData) . ' valid records in ' . count($batches) . ' batches');
             
-            // Pertama, pra-proses semua data untuk mengetahui berapa banyak transaksi valid yang akan diimpor
-            $validOrders = [];
-            $validTaxGroups = [];
+            // Collect all order numbers first for batch queries
+            $allOrderNumbers = [];
+            $processedRows = [];
             
             foreach ($batches as $batchIndex => $batch) {
                 Log::info('Processing batch ' . ($batchIndex + 1) . ' of ' . count($batches));
                 
                 foreach ($batch as $index => $rowData) {
-                    try {
-                        // Skip if no order number provided
-                        if (empty($rowData['NOMOR PESANAN'])) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Row #$index has no order number";
-                            continue;
-                        }
-                        
-                        // Find order by order number
-                        $order = Order::where('order_number', $rowData['NOMOR PESANAN'])->first();
-                        if (!$order) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Row #$index: Order {$rowData['NOMOR PESANAN']} not found";
-                            continue;
-                        }
-                        
-                        // Check if transaction already exists
-                        $existingTransaction = TiktokFinancialTransaction::where('no_order', $rowData['NOMOR PESANAN'])->first();
-                        if ($existingTransaction) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Row #$index: Transaction for order {$rowData['NOMOR PESANAN']} already exists";
-                            continue;
-                        }
-                        
-                        // Get order items with their warehouse stocks
-                        $orderItems = $order->orderItems()->with('warehouseStock')->get();
-                        
-                        // Use OrderItems for calculation to avoid BarangKeluar duplication issues
-                        // Group OrderItems by tax_id
-                        $itemsByTaxId = [];
-                        $totalQty = 0;
-                        
-                        foreach ($orderItems as $item) {
-                            if ($item->warehouseStock && $item->warehouseStock->tax_id) {
-                                $taxId = $item->warehouseStock->tax_id;
-                                if (!isset($itemsByTaxId[$taxId])) {
-                                    $itemsByTaxId[$taxId] = [];
-                                }
-                                $itemsByTaxId[$taxId][] = $item;
-                                $totalQty += $item->quantity;
-                            }
-                        }
-                        
-                        // Order is valid, add to the list of valid orders
-                        $validOrders[$order->id] = [
-                            'order' => $order,
-                            'rowData' => $rowData,
-                            'taxGroups' => $itemsByTaxId,
-                            'totalQty' => $totalQty
-                        ];
-                        
-                        // Track all tax groups needed
-                        foreach ($itemsByTaxId as $taxId => $items) {
-                            if (!isset($validTaxGroups[$taxId])) {
-                                $validTaxGroups[$taxId] = 0;
-                            }
-                            $validTaxGroups[$taxId]++;
-                        }
-                        
-                    } catch (\Exception $e) {
+                    // Skip if no order number provided
+                    if (empty($rowData['NOMOR PESANAN'])) {
                         $skippedCount++;
-                        $skippedReasons[] = "Row #$index: Error - " . $e->getMessage();
-                        Log::error("Error processing row $index: " . $e->getMessage());
-                        Log::error($e->getTraceAsString());
+                        $skippedReasons[] = "Row #$index has no order number";
                         continue;
                     }
+                    
+                    $allOrderNumbers[] = $rowData['NOMOR PESANAN'];
+                    $processedRows[] = [
+                        'index' => $index,
+                        'rowData' => $rowData
+                    ];
+                }
+            }
+            
+            // Batch query: Get all orders and existing transactions
+            $orders = [];
+            $existingTransactions = [];
+            
+            if (!empty($allOrderNumbers)) {
+                // Remove duplicates
+                $allOrderNumbers = array_unique($allOrderNumbers);
+                
+                // Get all orders with their items in one query
+                $orders = Order::whereIn('order_number', $allOrderNumbers)
+                    ->with(['orderItems.warehouseStock'])
+                    ->get()
+                    ->keyBy('order_number');
+                
+                // Get all existing transactions in one query
+                $existingTransactions = TiktokFinancialTransaction::whereIn('no_order', $allOrderNumbers)
+                    ->pluck('no_order')
+                    ->toArray();
+                
+                Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
+            }
+            
+            // Process rows with pre-loaded data
+            $validOrders = [];
+            $validTaxGroups = [];
+            
+            foreach ($processedRows as $processedRow) {
+                $index = $processedRow['index'];
+                $rowData = $processedRow['rowData'];
+                
+                try {
+                    // Check if order exists (using pre-loaded data)
+                    $order = $orders[$rowData['NOMOR PESANAN']] ?? null;
+                    if (!$order) {
+                        $skippedCount++;
+                        $skippedReasons[] = "Row #$index: Order {$rowData['NOMOR PESANAN']} not found";
+                        continue;
+                    }
+                    
+                    // Check if transaction already exists (using pre-loaded data)
+                    if (in_array($rowData['NOMOR PESANAN'], $existingTransactions)) {
+                        $skippedCount++;
+                        $skippedReasons[] = "Row #$index: Transaction for order {$rowData['NOMOR PESANAN']} already exists";
+                        continue;
+                    }
+                    
+                    // Use pre-loaded order items
+                    $orderItems = $order->orderItems;
+                    
+                    // Group OrderItems by tax_id
+                    $itemsByTaxId = [];
+                    $totalQty = 0;
+                    
+                    foreach ($orderItems as $item) {
+                        if ($item->warehouseStock && $item->warehouseStock->tax_id) {
+                            $taxId = $item->warehouseStock->tax_id;
+                            if (!isset($itemsByTaxId[$taxId])) {
+                                $itemsByTaxId[$taxId] = [];
+                            }
+                            $itemsByTaxId[$taxId][] = $item;
+                            $totalQty += $item->quantity;
+                        }
+                    }
+                    
+                    // Order is valid, add to the list of valid orders
+                    $validOrders[$order->id] = [
+                        'order' => $order,
+                        'rowData' => $rowData,
+                        'taxGroups' => $itemsByTaxId,
+                        'totalQty' => $totalQty
+                    ];
+                    
+                    // Track all tax groups needed
+                    foreach ($itemsByTaxId as $taxId => $items) {
+                        if (!isset($validTaxGroups[$taxId])) {
+                            $validTaxGroups[$taxId] = 0;
+                        }
+                        $validTaxGroups[$taxId]++;
+                    }
+                    
+                } catch (\Exception $e) {
+                    $skippedCount++;
+                    $skippedReasons[] = "Row #$index: Error - " . $e->getMessage();
+                    Log::error("Error processing row $index: " . $e->getMessage());
+                    Log::error($e->getTraceAsString());
+                    continue;
                 }
             }
             
@@ -858,17 +953,37 @@ class PembayaranTiktokController extends Controller
                     ? InvoiceSequence::TAX_PKP 
                     : InvoiceSequence::TAX_NON_PKP;
                 
-                // Mendapatkan batch nomor invoice
+                // Cari order pertama untuk mendapatkan tanggal order
+                $firstOrder = null;
+                foreach ($validOrders as $orderData) {
+                    if (isset($orderData['taxGroups'][$taxId])) {
+                        $firstOrder = $orderData['order'];
+                        break;
+                    }
+                }
+                
+                $orderDate = $firstOrder ? $firstOrder->tanggal : null;
+                
+                // Mendapatkan batch nomor invoice dengan tanggal order
                 $invoiceNumbersByTaxId[$taxId] = InvoiceSequence::getBatchInvoiceNumbers(
                     $category, 
                     $salesType, 
                     $taxStatus, 
-                    $count
+                    $count,
+                    $orderDate
                 );
             }
             
             // Selanjutnya, proses setiap order yang valid
+            $processedCount = 0;
+            $totalValidOrders = count($validOrders);
+            Log::info("Processing $totalValidOrders valid orders");
+            
             foreach ($validOrders as $orderId => $orderData) {
+                $processedCount++;
+                if ($processedCount % 100 == 0) {
+                    Log::info("Processed $processedCount of $totalValidOrders orders");
+                }
                 $order = $orderData['order'];
                 $rowData = $orderData['rowData'];
                 $itemsByTaxId = $orderData['taxGroups'];
@@ -905,7 +1020,7 @@ class PembayaranTiktokController extends Controller
                         
                         // Create transaction for this tax group
                         $transaction = new TiktokFinancialTransaction();
-                        $transaction->tanggal_order = $order->tanggal;
+                        $transaction->tanggal_order = $orderDate;
                         $transaction->hari_order = $order->hari;
                         $transaction->no_order = $order->order_number;
                         $transaction->no_invoice = $invoiceData['invoice_number'];
@@ -1146,8 +1261,12 @@ class PembayaranTiktokController extends Controller
                     ? InvoiceSequence::TAX_PKP 
                     : InvoiceSequence::TAX_NON_PKP;
                 
-                // Get invoice number
-                $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus);
+                // Get invoice number with order date - WAJIB dari tabel orders
+                $orderDate = $order->tanggal 
+                    ?? Order::where('order_number', $order->order_number)->value('tanggal')
+                    ?? throw new \Exception("Tanggal order tidak ditemukan untuk Order {$order->order_number}");
+                
+                $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate);
                 $invoiceNumbersByTaxId[$taxId] = $invoiceData['invoice_number'];
             }
             
@@ -1158,7 +1277,7 @@ class PembayaranTiktokController extends Controller
                 
                 // Create transaction for this tax group
                 $transaction = new TiktokFinancialTransaction();
-                $transaction->tanggal_order = $order->tanggal;
+                $transaction->tanggal_order = $orderDate;
                 $transaction->hari_order = $order->hari;
                 $transaction->no_order = $order->order_number;
                 $transaction->no_invoice = $invoiceNumber;
@@ -1391,6 +1510,11 @@ class PembayaranTiktokController extends Controller
                     ->with('error', 'No TikTok orders found in the database');
             }
             
+            // Ensure order date is always valid
+            $orderDate = $order->tanggal 
+                ?? Order::where('id', $order->id)->value('tanggal')
+                ?? throw new \Exception("Tanggal order tidak ditemukan untuk Order ID {$order->id}");
+            
             // Check if transaction already exists for this order
             $exists = TiktokFinancialTransaction::where('order_id', $order->id)->exists();
             if ($exists) {
@@ -1401,7 +1525,7 @@ class PembayaranTiktokController extends Controller
             // Create a sample transaction
             $transaction = new TiktokFinancialTransaction();
             $transaction->order_id = $order->id;
-            $transaction->tanggal_order = $order->tanggal;
+            $transaction->tanggal_order = $orderDate;
             $transaction->hari_order = $order->hari;
             $transaction->no_order = $order->order_number;
             

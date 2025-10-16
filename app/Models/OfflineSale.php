@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 use App\Helpers\MainCategoryHelper;
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\SuratJalanSequence;
 
 class OfflineSale extends Model
 {
@@ -205,43 +206,20 @@ class OfflineSale extends Model
      *
      * @param int $taxId
      * @param int $mainCategoryId
+     * @param string $orderDate Tanggal ORDER (format: Y-m-d)
      * @return string
      */
-    public static function generateSuratJalanNumber($taxId = null, $mainCategoryId = null)
+    public static function generateSuratJalanNumber($taxId = null, $mainCategoryId = null, $orderDate = null)
     {
-        $yearMonth = Carbon::now()->format('ym'); // Format: 2504 for April 2025
+        // Jika tidak ada tanggal ORDER, gunakan tanggal saat ini
+        if (!$orderDate) {
+            $orderDate = Carbon::now()->format('Y-m-d');
+        }
         
-        // Determine the suffix based on tax id and main category
-        $suffix = "";
-        
-        if ($mainCategoryId == 1) { // HPNSDA
-            if ($taxId == 1) { // PKP
-                $suffix = "HPNSDA-KOP/01";
-            } elseif ($taxId == 2) { // Non PKP
-                $suffix = "HPNSDA-KOP/02";
-            } else {
-                // Default if tax ID not specified
-                $suffix = "HPNSDA-KOP/01";
-            }
-        } elseif ($mainCategoryId == 2) { // HGNSDA
-            if ($taxId == 3) { // HGN
-                $suffix = "HGNSDA-KOS/01";
-            } elseif ($taxId == 4) { // LM
-                $suffix = "HGNSDA-KOS/02";
-            } else {
-                // Default if tax ID not specified
-                $suffix = "HGNSDA-KOS/01";
-            }
-        } else {
-            // If main category not specified, use the old format
+        // Jika main category tidak ditentukan, gunakan format lama
+        if (!$mainCategoryId) {
             $today = Carbon::now()->format('Ymd');
             $latestSJ = self::where('surat_jalan_number', 'like', "SJ-OFF-{$today}%")
-                ->where(function($query) use ($mainCategoryId) {
-                    if ($mainCategoryId) {
-                        $query->where('main_category_id', $mainCategoryId)
-                              ->orWhereNull('main_category_id');
-                    }
-                })
                 ->orderBy('surat_jalan_number', 'desc')
                 ->value('surat_jalan_number');
 
@@ -255,30 +233,10 @@ class OfflineSale extends Model
             return "SJ-OFF-{$today}-" . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
         }
         
-        // Find latest invoice number for this format and year-month
-        $latestSJ = self::where('surat_jalan_number', 'like', "%/$yearMonth/$suffix")
-                       ->where(function($query) use ($mainCategoryId) {
-                           if ($mainCategoryId) {
-                               $query->where('main_category_id', $mainCategoryId)
-                                     ->orWhereNull('main_category_id');
-                           }
-                       })
-                       ->orderBy('surat_jalan_number', 'desc')
-                       ->first();
+        // Gunakan sistem baru dengan SuratJalanSequence
+        $result = SuratJalanSequence::getNextSuratJalanNumber($taxId, $mainCategoryId, $orderDate);
         
-        $counter = 1;
-        
-        if ($latestSJ) {
-            // Extract the counter from the latest SJ
-            $parts = explode('/', $latestSJ->surat_jalan_number);
-            if (count($parts) > 0) {
-                $counter = (int) $parts[0];
-                $counter++;
-            }
-        }
-        
-        // Format: 0001/2504/HGNSDA-KOS/01
-        return sprintf('%04d/%s/%s', $counter, $yearMonth, $suffix);
+        return $result['surat_jalan_number'];
     }
 
     /**

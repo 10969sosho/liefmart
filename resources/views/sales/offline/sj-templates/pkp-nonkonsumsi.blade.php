@@ -9,54 +9,68 @@
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            font-size: 14px;
-            line-height: 1.5;
+            font-size: 11px;
+            line-height: 1.2;
         }
         .sj-container {
             max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 10px auto;
+            padding: 10px;
             border: 2px solid #2196F3;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
         .sj-header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
             color: #2196F3;
         }
         .sj-header h1 {
             margin: 0;
-            font-size: 24px;
+            font-size: 18px;
         }
         .company-details {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             border-bottom: 2px solid #2196F3;
-            padding-bottom: 20px;
+            padding-bottom: 10px;
         }
         .sj-info {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
         }
         .sj-info-box {
             width: 45%;
         }
         .sj-details h2, .customer-details h2 {
-            font-size: 16px;
-            margin: 0 0 10px 0;
+            font-size: 12px;
+            margin: 0 0 5px 0;
             border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
+            padding-bottom: 3px;
             color: #2196F3;
+        }
+        .content-area {
+            flex: 1;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
         }
         th, td {
-            padding: 10px;
+            padding: 3px 4px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            font-size: 9px;
+        }
+        .description-cell {
+            text-align: left;
+        }
+        .description-cell:empty::after,
+        .description-cell:has(.empty-dash) {
+            text-align: center;
         }
         th {
             background-color: #E3F2FD;
@@ -66,32 +80,34 @@
             text-align: right;
         }
         .notes {
-            margin-top: 30px;
-            padding: 15px;
+            margin-top: 15px;
+            padding: 10px;
             background-color: #E3F2FD;
             border-left: 4px solid #2196F3;
         }
         .signatures {
             display: flex;
             justify-content: space-between;
-            margin-top: 50px;
+            margin-top: auto;
+            padding-top: 10px;
         }
         .signature-box {
             width: 30%;
             text-align: center;
         }
         .signature-line {
-            margin-top: 70px;
+            margin-top: 30px;
             border-top: 1px solid #2196F3;
-            padding-top: 5px;
+            padding-top: 2px;
+            font-size: 9px;
         }
         .footer {
-            margin-top: 50px;
+            margin-top: 15px;
             text-align: center;
             color: #777;
-            font-size: 12px;
+            font-size: 9px;
             border-top: 1px solid #2196F3;
-            padding-top: 20px;
+            padding-top: 10px;
         }
         .warning-box {
             background-color: #E3F2FD;
@@ -146,6 +162,7 @@
             <strong>PERHATIAN:</strong> Produk non-konsumsi memerlukan perawatan khusus. Harap periksa kondisi barang sebelum menerima.
         </div>
         
+        <div class="content-area">
         <table>
             <thead>
                 <tr>
@@ -162,16 +179,23 @@
                 @foreach ($offlineSale->items as $index => $item)
                 <tr>
                     <td>{{ $index + 1 }}</td>
-                    <td>{{ $item->product->sku ?? 'N/A' }}</td>
+                    <td>{{ $item->product->barcode ?? '-' }}</td>
                     <td>{{ $item->product->name ?? 'N/A' }}</td>
                     <td>{{ $item->quantity }}</td>
                     <td>{{ $item->product->satuan->name ?? 'Pcs' }}</td>
                     <td>Baik</td>
-                    <td>{{ $item->notes ?? '-' }}</td>
+                    <td class="description-cell">
+                        @if($item->notes && trim($item->notes) !== '')
+                            {{ $item->notes }}
+                        @else
+                            <span class="empty-dash">-</span>
+                        @endif
+                    </td>
                 </tr>
                 @endforeach
             </tbody>
         </table>
+        </div>
         
         @if ($offlineSale->notes)
         <div class="notes">

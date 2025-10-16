@@ -1,32 +1,23 @@
 @extends('layouts.app')
 
+@section('title', 'Preview Data Keuangan Tokopedia')
+
 @section('content')
 <div class="container-fluid">
-    <div class="row justify-content-center">
+    <div class="row">
         <div class="col-md-12">
-            <div class="card shadow">
-                <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
-                    <h5 class="card-title mb-0">Preview Data Pembayaran Tokopedia</h5>
-                    <a href="{{ route('finance.tokopedia.import') }}" class="btn btn-light btn-sm">
-                        <i class="fas fa-arrow-left me-1"></i> Kembali ke Import
-                    </a>
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="card-title">Preview Data Keuangan Tokopedia</h3>
+                    <div class="card-tools">
+                        <a href="{{ route('finance.tokopedia.import') }}" class="btn btn-default btn-sm">
+                            <i class="fas fa-arrow-left"></i> Kembali
+                        </a>
+                    </div>
                 </div>
-
                 <div class="card-body">
                     @if(session('error'))
-                        <div class="alert alert-danger alert-dismissible fade show">
-                            <i class="fas fa-exclamation-circle me-1"></i> 
-                            {{ session('error') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    @endif
-
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show">
-                            <i class="fas fa-check-circle me-1"></i>
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
+                        <div class="alert alert-danger">{{ session('error') }}</div>
                     @endif
 
                     <div class="card mb-3">
@@ -59,178 +50,145 @@
                         </div>
                     </div>
 
-                    @if(count($data) > 0)
-                        <div class="alert alert-info">
-                            <h5 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Statistik Data:</h5>
-                            <div class="row mt-3">
-                                <div class="col-md-3">
-                                    <div class="bg-white p-3 rounded shadow-sm text-center">
-                                        <h3 class="mb-0">{{ isset($transactionSummary['total_rows_scanned']) ? $transactionSummary['total_rows_scanned'] : $totalRows }}</h3>
-                                        <p class="mb-0 text-muted small">Total baris dipindai</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="bg-white p-3 rounded shadow-sm text-center">
-                                        <h3 class="mb-0">{{ isset($transactionSummary['transaction_rows']) ? $transactionSummary['transaction_rows'] : 'N/A' }}</h3>
-                                        <p class="mb-0 text-muted small">Baris transaksi ditemukan</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="bg-success bg-opacity-25 p-3 rounded shadow-sm text-center">
-                                        <h3 class="mb-0">{{ $validRows }}</h3>
-                                        <p class="mb-0 text-muted small">Transaksi valid</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="bg-danger bg-opacity-25 p-3 rounded shadow-sm text-center">
-                                        <h3 class="mb-0">{{ $invalidRows }}</h3>
-                                        <p class="mb-0 text-muted small">Transaksi invalid</p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            @if(isset($transactionSummary))
-                                <div class="row mt-3">
-                                    <div class="col-md-12">
-                                        <div class="card border-0">
-                                            <div class="card-body p-0">
-                                                <h6 class="card-title mb-3">Ringkasan Detail:</h6>
-                                                <div class="table-responsive">
-                                                    <table class="table table-sm table-bordered mb-0">
-                                                        <thead class="table-light">
-                                                            <tr>
-                                                                <th>Total Baris</th>
-                                                                <th>Baris Transaksi</th>
-                                                                <th>Baris Diskon</th>
-                                                                <th>Baris Diabaikan</th>
-                                                                <th>Order Ditemukan</th>
-                                                                <th>Transaksi Diproses</th>
-                                                                <th>Transaksi Valid</th>
-                                                                <th>Transaksi Invalid</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            <tr>
-                                                                <td>{{ $transactionSummary['total_rows_scanned'] }}</td>
-                                                                <td>{{ $transactionSummary['transaction_rows'] }}</td>
-                                                                <td>{{ $transactionSummary['discount_rows'] }}</td>
-                                                                <td>{{ $transactionSummary['ignored_rows'] }}</td>
-                                                                <td>{{ $transactionSummary['orders_found'] }}</td>
-                                                                <td>{{ $transactionSummary['processed_transactions'] }}</td>
-                                                                <td>{{ $transactionSummary['valid_transactions'] }}</td>
-                                                                <td>{{ $transactionSummary['invalid_transactions'] }}</td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            @endif
-                        </div>
+                    <div class="alert alert-info">
+                        <h5>Statistik Data:</h5>
+                        <ul>
+                            <li>Total data: {{ $totalRows }}</li>
+                            <li>Data valid: {{ $validRows }}</li>
+                            <li>Data tidak valid: {{ $invalidRows }}</li>
+                        </ul>
+                    </div>
 
-                        @if(count(array_filter($data, function($row) { return !$row['_valid']; })) > 0)
-                            <div class="alert alert-warning">
-                                <h5 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Perhatian:</h5>
-                                <p>Beberapa transaksi tidak dapat diimpor. Transaksi dengan status "Error" tidak akan dimasukkan ke database.</p>
-                            </div>
-                        @endif
-                    @endif
-
-                    @if(!empty($issues))
-                        <div class="alert alert-danger">
-                            <h5 class="alert-heading"><i class="fas fa-times-circle me-2"></i>Masalah yang ditemukan:</h5>
+                    @if($invalidRows > 0)
+                    <div class="alert alert-warning">
+                        <h5><i class="icon fas fa-exclamation-triangle"></i> Masalah Ditemukan ({{ $invalidRows }} masalah)</h5>
+                        <p>Baris-baris berikut memiliki masalah:</p>
+                        <div class="issues-container">
                             <ul>
-                                @foreach($issues as $rowNumber => $rowIssues)
-                                    <li>Baris {{ $rowNumber }}:
-                                        <ul>
-                                            @foreach($rowIssues as $issue)
-                                                <li>{{ $issue }}</li>
-                                            @endforeach
-                                        </ul>
-                                    </li>
-                                @endforeach
+                                @if(isset($issues) && is_array($issues) && count($issues) > 0)
+                                    @foreach($issues as $row => $rowIssues)
+                                        <li>
+                                            <strong>Baris #{{ $row }}:</strong>
+                                            <ul>
+                                                @foreach($rowIssues as $issue)
+                                                    <li>{{ $issue }}</li>
+                                                @endforeach
+                                            </ul>
+                                        </li>
+                                    @endforeach
+                                @else
+                                    <li>Ada masalah validasi tetapi detil error tidak tersedia.</li>
+                                @endif
                             </ul>
                         </div>
+                    </div>
                     @endif
 
-                    <form action="{{ route('finance.tokopedia.import-process') }}" method="POST">
-                        @csrf
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-hover table-sm">
-                                <thead class="table-light">
-                                    <tr>
-                                        @foreach($previewHeaders as $header)
-                                            <th>{{ $headerLabels[$header] ?? $header }}</th>
-                                        @endforeach
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @if(count($data) > 0)
-                                        @foreach($data as $index => $row)
-                                            <tr class="{{ $row['_valid'] ? 'table-success' : 'table-danger' }}">
-                                                @foreach($previewHeaders as $header)
-                                                    <td>
-                                                        @if(isset($row[$header]))
-                                                            @if(in_array($header, ['nominal_harga', 'nominal_diskon1', 'nominal_diskon2', 'nominal_diskon3', 'nominal_diskon4', 'nominal_diskon5', 'nominal_diskon6', 'nominal_diskon7', 'nominal_diskon8', 'nominal_diskon9', 'nominal_diskon10', 'nominal_diskon11', 'nominal_diskon12', 'nominal_fix', 'saldo_masuk', 'outstanding']))
-                                                                {{ number_format($row[$header] ?? 0, 0, ',', '.') }}
-                                                            @else
-                                                                {{ $row[$header] ?? '-' }}
-                                                            @endif
-                                                            <input type="hidden" name="data[{{ $index }}][{{ $header }}]" value="{{ $row[$header] ?? 0 }}">
-                                                        @else
-                                                            @if(in_array($header, ['nominal_diskon5', 'nominal_diskon6', 'nominal_diskon7', 'nominal_diskon8', 'nominal_diskon9', 'nominal_diskon10', 'nominal_diskon11', 'nominal_diskon12']))
-                                                                0
-                                                                <input type="hidden" name="data[{{ $index }}][{{ $header }}]" value="0">
-                                                            @else
-                                                                -
-                                                                <input type="hidden" name="data[{{ $index }}][{{ $header }}]" value="">
-                                                            @endif
-                                                        @endif
-                                                    </td>
-                                                @endforeach
-                                                <td>
-                                                    <input type="hidden" name="data[{{ $index }}][_valid]" value="{{ $row['_valid'] ? 'true' : 'false' }}">
-                                                    @if($row['_valid'])
-                                                        <span class="badge bg-success">Valid</span>
-                                                    @else
-                                                        <span class="badge bg-danger">Error</span>
-                                                        @if(isset($issues[$row['_row']]))
-                                                            <ul class="small mb-0">
-                                                                @foreach($issues[$row['_row']] as $issue)
-                                                                    <li>{{ $issue }}</li>
-                                                                @endforeach
-                                                            </ul>
-                                                        @endif
-                                                    @endif
-                                                </td>
-                                            </tr>
-                                        @endforeach
-                                    @else
-                                        <tr>
-                                            <td colspan="{{ count($previewHeaders) + 1 }}" class="text-center">
-                                                <div class="my-5">
-                                                    <i class="fas fa-file-excel fa-3x text-muted mb-3"></i>
-                                                    <p class="text-muted">Tidak ada data yang dapat diimpor</p>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @endif
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="mt-4 d-flex justify-content-between">
-                            <a href="{{ route('finance.tokopedia.import') }}" class="btn btn-secondary">
-                                <i class="fas fa-arrow-left me-1"></i> Kembali
-                            </a>
-                            <button type="submit" class="btn btn-primary" {{ count(array_filter($data, function($row) { return $row['_valid']; })) == 0 ? 'disabled' : '' }}>
-                                <i class="fas fa-file-import me-1"></i> Import {{ count(array_filter($data, function($row) { return $row['_valid']; })) }} Data Valid
+                    @if(!empty($previewData))
+                    <div class="mb-3">
+                        <h5>Preview Data Yang Akan Disimpan:</h5>
+                        <p class="text-muted small">Data berikut adalah format yang akan disimpan ke database.</p>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tanggal Order</th>
+                                    <th>Hari Order</th>
+                                    <th>No. Order</th>
+                                    <th>No. Invoice</th>
+                                    <th>Tax ID</th>
+                                    <th>QTY</th>
+                                    <th>Nominal Harga</th>
+                                    <th>Voucher Ditanggung Penjual</th>
+                                    <th>Komisi AMS/Affiliate</th>
+                                    <th>Biaya Admin</th>
+                                    <th>Biaya Layanan</th>
+                                    <th>Diskon 5</th>
+                                    <th>Diskon 6</th>
+                                    <th>Adjustment</th>
+                                    <th>Nominal Fix</th>
+                                    <th>Saldo Masuk</th>
+                                    <th>Tanggal Pembayaran</th>
+                                    <th>Outstanding</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($previewData as $index => $row)
+                                @if(isset($data[$index]['_valid']) && $data[$index]['_valid'])
+                                <tr class="{{ $index % 2 == 0 ? 'table-primary' : '' }}">
+                                    <td>
+                                        @if(isset($row['tanggal_order']) && $row['tanggal_order'] !== 'N/A')
+                                            @php
+                                                $date = is_string($row['tanggal_order']) 
+                                                    ? \Carbon\Carbon::parse($row['tanggal_order']) 
+                                                    : $row['tanggal_order'];
+                                                echo $date->format('d-m-Y');
+                                            @endphp
+                                        @else
+                                            -
+                                        @endif
+                                    </td>
+                                    <td>{{ $row['hari_order'] ?? '-' }}</td>
+                                    <td>{{ $row['no_order'] ?? '-' }}</td>
+                                    <td>{{ $row['no_invoice'] ?? '-' }}</td>
+                                    <td>{{ $row['tax_id'] ?? '-' }}</td>
+                                    <td class="text-end">{{ isset($row['qty']) ? number_format($row['qty'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_harga']) ? number_format($row['nominal_harga'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_diskon1']) ? number_format($row['nominal_diskon1'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_diskon2']) ? number_format($row['nominal_diskon2'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_diskon3']) ? number_format($row['nominal_diskon3'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_diskon4']) ? number_format($row['nominal_diskon4'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_diskon5']) ? number_format($row['nominal_diskon5'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_diskon6']) ? number_format($row['nominal_diskon6'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['adjustment']) ? number_format($row['adjustment'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['nominal_fix']) ? number_format($row['nominal_fix'], 0, ',', '.') : '-' }}</td>
+                                    <td class="text-end">{{ isset($row['saldo_masuk']) ? number_format($row['saldo_masuk'], 0, ',', '.') : '-' }}</td>
+                                    <td>
+                                        @if(isset($row['tanggal_masuk_pembayaran']) && $row['tanggal_masuk_pembayaran'] !== 'N/A')
+                                            @php
+                                                $paymentDate = is_string($row['tanggal_masuk_pembayaran']) 
+                                                    ? \Carbon\Carbon::parse($row['tanggal_masuk_pembayaran']) 
+                                                    : $row['tanggal_masuk_pembayaran'];
+                                                echo $paymentDate->format('d-m-Y');
+                                            @endphp
+                                            <div class="small text-muted">{{ $row['hari_masuk_pembayaran'] ?? '' }}</div>
+                                        @else
+                                            -
+                                        @endif
+                                    </td>
+                                    <td class="text-end {{ isset($row['outstanding']) && $row['outstanding'] > 0 ? 'text-danger' : 'text-success' }}">
+                                        {{ isset($row['outstanding']) ? number_format($row['outstanding'], 0, ',', '.') : '-' }}
+                                    </td>
+                                </tr>
+                                @endif
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    @else
+                    <div class="alert alert-danger">
+                        <h5>Tidak Ada Data Valid untuk Ditampilkan</h5>
+                        <p>Semua data memiliki masalah validasi. Silakan periksa daftar masalah di atas.</p>
+                    </div>
+                    @endif
+                    
+                    <div class="mt-3">
+                        <form action="{{ route('finance.tokopedia.import-process') }}" method="POST" class="d-inline">
+                            @csrf
+                            <!-- Use session token instead of sending all data via POST -->
+                            <input type="hidden" name="process_token" value="{{ session('tokopedia_process_token', uniqid()) }}">
+                            
+                            <button type="submit" class="btn btn-success" {{ $validRows == 0 ? 'disabled' : '' }}>
+                                <i class="fas fa-check"></i> Proses {{ $validRows }} Data Valid
                             </button>
-                        </div>
-                    </form>
+                            
+                            <a href="{{ route('finance.tokopedia.import') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Kembali
+                            </a>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -240,64 +198,66 @@
 
 @push('styles')
 <style>
-    .table th, .table td {
-        white-space: nowrap;
-        text-align: center;
-        vertical-align: middle;
-    }
-    
-    .table th:first-child, .table td:first-child {
-        text-align: left;
-    }
-    
-    .table th:last-child, .table td:last-child {
-        text-align: center;
-    }
-    
-    .table-sm td {
-        padding: 0.5rem;
-        vertical-align: middle;
-        font-size: 0.875rem;
-    }
-    
-    .table-sm th {
-        padding: 0.5rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
-    
-    .badge {
-        font-weight: 500;
-    }
-    
+    /* Fix for better visualization */
     .table-responsive {
         max-height: 600px;
         overflow-y: auto;
     }
     
-    .table thead th {
-        position: sticky;
-        top: 0;
-        z-index: 10;
+    .table th {
+        vertical-align: middle;
         background-color: #f8f9fa;
-        border-bottom: 2px solid #dee2e6;
     }
     
-    .table-success {
-        background-color: rgba(25, 135, 84, 0.1) !important;
-    }
-    
-    .table-danger {
-        background-color: rgba(220, 53, 69, 0.1) !important;
-    }
-    
-    /* Numeric columns right-aligned */
-    .table td:nth-child(n+5):nth-child(-n+24) {
+    .text-end {
         text-align: right;
     }
     
-    .table th:nth-child(n+5):nth-child(-n+24) {
-        text-align: right;
+    /* Highlight primary rows */
+    .table-primary {
+        background-color: rgba(0, 123, 255, 0.1) !important;
+    }
+    
+    /* Issues container with fixed height and scroll */
+    .issues-container {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 15px;
+        background-color: #fff;
+        margin-top: 10px;
+    }
+    
+    .issues-container ul {
+        margin-bottom: 0;
+    }
+    
+    .issues-container li {
+        margin-bottom: 8px;
+    }
+    
+    .issues-container li:last-child {
+        margin-bottom: 0;
+    }
+    
+    /* Custom scrollbar for issues container */
+    .issues-container::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .issues-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+    
+    .issues-container::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 4px;
+    }
+    
+    .issues-container::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8;
     }
 </style>
 @endpush

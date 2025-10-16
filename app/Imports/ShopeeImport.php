@@ -1060,8 +1060,10 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
         $mainCategoryId = \App\Helpers\MainCategoryHelper::getSelectedMainCategoryId();
         \Log::info("CheckStock - Main Category ID: " . ($mainCategoryId ?: 'NULL'));
         
-        // Ambil semua mapping barang untuk platform product ini
-        $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)->get();
+        // Ambil semua mapping barang AKTIF untuk platform product ini
+        $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)
+            ->where('is_active', true)
+            ->get();
 
         foreach ($mappings as $mapping) {
             // Hitung jumlah yang perlu dikurangi dari stok
@@ -1135,8 +1137,10 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
     protected function reduceStock($platformProduct, $quantity, $orderItem)
     {
         try {
-            // Ambil semua mapping barang untuk platform product ini
-            $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)->get();
+            // Ambil semua mapping barang AKTIF untuk platform product ini
+            $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)
+                ->where('is_active', true)
+                ->get();
             \Log::info("Reducing stock for platform product: {$platformProduct->platform_product_name}, Quantity: {$quantity}");
             \Log::info('Found mappings: '.$mappings->count());
 

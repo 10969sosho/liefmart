@@ -22,7 +22,9 @@ class MappingBarangController extends Controller
         $variant = $request->input('variant');
     
         // Query platform products dengan relasi - bypass semua scope
-        $query = PlatformProduct::withoutGlobalScopes()->with(['platform', 'mappingBarang.product']);
+        $query = PlatformProduct::withoutGlobalScopes()->with(['platform', 'mappingBarang' => function($q) {
+            $q->where('is_active', true);
+        }, 'mappingBarang.product']);
     
         // Filter berdasarkan platform jika dipilih
         if ($platform) {
@@ -284,6 +286,17 @@ public function store(Request $request)
             $platformProduct->save();
         }
         
+        // Validasi duplikasi product_id dalam request
+        $productIds = $request->product_id;
+        $duplicateIds = MappingBarang::getDuplicateProductIds($productIds);
+        
+        if (!empty($duplicateIds)) {
+            \DB::rollBack();
+            $duplicateNames = Product::whereIn('id', $duplicateIds)->pluck('name')->toArray();
+            return redirect()->back()
+                ->with('error', 'Terdapat produk master yang duplikat dalam form: ' . implode(', ', $duplicateNames) . '. Pastikan setiap produk master hanya dipilih sekali.');
+        }
+        
         // Loop melalui semua product_id dan quantity
         foreach ($request->product_id as $index => $productId) {
             // Cek apakah mapping sudah ada
@@ -428,8 +441,19 @@ public function store(Request $request)
  */
 public function destroy($id)
 {
+    // Debug logging
+    \Log::info('MappingBarangController@destroy called', [
+        'mapping_id' => $id,
+        'user_id' => auth()->id(),
+        'timestamp' => now()
+    ]);
+
     // Check if user has permission to edit/delete mapping
     if (!auth()->user()->canEdit()) {
+        \Log::warning('User does not have edit permission', [
+            'user_id' => auth()->id(),
+            'mapping_id' => $id
+        ]);
         return redirect()->route('master.mapping.index')
             ->with('error', 'Anda tidak memiliki izin untuk menghapus data.');
     }
@@ -443,14 +467,65 @@ public function destroy($id)
         $quantity = $mapping->quantity;
         $version = $mapping->version;
         
+        \Log::info('Mapping found for deletion', [
+            'mapping_id' => $id,
+            'platform_product_id' => $platformProductId,
+            'product_id' => $productId,
+            'version' => $version,
+            'is_active' => $mapping->is_active
+        ]);
+        
         // Cek apakah mapping sudah pernah digunakan dalam penjualan
         $hasBeenUsed = $mapping->hasBeenUsedInSales();
         
+        \Log::info('Sales usage check result', [
+            'mapping_id' => $id,
+            'has_been_used' => $hasBeenUsed
+        ]);
+        
         if ($hasBeenUsed) {
-            // Kondisi 2: Sudah digunakan dalam penjualan, deactivate saja
-            $mapping->update([
-                'is_active' => false,
-                'valid_until' => now()
+            // Kondisi 2: Sudah digunakan dalam penjualan, buat versi baru tanpa mapping yang dihapus
+            \Log::info('Creating new version after deletion (used in sales)', [
+                'mapping_id' => $id,
+                'version' => $version
+            ]);
+            
+            // Dapatkan versi terbaru
+            $latestVersion = MappingBarang::where('platform_product_id', $platformProductId)
+                ->max('version');
+            
+            // Ambil mapping yang masih aktif SEBELUM deactivate (kecuali yang akan dihapus)
+            $activeMappings = MappingBarang::where('platform_product_id', $platformProductId)
+                ->where('is_active', true)
+                ->where('id', '!=', $id) // Exclude the mapping yang akan dihapus
+                ->with('product')
+                ->get();
+            
+            // Deactivate semua mapping aktif untuk platform product ini
+            MappingBarang::where('platform_product_id', $platformProductId)
+                ->where('is_active', true)
+                ->update([
+                    'is_active' => false,
+                    'valid_until' => now()
+                ]);
+            
+            foreach ($activeMappings as $activeMapping) {
+                // Buat mapping baru untuk setiap mapping yang masih aktif
+                $newMapping = new MappingBarang([
+                    'platform_product_id' => $activeMapping->platform_product_id,
+                    'product_id' => $activeMapping->product_id,
+                    'quantity' => $activeMapping->quantity,
+                    'version' => $latestVersion + 1,
+                    'is_active' => true,
+                    'valid_from' => now(),
+                    'change_reason' => 'Hapus mapping ' . $activeMapping->product->name ?? 'Unknown',
+                ]);
+                $newMapping->save();
+            }
+            
+            \Log::info('New version created after deletion', [
+                'new_version' => $latestVersion + 1,
+                'remaining_mappings' => $activeMappings->count()
             ]);
             
             // Log to history
@@ -458,17 +533,36 @@ public function destroy($id)
                 'platform_product_id' => $platformProductId,
                 'product_id' => $productId,
                 'quantity' => $quantity,
-                'action' => 'deactivate',
+                'action' => 'delete',
                 'user_id' => auth()->id(),
-                'keterangan' => 'Deactivate mapping v' . $version . ' (sudah digunakan dalam penjualan)',
+                'keterangan' => 'Hapus mapping v' . $version . ' - dibuat versi baru v' . ($latestVersion + 1),
             ]);
             
             \DB::commit();
-            return redirect()->back()
-                ->with('success', 'Mapping v' . $version . ' berhasil dinonaktifkan (menjadi history).');
+            \Log::info('Transaction committed for version creation', ['mapping_id' => $id]);
+            
+            // Redirect ke mapping aktif yang baru
+            $newActiveMapping = MappingBarang::where('platform_product_id', $platformProductId)
+                ->where('is_active', true)
+                ->first();
+            
+            if ($newActiveMapping) {
+                return redirect()->route('master.mapping.edit', $newActiveMapping->id)
+                    ->with('success', 'Mapping v' . $version . ' berhasil dihapus. Dibuat versi baru v' . ($latestVersion + 1) . '.');
+            } else {
+                return redirect()->route('master.mapping.index')
+                    ->with('success', 'Mapping v' . $version . ' berhasil dihapus. Dibuat versi baru v' . ($latestVersion + 1) . '.');
+            }
         } else {
             // Kondisi 1: Belum digunakan dalam penjualan, hapus langsung
+            \Log::info('Deleting mapping (not used in sales)', [
+                'mapping_id' => $id,
+                'version' => $version
+            ]);
+            
             $mapping->delete();
+            
+            \Log::info('Mapping deleted successfully', ['mapping_id' => $id]);
 
             // Log to history
             MappingBarangHistory::create([
@@ -481,11 +575,33 @@ public function destroy($id)
             ]);
             
             \DB::commit();
-            return redirect()->back()
-                ->with('success', 'Mapping v' . $version . ' berhasil dihapus.');
+            \Log::info('Transaction committed for deletion', ['mapping_id' => $id]);
+            
+            // Cek apakah masih ada mapping aktif untuk platform product ini
+            $remainingActiveMapping = MappingBarang::where('platform_product_id', $platformProductId)
+                ->where('is_active', true)
+                ->first();
+            
+            if ($remainingActiveMapping) {
+                // Masih ada mapping aktif, redirect ke mapping aktif
+                return redirect()->route('master.mapping.edit', $remainingActiveMapping->id)
+                    ->with('success', 'Mapping v' . $version . ' berhasil dihapus.');
+            } else {
+                // Tidak ada mapping aktif lagi, redirect ke index
+                return redirect()->route('master.mapping.index')
+                    ->with('success', 'Mapping v' . $version . ' berhasil dihapus.');
+            }
         }
     } catch (\Exception $e) {
         \DB::rollBack();
+        
+        \Log::error('Error in MappingBarangController@destroy', [
+            'mapping_id' => $id,
+            'user_id' => auth()->id(),
+            'error_message' => $e->getMessage(),
+            'error_trace' => $e->getTraceAsString()
+        ]);
+        
         return redirect()->back()
             ->with('error', 'Terjadi kesalahan saat menghapus mapping: '.$e->getMessage());
     }
@@ -499,19 +615,24 @@ public function destroy($id)
         // Cek apakah mapping sudah pernah digunakan dalam penjualan
         $hasBeenUsed = $mapping->hasBeenUsedInSales();
 
+        // Ambil mapping aktif terbaru untuk platform product ini
+        $latestMapping = MappingBarang::where('platform_product_id', $mapping->platform_product_id)
+            ->where('is_active', true)
+            ->orderBy('version', 'desc')
+            ->first();
+
+        // Jika ada mapping aktif terbaru yang berbeda, gunakan yang terbaru
+        if ($latestMapping && $latestMapping->id != $mapping->id) {
+            $mapping = $latestMapping;
+        }
+
         // Ambil semua produk untuk dropdown
         $products = Product::where('is_active', true)->get();
-
-        // Ambil riwayat versi mapping
-        $mappingHistory = MappingBarang::where('platform_product_id', $mapping->platform_product_id)
-            ->orderBy('version', 'desc')
-            ->get();
 
         return view('master.mapping.edit', [
             'mapping' => $mapping,
             'products' => $products,
             'hasBeenUsed' => $hasBeenUsed,
-            'mappingHistory' => $mappingHistory,
         ]);
     }
 
@@ -569,6 +690,12 @@ public function update(Request $request, $id)
             $latestVersion = MappingBarang::where('platform_product_id', $mapping->platform_product_id)
                 ->max('version');
             
+            // Ambil semua mapping aktif untuk platform product ini
+            $activeMappings = MappingBarang::where('platform_product_id', $mapping->platform_product_id)
+                ->where('is_active', true)
+                ->with('product')
+                ->get();
+            
             // Deactivate semua mapping aktif untuk platform product ini
             MappingBarang::where('platform_product_id', $mapping->platform_product_id)
                 ->where('is_active', true)
@@ -577,18 +704,40 @@ public function update(Request $request, $id)
                     'valid_until' => now()
                 ]);
             
-            // Buat mapping baru dengan versi berikutnya
-            $newMapping = new MappingBarang([
-                'platform_product_id' => $mapping->platform_product_id,
-                'product_id' => $request->product_id,
-                'quantity' => $request->quantity,
-                'version' => $latestVersion + 1,
-                'is_active' => true,
-                'valid_from' => now(),
-                'change_reason' => $request->change_reason,
-            ]);
+            // Buat versi baru dengan semua mapping aktif
+            foreach ($activeMappings as $activeMapping) {
+                // Skip mapping yang sedang diedit jika ada perubahan product_id
+                if ($activeMapping->id == $mapping->id && $mapping->product_id != $request->product_id) {
+                    continue; // Skip karena akan dibuat mapping baru di bawah
+                }
+                
+                $newMapping = new MappingBarang([
+                    'platform_product_id' => $activeMapping->platform_product_id,
+                    'product_id' => $activeMapping->product_id,
+                    'quantity' => $activeMapping->id == $mapping->id ? $request->quantity : $activeMapping->quantity,
+                    'version' => $latestVersion + 1,
+                    'is_active' => true,
+                    'valid_from' => now(),
+                    'change_reason' => $activeMapping->id == $mapping->id ? $request->change_reason : 'Copy dari versi sebelumnya',
+                ]);
+                
+                $newMapping->save();
+            }
             
-            $newMapping->save();
+            // Jika ada perubahan product_id, buat mapping baru untuk product_id yang baru
+            if ($mapping->product_id != $request->product_id) {
+                $newMapping = new MappingBarang([
+                    'platform_product_id' => $mapping->platform_product_id,
+                    'product_id' => $request->product_id,
+                    'quantity' => $request->quantity,
+                    'version' => $latestVersion + 1,
+                    'is_active' => true,
+                    'valid_from' => now(),
+                    'change_reason' => $request->change_reason ?? 'Ubah produk master',
+                ]);
+                
+                $newMapping->save();
+            }
             
             // Log to history
             MappingBarangHistory::create([
@@ -601,9 +750,25 @@ public function update(Request $request, $id)
             ]);
             
             \DB::commit();
-            $message = 'Mapping berhasil diperbarui dengan versi baru (v' . $newMapping->version . '). Mapping lama menjadi history.';
-            $redirectId = $newMapping->id;
+            $message = 'Mapping berhasil diperbarui dengan versi baru (v' . ($latestVersion + 1) . '). Mapping lama menjadi history.';
+            
+            // Cari mapping yang baru dibuat untuk redirect
+            $newActiveMapping = MappingBarang::where('platform_product_id', $mapping->platform_product_id)
+                ->where('is_active', true)
+                ->where('product_id', $request->product_id)
+                ->first();
+            
+            $redirectId = $newActiveMapping ? $newActiveMapping->id : $mapping->id;
         } else {
+            // Cek apakah product_id yang baru sudah ada di mapping aktif lainnya (kecuali mapping yang sedang diedit)
+            if (MappingBarang::isProductAlreadyMapped($mapping->platform_product_id, $request->product_id, $mapping->id)) {
+                \DB::rollBack();
+                $product = Product::find($request->product_id);
+                $productName = $product ? $product->name : 'Unknown';
+                return redirect()->back()
+                    ->with('error', "Produk master '{$productName}' sudah ada dalam mapping aktif lainnya. Silakan pilih produk master lain.");
+            }
+            
             // Kondisi 1: Belum digunakan dalam penjualan, edit langsung
             $mapping->update([
                 'product_id' => $request->product_id,
@@ -628,8 +793,17 @@ public function update(Request $request, $id)
         // Redirect ke halaman edit dengan anchor untuk highlight
         return redirect()->route('master.mapping.edit', $redirectId)
             ->with('success', $message);
-    } catch (\Exception $e) {
+        } catch (\Exception $e) {
         \DB::rollBack();
+        
+        // Log error untuk debugging
+        \Log::error('Error updating mapping', [
+            'mapping_id' => $id,
+            'user_id' => auth()->id(),
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
         return redirect()->back()
             ->with('error', 'Terjadi kesalahan saat memperbarui mapping: '.$e->getMessage());
     }
@@ -649,15 +823,16 @@ public function update(Request $request, $id)
         try {
             \DB::beginTransaction();
             
-            // Cek apakah produk master yang sama sudah ada di mapping manapun (aktif atau tidak)
-            $existingMapping = MappingBarang::where('platform_product_id', $request->platform_product_id)
+            // Cek apakah produk master yang sama sudah ada di mapping AKTIF saja
+            $existingActiveMapping = MappingBarang::where('platform_product_id', $request->platform_product_id)
                 ->where('product_id', $request->product_id)
+                ->where('is_active', true)
                 ->first();
                 
-            if ($existingMapping) {
+            if ($existingActiveMapping) {
                 \DB::rollBack();
                 return redirect()->back()
-                    ->with('error', 'Produk master ini sudah ada dalam mapping. Silakan edit mapping yang sudah ada.');
+                    ->with('error', 'Produk master ini sudah ada dalam mapping aktif. Silakan edit mapping yang sudah ada.');
             }
             
             // Cek apakah ada mapping aktif untuk platform product ini
@@ -707,6 +882,12 @@ public function update(Request $request, $id)
                 $latestVersion = MappingBarang::where('platform_product_id', $request->platform_product_id)
                     ->max('version');
                 
+                // Ambil semua mapping aktif sebelum deactivate
+                $activeMappingsToCopy = MappingBarang::where('platform_product_id', $request->platform_product_id)
+                    ->where('is_active', true)
+                    ->with('product')
+                    ->get();
+                
                 // Deactivate semua mapping aktif
                 MappingBarang::where('platform_product_id', $request->platform_product_id)
                     ->where('is_active', true)
@@ -715,7 +896,22 @@ public function update(Request $request, $id)
                         'valid_until' => now()
                     ]);
                 
-                // Buat mapping baru dengan versi berikutnya
+                // Copy semua mapping aktif ke versi baru
+                foreach ($activeMappingsToCopy as $activeMapping) {
+                    $newMapping = new MappingBarang([
+                        'platform_product_id' => $activeMapping->platform_product_id,
+                        'product_id' => $activeMapping->product_id,
+                        'quantity' => $activeMapping->quantity,
+                        'version' => $latestVersion + 1,
+                        'is_active' => true,
+                        'valid_from' => now(),
+                        'change_reason' => 'Copy dari versi sebelumnya',
+                    ]);
+                    
+                    $newMapping->save();
+                }
+                
+                // Buat mapping baru untuk produk yang ditambahkan
                 $mapping = new MappingBarang([
                     'platform_product_id' => $request->platform_product_id,
                     'product_id' => $request->product_id,
@@ -723,6 +919,7 @@ public function update(Request $request, $id)
                     'version' => $latestVersion + 1,
                     'is_active' => true,
                     'valid_from' => now(),
+                    'change_reason' => 'Tambah produk master baru',
                 ]);
                 
                 $mapping->save();
@@ -741,6 +938,15 @@ public function update(Request $request, $id)
                 return redirect()->back()
                     ->with('success', 'Produk master berhasil ditambahkan ke mapping versi ' . ($latestVersion + 1) . '. Mapping lama menjadi history.');
             } else {
+                // Cek apakah product_id sudah ada di mapping aktif
+                if (MappingBarang::isProductAlreadyMapped($request->platform_product_id, $request->product_id)) {
+                    \DB::rollBack();
+                    $product = Product::find($request->product_id);
+                    $productName = $product ? $product->name : 'Unknown';
+                    return redirect()->back()
+                        ->with('error', "Produk master '{$productName}' sudah ada dalam mapping aktif. Silakan edit mapping yang sudah ada atau pilih produk master lain.");
+                }
+                
                 // Kondisi 1: Belum ada penjualan, tambah ke mapping aktif yang sama
                 $mapping = new MappingBarang([
                     'platform_product_id' => $request->platform_product_id,
@@ -981,7 +1187,10 @@ public function update(Request $request, $id)
             }
 
             // Cek apakah mapping sudah ada
-            $mapping = MappingBarang::where('platform_product_id', $platformProduct->id)->where('product_id', $request->product_id)->first();
+            $mapping = MappingBarang::where('platform_product_id', $platformProduct->id)
+                ->where('product_id', $request->product_id)
+                ->where('is_active', true)
+                ->first();
 
             // Jika belum ada, buat baru; jika sudah ada, update
             if (!$mapping) {
@@ -989,6 +1198,9 @@ public function update(Request $request, $id)
                     'platform_product_id' => $platformProduct->id,
                     'product_id' => $request->product_id,
                     'quantity' => $request->quantity,
+                    'version' => 1,
+                    'is_active' => true,
+                    'valid_from' => now(),
                 ]);
             } else {
                 $mapping->quantity = $request->quantity;
@@ -1036,5 +1248,205 @@ public function update(Request $request, $id)
                 ->back()
                 ->with('error', 'Terjadi kesalahan saat menghapus mapping: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Riwayat versi mapping - tampilan ringkas
+     */
+    public function versionHistory($platformProductId)
+    {
+        $platformProduct = PlatformProduct::with('platform')->findOrFail($platformProductId);
+        
+        // Ambil ringkasan versi - hanya versi unik
+        $versionSummary = MappingBarang::where('platform_product_id', $platformProductId)
+            ->selectRaw('version, 
+                       COUNT(*) as total_products,
+                       MIN(valid_from) as created_at,
+                       MAX(CASE WHEN is_active = 1 THEN valid_from END) as last_active_at')
+            ->groupBy('version')
+            ->orderBy('version', 'desc')
+            ->get();
+
+        // Debug: Cek data yang diambil
+        \Log::info('Version History Data', [
+            'platform_product_id' => $platformProductId,
+            'version_count' => $versionSummary->count(),
+            'versions' => $versionSummary->pluck('version')->toArray()
+        ]);
+
+        return view('master.mapping.version-history', [
+            'platformProduct' => $platformProduct,
+            'versionSummary' => $versionSummary
+        ]);
+    }
+
+    /**
+     * Detail perubahan versi - saat klik versi tertentu
+     */
+    public function versionDetail($platformProductId, $version)
+    {
+        \Log::info('Version Detail Method Called', [
+            'platform_product_id' => $platformProductId,
+            'version' => $version,
+            'timestamp' => now()
+        ]);
+        
+        $platformProduct = PlatformProduct::with('platform')->findOrFail($platformProductId);
+        
+        // Ambil mapping versi ini
+        $currentVersionMappings = MappingBarang::where('platform_product_id', $platformProductId)
+            ->where('version', $version)
+            ->with('product')
+            ->get();
+
+        // Ambil mapping versi sebelumnya untuk perbandingan
+        // Ambil versi yang langsung sebelumnya (version - 1) - versi sebelumnya sudah tidak aktif
+        $previousVersionMappings = MappingBarang::where('platform_product_id', $platformProductId)
+            ->where('version', $version - 1)
+            ->where('is_active', false) // Versi sebelumnya sudah tidak aktif
+            ->with('product')
+            ->get();
+            
+        // Jika tidak ada versi sebelumnya, ambil versi terakhir yang tidak aktif
+        if ($previousVersionMappings->isEmpty()) {
+            // Ambil versi terakhir yang tidak aktif, tapi hanya yang unik per product_id
+            $previousVersionMappings = MappingBarang::where('platform_product_id', $platformProductId)
+                ->where('version', '<', $version)
+                ->where('is_active', false)
+                ->orderBy('version', 'desc')
+                ->with('product')
+                ->get()
+                ->groupBy('product_id')
+                ->map(function($group) {
+                    return $group->first(); // Ambil yang pertama dari setiap group
+                })
+                ->values();
+        }
+        
+        // Pastikan tidak ada duplikasi berdasarkan product_id dengan cara yang lebih ketat
+        $uniquePreviousMappings = collect();
+        $seenProductIds = [];
+        
+        foreach ($previousVersionMappings as $mapping) {
+            if (!in_array($mapping->product_id, $seenProductIds)) {
+                $uniquePreviousMappings->push($mapping);
+                $seenProductIds[] = $mapping->product_id;
+            }
+        }
+        
+        $previousVersionMappings = $uniquePreviousMappings;
+        
+        // Debug logging untuk melihat data yang sudah di-unique
+        \Log::info('Unique Previous Mappings Debug', [
+            'platform_product_id' => $platformProductId,
+            'version' => $version,
+            'unique_count' => $previousVersionMappings->count(),
+            'unique_data' => $previousVersionMappings->map(function($m) {
+                return ['product_id' => $m->product_id, 'quantity' => $m->quantity, 'product_name' => $m->product->name, 'version' => $m->version];
+            })
+        ]);
+
+        // Analisis perubahan
+        $changes = $this->analyzeVersionChanges($currentVersionMappings, $previousVersionMappings);
+
+        // Debug logging
+        \Log::info('Version Detail Debug', [
+            'platform_product_id' => $platformProductId,
+            'version' => $version,
+            'current_mappings_count' => $currentVersionMappings->count(),
+            'previous_mappings_count' => $previousVersionMappings->count(),
+            'changes' => $changes,
+            'current_mappings' => $currentVersionMappings->map(function($m) {
+                return ['product_id' => $m->product_id, 'quantity' => $m->quantity, 'product_name' => $m->product->name, 'version' => $m->version];
+            }),
+            'previous_mappings' => $previousVersionMappings->map(function($m) {
+                return ['product_id' => $m->product_id, 'quantity' => $m->quantity, 'product_name' => $m->product->name, 'version' => $m->version];
+            })
+        ]);
+
+        return view('master.mapping.version-detail', [
+            'platformProduct' => $platformProduct,
+            'version' => $version,
+            'currentMappings' => $currentVersionMappings,
+            'changes' => $changes
+        ]);
+    }
+
+    /**
+     * Analisis perubahan antar versi
+     */
+    private function analyzeVersionChanges($current, $previous)
+    {
+        $changes = [
+            'added' => [],
+            'removed' => [],
+            'modified' => []
+        ];
+
+        // Debug logging untuk analisis
+        \Log::info('Analyze Version Changes Debug', [
+            'current_count' => $current->count(),
+            'previous_count' => $previous->count(),
+            'current_data' => $current->map(function($m) {
+                return ['product_id' => $m->product_id, 'quantity' => $m->quantity, 'product_name' => $m->product->name];
+            }),
+            'previous_data' => $previous->map(function($m) {
+                return ['product_id' => $m->product_id, 'quantity' => $m->quantity, 'product_name' => $m->product->name];
+            })
+        ]);
+
+        // Buat array untuk perbandingan
+        $currentMap = $current->keyBy('product_id');
+        $previousMap = $previous->keyBy('product_id');
+
+        // Cek yang ditambah
+        foreach ($currentMap as $productId => $mapping) {
+            if (!$previousMap->has($productId)) {
+                $changes['added'][] = [
+                    'product' => $mapping->product,
+                    'quantity' => $mapping->quantity
+                ];
+            }
+        }
+
+        // Cek yang dihapus
+        foreach ($previousMap as $productId => $mapping) {
+            if (!$currentMap->has($productId)) {
+                $changes['removed'][] = [
+                    'product' => $mapping->product,
+                    'quantity' => $mapping->quantity
+                ];
+            }
+        }
+
+        // Cek yang diubah
+        foreach ($currentMap as $productId => $currentMapping) {
+            if ($previousMap->has($productId)) {
+                $previousMapping = $previousMap[$productId];
+                \Log::info('Comparing mapping', [
+                    'product_id' => $productId,
+                    'current_quantity' => $currentMapping->quantity,
+                    'previous_quantity' => $previousMapping->quantity,
+                    'is_different' => $currentMapping->quantity != $previousMapping->quantity
+                ]);
+                
+                if ($currentMapping->quantity != $previousMapping->quantity) {
+                    $changes['modified'][] = [
+                        'product' => $currentMapping->product,
+                        'old_quantity' => $previousMapping->quantity,
+                        'new_quantity' => $currentMapping->quantity
+                    ];
+                }
+            }
+        }
+
+        \Log::info('Final changes result', [
+            'added_count' => count($changes['added']),
+            'removed_count' => count($changes['removed']),
+            'modified_count' => count($changes['modified']),
+            'changes' => $changes
+        ]);
+
+        return $changes;
     }
 }

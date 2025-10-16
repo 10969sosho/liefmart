@@ -207,8 +207,6 @@
         padding: 2rem;
         text-align: center;
         margin-top: 2rem;
-        position: relative;
-        overflow: hidden;
     }
     
     .add-product-section::before {
@@ -396,11 +394,37 @@
 <div class="container-fluid">
     <div class="form-card">
         <div class="form-header">
-            <h2><i class="fas fa-edit me-2"></i>Edit Mapping Produk</h2>
-            <p>Kelola dan update mapping produk platform dengan produk master</p>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-edit me-2"></i>Edit Mapping Produk</h2>
+                    <p>Kelola dan update mapping produk platform dengan produk master</p>
+                </div>
+                <div>
+                    <a href="{{ route('master.mapping.version-history', $mapping->platform_product_id) }}" 
+                       class="btn btn-light btn-sm">
+                        <i class="fas fa-history me-1"></i>
+                        Riwayat Versi
+                    </a>
+                </div>
+            </div>
         </div>
         
         <div class="form-body">
+            <!-- Alert Messages -->
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible fade show mb-4" role="alert" style="border-radius: 12px; border: none; background: #d1fae5; color: #065f46;">
+                    <i class="fas fa-check-circle me-2"></i> {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            @if(session('error'))
+                <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert" style="border-radius: 12px; border: none; background: #fee2e2; color: #991b1b;">
+                    <i class="fas fa-exclamation-circle me-2"></i> {{ session('error') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+            
             <!-- Platform Information Section -->
             <div class="form-section">
                 <h6 class="form-section-title">
@@ -466,7 +490,15 @@
                 <p class="help-text mb-3">Kelola produk master yang terhubung dengan produk platform ini. <strong>Klik tombol "Update" untuk menyimpan perubahan quantity.</strong> Anda dapat menambah produk master tambahan di bagian bawah.</p>
                 
                             @php 
-                                $allMappings = App\Models\MappingBarang::where('platform_product_id', $mapping->platform_product_id)->get();
+                                // Ambil mapping aktif (versi terbaru) - hanya dari versi terbaru
+                                $latestVersion = App\Models\MappingBarang::where('platform_product_id', $mapping->platform_product_id)
+                                    ->where('is_active', true)
+                                    ->max('version');
+                                
+                                $allMappings = App\Models\MappingBarang::where('platform_product_id', $mapping->platform_product_id)
+                                    ->where('is_active', true)
+                                    ->where('version', $latestVersion)
+                                    ->get();
                             @endphp
                             
                             @foreach($allMappings as $item)
@@ -492,6 +524,13 @@
                                                 </button>
                                             </div>
                                 
+                                @if($hasBeenUsed)
+                                <div class="mt-2">
+                                    <input type="text" name="change_reason" class="form-control form-control-sm" 
+                                           placeholder="Alasan perubahan (opsional)" maxlength="500">
+                                </div>
+                                @endif
+                                
                                 <button type="submit" class="btn-update" title="Update Quantity">
                                     <i class="fas fa-check me-1"></i> Update
                                 </button>
@@ -501,21 +540,13 @@
                             <form action="{{ route('master.mapping.destroy', $item->id) }}" method="POST" class="d-inline">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="btn-delete" 
-                                        onclick="return confirm('Hapus mapping ini?')" title="Hapus Mapping">
+                                <button type="submit" class="btn-delete" title="Hapus Mapping">
                                     <i class="fas fa-trash me-1"></i> Hapus
-                                            </button>
+                                </button>
                             </form>
                             @endif
                         </div>
                                         </div>
-                    
-                                        @if($hasBeenUsed)
-                                        <div class="mt-2">
-                                            <input type="text" name="change_reason" class="form-control form-control-sm" 
-                                                   placeholder="Alasan perubahan (opsional)" maxlength="500">
-                                        </div>
-                                        @endif
                 </div>
                 @endforeach
                 
@@ -543,7 +574,7 @@
                     <div class="alert alert-success alert-dismissible fade show mb-3" role="alert" style="border-radius: 12px; border: none; background: #d1fae5; color: #065f46;">
                         <i class="fas fa-check-circle me-2"></i> {{ session('success') }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
+                    </div>
                 @endif
 
                 @if(session('error'))
@@ -598,50 +629,7 @@
                     </form>
             </div>
             
-            <!-- History Sections (Simplified) -->
-            @if($mappingHistory->count() > 1)
-            <div class="history-section">
-                <h6 class="form-section-title">
-                    <i class="fas fa-code-branch"></i>
-                    Riwayat Versi Mapping
-                </h6>
-                <div class="history-table">
-                    <table class="table mb-0">
-                        <thead>
-                            <tr>
-                                <th>Versi</th>
-                                <th>Status</th>
-                                <th>Produk Master</th>
-                                <th>Qty</th>
-                                <th>Tanggal</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($mappingHistory->take(5) as $version)
-                                <tr class="{{ $version->id == $mapping->id ? 'table-primary' : '' }}">
-                                    <td>
-                                        <span class="badge badge-primary">v{{ $version->version }}</span>
-                                        @if($version->id == $mapping->id)
-                                            <span class="badge badge-success ms-1">Aktif</span>
-                                        @endif
-                                    </td>
-                                    <td>
-                                        @if($version->is_active)
-                                            <span class="badge badge-success">Aktif</span>
-                                        @else
-                                            <span class="badge badge-secondary">Tidak Aktif</span>
-                                        @endif
-                                    </td>
-                                    <td>{{ $version->product->name }}</td>
-                                    <td>{{ $version->quantity }}</td>
-                                    <td>{{ $version->valid_from ? $version->valid_from->format('d/m/Y') : '-' }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            @endif
+            <!-- History section removed - now using separate version history page -->
         </div>
         
         <div class="form-actions">
@@ -799,7 +787,7 @@
                 padding: 1rem 1.5rem;
                 border-radius: 12px;
                 box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-                z-index: 9999;
+                z-index: 1050;
                 font-weight: 500;
                 display: flex;
                 align-items: center;

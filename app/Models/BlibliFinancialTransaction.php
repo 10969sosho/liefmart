@@ -128,8 +128,11 @@ class BlibliFinancialTransaction extends Model
             ? InvoiceSequence::TAX_PKP 
             : InvoiceSequence::TAX_NON_PKP;
         
-        // Mendapatkan nomor invoice dari InvoiceSequence
-        $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus);
+        // Mendapatkan tanggal ORDER dari order object
+        $orderDate = $order->tanggal ?? null;
+        
+        // Mendapatkan nomor invoice dari InvoiceSequence dengan tanggal ORDER
+        $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate);
         
         return $invoiceData['invoice_number'];
     }

@@ -482,8 +482,8 @@ class FinanceOfflineController extends Controller
                 // Get customer info for tax purposes
                 $customer = $offlineSale->customerInfo;
                 
-                // Generate invoice number based on tax ID
-                $invoiceNumber = FinanceOffline::generateInvoiceNumber($taxId);
+                // Generate invoice number based on tax ID and order date
+                $invoiceNumber = FinanceOffline::generateInvoiceNumber($taxId, $offlineSale->sale_date);
                 
                 // Calculate total nominal from all items in this group
                 $nominal = $barangKeluarItems->sum(function($item) {

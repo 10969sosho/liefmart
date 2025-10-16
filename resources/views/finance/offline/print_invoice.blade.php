@@ -7,8 +7,8 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            font-size: 12px;
-            line-height: 1.5;
+            font-size: 10px;
+            line-height: 1.2;
             color: #333;
             margin: 0;
             padding: 0;
@@ -16,23 +16,26 @@
         
         .invoice-container {
             max-width: 800px;
-            margin: 20px auto;
-            padding: 20px;
+            margin: 10px auto;
+            padding: 10px;
             border: 1px solid #ddd;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
         
         .logo {
-            width: 800px;
+            width: 600px;
             height: auto;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
         }
         
         .header {
             display: flex;
             justify-content: center;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             width: 100%;
         }
         
@@ -45,21 +48,21 @@
         }
         
         .company-website {
-            font-size: 14px;
+            font-size: 11px;
             color: #666;
-            margin-top: 5px;
+            margin-top: 3px;
             text-align: center;
         }
         
         .horizontal-line {
             border-top: 1px solid #000;
-            margin: 10px 0;
+            margin: 5px 0;
         }
         
         .invoice-details {
             display: flex;
             justify-content: space-between;
-            margin: 20px 0;
+            margin: 10px 0;
         }
         
         .customer-info {
@@ -70,19 +73,24 @@
             width: 40%;
         }
         
+        .content-area {
+            flex: 1;
+        }
+        
         table {
             width: 100%;
             border-collapse: collapse;
-            margin: 20px 0;
+            margin: 10px 0;
             table-layout: fixed;
         }
         
         th, td {
-            padding: 8px;
+            padding: 3px 4px;
             text-align: left;
             border-bottom: 1px solid #ddd;
             overflow: hidden;
             text-overflow: ellipsis;
+            font-size: 9px;
         }
         
         td.product-description {
@@ -93,8 +101,21 @@
         td.discount-column {
             white-space: normal;
             word-wrap: break-word;
-            font-size: 11px;
-            line-height: 1.3;
+            font-size: 9px;
+            line-height: 1.2;
+            text-align: right;
+            padding: 2px 4px;
+            vertical-align: top;
+        }
+        
+        .discount-item {
+            display: block;
+            margin-bottom: 1px;
+            font-size: 8px;
+        }
+        
+        .discount-item:last-child {
+            margin-bottom: 0;
         }
         
         thead th {
@@ -137,7 +158,8 @@
         .signatures {
             display: flex;
             justify-content: space-between;
-            margin-top: 50px;
+            margin-top: auto;
+            padding-top: 10px;
         }
         
         .signature {
@@ -147,12 +169,12 @@
         
         .signature-line {
             border-top: 1px solid #000;
-            margin-top: 50px;
-            margin-bottom: 10px;
+            margin-top: 20px;
+            margin-bottom: 5px;
         }
         
         .payment-info {
-            margin-top: 30px;
+            margin-top: 15px;
             font-style: italic;
         }
         
@@ -161,18 +183,80 @@
             body {
                 padding: 0;
                 margin: 0;
+                font-size: 9px;
             }
             
             .invoice-container {
                 max-width: 100%;
                 margin: 0;
-                padding: 15px;
+                padding: 10px;
                 border: none;
                 box-shadow: none;
+                min-height: auto;
+            }
+            
+            .signatures {
+                margin-top: 5px;
+                padding-top: 5px;
+            }
+            
+            .signature-line {
+                margin-top: 15px;
+            }
+            
+            .payment-info {
+                margin-top: 8px;
+                font-size: 8px;
+                page-break-inside: avoid;
             }
             
             .no-print {
                 display: none;
+            }
+            
+            /* Force content to stay on one page */
+            .invoice-container > * {
+                page-break-inside: avoid;
+            }
+            
+            /* Reduce spacing for print */
+            table {
+                margin: 5px 0;
+            }
+            
+            .totals {
+                margin-top: 10px;
+            }
+            
+            .total-row {
+                padding: 3px 0;
+            }
+            
+            .horizontal-line {
+                margin: 3px 0;
+            }
+            
+            .invoice-details {
+                margin: 5px 0;
+            }
+            
+            /* Reduce font sizes for print */
+            th, td {
+                font-size: 8px;
+                padding: 2px 3px;
+            }
+            
+            .company-info {
+                margin-bottom: 5px;
+            }
+            
+            .header {
+                margin-bottom: 5px;
+            }
+            
+            /* Ensure payment info stays with signatures */
+            .signatures + .payment-info {
+                margin-top: 5px;
             }
         }
     </style>
@@ -293,6 +377,7 @@
         
         <div class="horizontal-line"></div>
         
+        <div class="content-area">
         <table>
             <thead>
                 <tr>
@@ -394,7 +479,7 @@
                         $currentTotal = $itemBeforeDiscount;
                         
                         // Hitung diskon persentase
-                        $discountText = [];
+                        $discountItems = [];
                         $hasDiscount = false;
                         for($i = 1; $i <= 5; $i++) {
                             $percentField = "discount_percent_" . $i;
@@ -403,10 +488,18 @@
                             // Check if either discount exists
                             if($offlineSaleItem->$percentField > 0 || $offlineSaleItem->$amountField > 0) {
                                 $hasDiscount = true;
-                                $discountText[] = "Diskon " . $i . ": " . 
-                                    ($offlineSaleItem->$percentField > 0 ? number_format(\App\Helpers\NumberFormatter::formatForDatabase($offlineSaleItem->$percentField), 0, ',', '.') . '%' : '') .
-                                    ($offlineSaleItem->$percentField > 0 && $offlineSaleItem->$amountField > 0 ? ' + ' : '') .
-                                    ($offlineSaleItem->$amountField > 0 ? 'Rp.' . number_format(\App\Helpers\NumberFormatter::formatForDatabase($offlineSaleItem->$amountField), 2, ',', '.') : '');
+                                $discountText = "D" . $i . ": ";
+                                $discountParts = [];
+                                
+                                if($offlineSaleItem->$percentField > 0) {
+                                    $discountParts[] = number_format(\App\Helpers\NumberFormatter::formatForDatabase($offlineSaleItem->$percentField), 0, ',', '.') . '%';
+                                }
+                                if($offlineSaleItem->$amountField > 0) {
+                                    $discountParts[] = 'Rp ' . number_format(\App\Helpers\NumberFormatter::formatForDatabase($offlineSaleItem->$amountField), 0, ',', '.');
+                                }
+                                
+                                $discountText .= implode(' + ', $discountParts);
+                                $discountItems[] = '<span class="discount-item">' . $discountText . '</span>';
                                 
                                 // Calculate discount amount
                                 if($offlineSaleItem->$percentField > 0) {
@@ -423,7 +516,7 @@
                         $subTotal += $subtotal;
                         
                         // Format diskon text
-                        $discountDisplay = $hasDiscount ? implode('<br>', $discountText) : '-';
+                        $discountDisplay = $hasDiscount ? implode('', $discountItems) : '<span class="discount-item">-</span>';
                     @endphp
                     <tr>
                         <td class="text-center">{{ $loop->iteration }}</td>
@@ -433,13 +526,14 @@
                         <td>{{ $product && $product->barcode ? $product->barcode : '-' }}</td>
                         <td class="text-center">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($qty), 2, ',', '.') }}</td>
                         <td class="text-right">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($price), 2, ',', '.') }}</td>
-                        <td class="text-right discount-column">{!! $discountDisplay !!}</td>
+                        <td class="discount-column">{!! $discountDisplay !!}</td>
                         <td class="text-right">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($subtotal), 2, ',', '.') }}</td>
                     </tr>
                 @endforeach
             </tbody>
           
         </table>
+        </div>
         
         <div class="horizontal-line"></div>
         

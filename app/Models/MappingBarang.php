@@ -162,4 +162,31 @@ class MappingBarang extends Model
     {
         return $query->where('version', $version);
     }
+
+    /**
+     * Check if a product is already mapped for a platform product
+     */
+    public static function isProductAlreadyMapped($platformProductId, $productId, $excludeMappingId = null)
+    {
+        $query = static::where('platform_product_id', $platformProductId)
+            ->where('product_id', $productId)
+            ->where('is_active', true);
+        
+        if ($excludeMappingId) {
+            $query->where('id', '!=', $excludeMappingId);
+        }
+        
+        return $query->exists();
+    }
+
+    /**
+     * Get duplicate product IDs in an array
+     */
+    public static function getDuplicateProductIds($productIds)
+    {
+        $counts = array_count_values($productIds);
+        return array_keys(array_filter($counts, function($count) {
+            return $count > 1;
+        }));
+    }
 }

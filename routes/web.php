@@ -236,8 +236,8 @@ Route::prefix('sales')->middleware(['auth', 'main.category', 'prevent-back-histo
         // Finance routes
         Route::get('/', [PembayaranTiktokController::class, 'index'])->name('index');
         Route::get('/import', [PembayaranTiktokController::class, 'importForm'])->name('import');
-        Route::post('/import/preview', [PembayaranTiktokController::class, 'importPreview'])
-            ->name('import-preview');
+        Route::post('/import/preview', [PembayaranTiktokController::class, 'preview'])->name('import-preview');
+        Route::get('/import/preview', [PembayaranTiktokController::class, 'preview'])->name('import-preview-get');
         Route::post('/import/process', [PembayaranTiktokController::class, 'importProcess'])
             ->name('import-process');
         Route::get('/manual', [PembayaranTiktokController::class, 'manual'])->name('manual');
@@ -305,6 +305,10 @@ Route::prefix('master')->middleware(['auth', 'main.category', 'prevent-back-hist
         // Route untuk menghapus mapping (alternatif)
         Route::delete('/destroy/{id}', [MappingBarangController::class, 'destroy'])->name('destroy');
         Route::delete('/destroy-all/{platformProductId}', [MappingBarangController::class, 'destroyAll'])->name('destroy-all');
+        
+        // Route untuk riwayat versi
+        Route::get('/version-history/{platformProductId}', [MappingBarangController::class, 'versionHistory'])->name('version-history');
+        Route::get('/version-detail/{platformProductId}/{version}', [MappingBarangController::class, 'versionDetail'])->name('version-detail');
     });
 });
 
@@ -317,8 +321,8 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
     Route::prefix('shopee')->name('shopee.')->group(function () {
         Route::get('/', [PembayaranShopeeController::class, 'index'])->name('index');
         Route::get('/import', [PembayaranShopeeController::class, 'importForm'])->name('import');
-        Route::post('/import/preview', [PembayaranShopeeController::class, 'importPreview'])
-            ->name('import-preview');
+        Route::post('/import/preview', [PembayaranShopeeController::class, 'preview'])->name('import-preview');
+        Route::get('/import/preview', [PembayaranShopeeController::class, 'preview'])->name('import-preview-get');
         Route::post('/import/process', [PembayaranShopeeController::class, 'importProcess'])
             ->name('import-process');
         Route::get('/manual', [PembayaranShopeeController::class, 'manual'])->name('manual');
@@ -337,7 +341,8 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
     Route::prefix('tokopedia')->name('tokopedia.')->group(function () {
         Route::get('/', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'index'])->name('index');
         Route::get('/import', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'importForm'])->name('import');
-        Route::post('/import/preview', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'importPreview'])->name('import-preview');
+        Route::post('/import/preview', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'preview'])->name('import-preview');
+        Route::get('/import/preview', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'preview'])->name('import-preview-get');
         Route::post('/import/process', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'importProcess'])->name('import-process');
         Route::get('/{id}/edit', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'edit'])->name('edit');
         Route::put('/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'update'])->name('update');
@@ -357,8 +362,8 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
     Route::prefix('tiktok')->name('tiktok.')->group(function () {
         Route::get('/', [PembayaranTiktokController::class, 'index'])->name('index');
         Route::get('/import', [PembayaranTiktokController::class, 'importForm'])->name('import');
-        Route::post('/import/preview', [PembayaranTiktokController::class, 'importPreview'])
-            ->name('import-preview');
+        Route::post('/import/preview', [PembayaranTiktokController::class, 'preview'])->name('import-preview');
+        Route::get('/import/preview', [PembayaranTiktokController::class, 'preview'])->name('import-preview-get');
         Route::post('/import/process', [PembayaranTiktokController::class, 'importProcess'])
             ->name('import-process');
         Route::get('/manual', [PembayaranTiktokController::class, 'manual'])->name('manual');
@@ -378,7 +383,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
     Route::prefix('blibli')->name('blibli.')->group(function () {
         Route::get('/', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'index'])->name('index');
         Route::get('/import', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'importForm'])->name('import');
-        Route::post('/import/preview', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'importPreview'])->name('import-preview');
+        Route::post('/import/preview', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'preview'])->name('import-preview');
         Route::get('/import/preview', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'preview'])->name('import-preview-get');
         Route::post('/import/process', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'importProcess'])->name('import-process');
         Route::get('/manual', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'manual'])->name('manual');

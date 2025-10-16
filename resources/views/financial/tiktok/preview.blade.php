@@ -61,24 +61,26 @@
 
                     @if($invalidRows > 0)
                     <div class="alert alert-warning">
-                        <h5><i class="icon fas fa-exclamation-triangle"></i> Masalah Ditemukan</h5>
+                        <h5><i class="icon fas fa-exclamation-triangle"></i> Masalah Ditemukan ({{ $invalidRows }} masalah)</h5>
                         <p>Baris-baris berikut memiliki masalah:</p>
-                        <ul>
-                            @if(isset($issues) && is_array($issues) && count($issues) > 0)
-                                @foreach($issues as $row => $rowIssues)
-                                    <li>
-                                        <strong>Baris #{{ $row }}:</strong>
-                                        <ul>
-                                            @foreach($rowIssues as $issue)
-                                                <li>{{ $issue }}</li>
-                                            @endforeach
-                                        </ul>
-                                    </li>
-                                @endforeach
-                            @else
-                                <li>Ada masalah validasi tetapi detil error tidak tersedia.</li>
-                            @endif
-                        </ul>
+                        <div class="issues-container">
+                            <ul>
+                                @if(isset($issues) && is_array($issues) && count($issues) > 0)
+                                    @foreach($issues as $row => $rowIssues)
+                                        <li>
+                                            <strong>Baris #{{ $row }}:</strong>
+                                            <ul>
+                                                @foreach($rowIssues as $issue)
+                                                    <li>{{ $issue }}</li>
+                                                @endforeach
+                                            </ul>
+                                        </li>
+                                    @endforeach
+                                @else
+                                    <li>Ada masalah validasi tetapi detil error tidak tersedia.</li>
+                                @endif
+                            </ul>
+                        </div>
                     </div>
                     @endif
 
@@ -97,7 +99,6 @@
                                     <th>No. Order</th>
                                     <th>No. Invoice</th>
                                     <th>Tax ID</th>
-                                    <th>Status</th>
                                     <th>QTY</th>
                                     <th>Nominal Harga</th>
                                     <th>Biaya Admin</th>
@@ -117,7 +118,6 @@
                                     <th>Saldo Masuk</th>
                                     <th>Tanggal Pembayaran</th>
                                     <th>Outstanding</th>
-                                    <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -126,9 +126,12 @@
                                 <tr class="{{ $index % 2 == 0 ? 'table-primary' : '' }}">
                                     <td>
                                         @if(isset($row['tanggal_order']) && $row['tanggal_order'] !== 'N/A')
-                                            {{ is_string($row['tanggal_order']) 
-                                                ? \Carbon\Carbon::parse($row['tanggal_order'])->format('d-m-Y') 
-                                                : $row['tanggal_order'] }}
+                                            @php
+                                                $date = is_string($row['tanggal_order']) 
+                                                    ? \Carbon\Carbon::parse($row['tanggal_order']) 
+                                                    : $row['tanggal_order'];
+                                                echo $date->format('d-m-Y');
+                                            @endphp
                                         @else
                                             -
                                         @endif
@@ -137,7 +140,6 @@
                                     <td>{{ $row['no_order'] ?? '-' }}</td>
                                     <td>{{ $row['no_invoice'] ?? '-' }}</td>
                                     <td>{{ $row['tax_id'] ?? '-' }}</td>
-                                    <td>{{ $row['status'] ?? '-' }}</td>
                                     <td class="text-end">{{ isset($row['qty']) ? number_format($row['qty'], 0, ',', '.') : '-' }}</td>
                                     <td class="text-end">{{ isset($row['nominal_harga']) ? number_format($row['nominal_harga'], 0, ',', '.') : '-' }}</td>
                                     <td class="text-end">{{ isset($row['nominal_diskon1']) ? number_format($row['nominal_diskon1'], 0, ',', '.') : '-' }}</td>
@@ -157,9 +159,12 @@
                                     <td class="text-end">{{ isset($row['saldo_masuk']) ? number_format($row['saldo_masuk'], 0, ',', '.') : '-' }}</td>
                                     <td>
                                         @if(isset($row['tanggal_masuk_pembayaran']) && $row['tanggal_masuk_pembayaran'] !== 'N/A')
-                                            {{ is_string($row['tanggal_masuk_pembayaran']) 
-                                                ? \Carbon\Carbon::parse($row['tanggal_masuk_pembayaran'])->format('d-m-Y') 
-                                                : $row['tanggal_masuk_pembayaran'] }}
+                                            @php
+                                                $paymentDate = is_string($row['tanggal_masuk_pembayaran']) 
+                                                    ? \Carbon\Carbon::parse($row['tanggal_masuk_pembayaran']) 
+                                                    : $row['tanggal_masuk_pembayaran'];
+                                                echo $paymentDate->format('d-m-Y');
+                                            @endphp
                                             <div class="small text-muted">{{ $row['hari_masuk_pembayaran'] ?? '' }}</div>
                                         @else
                                             -
@@ -168,7 +173,6 @@
                                     <td class="text-end {{ isset($row['outstanding']) && $row['outstanding'] > 0 ? 'text-danger' : 'text-success' }}">
                                         {{ isset($row['outstanding']) ? number_format($row['outstanding'], 0, ',', '.') : '-' }}
                                     </td>
-                                    <td>{{ $row['status'] ?? '-' }}</td>
                                 </tr>
                                 @endif
                                 @endforeach
@@ -223,6 +227,54 @@
     /* Highlight primary rows */
     .table-primary {
         background-color: rgba(0, 123, 255, 0.1) !important;
+    }
+    
+    /* Issues container with fixed height and scroll */
+    .issues-container {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 15px;
+        background-color: #fff;
+        margin-top: 10px;
+    }
+    
+    /* Double height for preview data table */
+    .table-responsive {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    
+    .issues-container ul {
+        margin-bottom: 0;
+    }
+    
+    .issues-container li {
+        margin-bottom: 8px;
+    }
+    
+    .issues-container li:last-child {
+        margin-bottom: 0;
+    }
+    
+    /* Custom scrollbar for issues container */
+    .issues-container::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .issues-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+    
+    .issues-container::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 4px;
+    }
+    
+    .issues-container::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8;
     }
 </style>
 @endpush

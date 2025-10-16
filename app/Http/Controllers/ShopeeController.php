@@ -180,8 +180,10 @@ class ShopeeController extends Controller
                 
                 // Cek stok untuk setiap platform product menggunakan mapping
                 foreach ($platformProductQuantities as $platformProductId => $quantity) {
-                    // Ambil semua mapping barang untuk platform product ini
-                    $mappings = \App\Models\MappingBarang::where('platform_product_id', $platformProductId)->get();
+                    // Ambil semua mapping barang AKTIF untuk platform product ini
+                    $mappings = \App\Models\MappingBarang::where('platform_product_id', $platformProductId)
+                        ->where('is_active', true)
+                        ->get();
                     
                     if ($mappings->isEmpty()) {
                         $platformProduct = \App\Models\PlatformProduct::find($platformProductId);

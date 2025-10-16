@@ -129,8 +129,13 @@ class TiktokFinancialTransaction extends Model
             ? InvoiceSequence::TAX_PKP 
             : InvoiceSequence::TAX_NON_PKP;
         
-        // Mendapatkan nomor invoice dari InvoiceSequence
-        $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus);
+        // Ambil tanggal order PASTI dari tabel orders - TIDAK BOLEH NULL
+        $orderDate = $order->tanggal 
+            ?? Order::where('order_number', $order->order_number)->value('tanggal')
+            ?? throw new \Exception("Tanggal order tidak ditemukan untuk Order {$order->order_number}");
+        
+        // Mendapatkan nomor invoice dari InvoiceSequence dengan tanggal ORDER
+        $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate);
         
         return $invoiceData['invoice_number'];
     }

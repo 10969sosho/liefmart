@@ -137,7 +137,9 @@ public function importExcel()
                         ->first();
                     
                     if ($platformProduct) {
-                        $mappings = \App\Models\MappingBarang::where('platform_product_id', $platformProduct->id)->get();
+                        $mappings = \App\Models\MappingBarang::where('platform_product_id', $platformProduct->id)
+                            ->where('is_active', true)
+                            ->get();
                         foreach ($mappings as $mapping) {
                             $requiredQty = $row['qty'] * $mapping->quantity;
                             if (!isset($orderProductQuantities[$orderNumber][$mapping->product_id])) {

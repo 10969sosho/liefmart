@@ -239,10 +239,19 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
             $totalPPNAmount = $hgnValue * 0.11;
             $totalWithPPN = $hgnValue + $totalPPNAmount + $lmValue; // HGN + PPN + LM
             
+            // Get invoice numbers - financeOffline is a collection/method, not a single object
+            $invoiceNumbers = '-';
+            if (method_exists($sale, 'getInvoices')) {
+                $invoices = $sale->getInvoices();
+                if ($invoices && $invoices->count() > 0) {
+                    $invoiceNumbers = $invoices->pluck('invoice_number')->join(', ');
+                }
+            }
+            
             return [
                 'PENJUALAN OFFLINE',
                 $sale->sale_date ? $sale->sale_date->format('d/m/Y') : '-',
-                $sale->financeOffline ? $sale->financeOffline->invoice_number : '-',
+                $invoiceNumbers,
                 $sale->surat_jalan_number,
                 $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
                 'Status: ' . $sale->status,
@@ -304,10 +313,19 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
             }
             // LM/Non-PKP items - no PPN (itemWithPPN = hargaTotalSetelahDiskon)
             
+            // Get invoice numbers - financeOffline is a collection/method, not a single object
+            $invoiceNumbers = '-';
+            if (method_exists($sale, 'getInvoices')) {
+                $invoices = $sale->getInvoices();
+                if ($invoices && $invoices->count() > 0) {
+                    $invoiceNumbers = $invoices->pluck('invoice_number')->join(', ');
+                }
+            }
+            
             return [
                 $this->getCounter(),
                 $sale->sale_date ? $sale->sale_date->format('d/m/Y') : '-',
-                $sale->financeOffline ? $sale->financeOffline->invoice_number : '-',
+                $invoiceNumbers,
                 $sale->surat_jalan_number,
                 $sale->customerInfo ? $sale->customerInfo->name : $sale->customer_name,
                 $item->product ? $item->product->name : 'Unknown Product',

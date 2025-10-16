@@ -9,27 +9,30 @@
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            font-size: 14px;
-            line-height: 1.5;
+            font-size: 11px;
+            line-height: 1.2;
             color: #333;
         }
         .sj-container {
             max-width: 800px;
-            margin: 20px auto;
-            padding: 20px;
+            margin: 10px auto;
+            padding: 10px;
             border: 1px solid #ddd;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
         .logo {
-            width: 800px;
+            width: 600px;
             height: auto;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
         }
         .header {
             display: flex;
             justify-content: center;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             width: 100%;
         }
         .company-info {
@@ -41,38 +44,49 @@
         }
         .horizontal-line {
             border-top: 1px solid #000;
-            margin: 10px 0;
+            margin: 5px 0;
         }
         .sj-title {
             text-align: center;
-            margin: 20px 0;
-            font-size: 24px;
+            margin: 10px 0;
+            font-size: 18px;
             font-weight: bold;
         }
         .sj-info {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
         }
         .sj-info-box {
             width: 45%;
         }
         .sj-details h2, .customer-details h2 {
-            font-size: 16px;
-            margin: 0 0 10px 0;
+            font-size: 12px;
+            margin: 0 0 5px 0;
             border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
+            padding-bottom: 3px;
             font-weight: bold;
+        }
+        .content-area {
+            flex: 1;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin: 20px 0;
+            margin: 10px 0;
         }
         th, td {
-            padding: 10px;
+            padding: 3px 4px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            font-size: 9px;
+        }
+        .description-cell {
+            text-align: left;
+        }
+        .description-cell:empty::after,
+        .description-cell:has(.empty-dash) {
+            text-align: center;
         }
         th {
             background-color: #f2f2f2;
@@ -85,34 +99,36 @@
             text-align: center;
         }
         .notes {
-            margin-top: 30px;
+            margin-top: 15px;
         }
         .notes h2 {
-            font-size: 16px;
-            margin: 0 0 10px 0;
+            font-size: 12px;
+            margin: 0 0 5px 0;
             border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
+            padding-bottom: 3px;
             font-weight: bold;
         }
         .signatures {
             display: flex;
             justify-content: space-between;
-            margin-top: 50px;
+            margin-top: auto;
+            padding-top: 10px;
         }
         .signature-box {
             width: 30%;
             text-align: center;
         }
         .signature-line {
-            margin-top: 70px;
+            margin-top: 30px;
             border-top: 1px solid #000;
-            padding-top: 5px;
+            padding-top: 2px;
+            font-size: 9px;
         }
         .footer {
-            margin-top: 50px;
+            margin-top: 15px;
             text-align: center;
             color: #777;
-            font-size: 12px;
+            font-size: 9px;
         }
         .no-print {
             display: block;
@@ -245,6 +261,7 @@
         
         <div class="horizontal-line"></div>
         
+        <div class="content-area">
         <table>
             <thead>
                 <tr>
@@ -260,11 +277,17 @@
                 @foreach ($offlineSale->items as $index => $item)
                 <tr>
                     <td class="text-center">{{ $index + 1 }}</td>
-                    <td class="text-center">{{ $item->product->sku ?? 'N/A' }}</td>
+                    <td class="text-center">{{ $item->product->barcode ?? '-' }}</td>
                     <td>{{ $item->product->name ?? 'N/A' }}</td>
                     <td class="text-center">{{ $item->quantity }}</td>
                     <td class="text-center">{{ $item->product->satuan->name ?? 'Pcs' }}</td>
-                    <td>{{ $item->notes ?? '-' }}</td>
+                    <td class="description-cell">
+                        @if($item->notes && trim($item->notes) !== '')
+                            {{ $item->notes }}
+                        @else
+                            <span class="empty-dash">-</span>
+                        @endif
+                    </td>
                 </tr>
                 @endforeach
             </tbody>
@@ -275,6 +298,7 @@
                 </tr>
             </tfoot>
         </table>
+        </div>
         
         <div class="horizontal-line"></div>
         

@@ -615,8 +615,10 @@ class BlibliImport extends DefaultValueBinder implements ToCollection, WithMulti
      */
     protected function reduceStock($platformProduct, $quantity, $orderItem, $order)
     {
-        // Ambil semua mapping barang untuk platform product ini
-        $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)->get();
+        // Ambil semua mapping barang AKTIF untuk platform product ini
+        $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)
+            ->where('is_active', true)
+            ->get();
 
         if ($mappings->isEmpty()) {
             throw new \Exception("Tidak ada mapping ditemukan untuk produk: {$platformProduct->platform_product_name}");

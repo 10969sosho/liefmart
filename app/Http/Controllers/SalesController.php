@@ -504,8 +504,10 @@ class SalesController extends Controller
      */
     private function reduceStockAndRecordOutgoing($platformProduct, $quantity, $orderItem, $order)
     {
-        // Dapatkan semua mapping barang untuk platform product ini
-        $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)->get();
+        // Dapatkan semua mapping barang AKTIF untuk platform product ini
+        $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)
+            ->where('is_active', true)
+            ->get();
         
         if ($mappings->isEmpty()) {
             throw new \Exception("Produk {$platformProduct->platform_product_name} belum di-mapping dengan produk master");
@@ -1061,8 +1063,8 @@ class SalesController extends Controller
                 $groupTaxAmount = NumberFormatter::formatForDatabase(0); // Now tax is always zero
                 $groupTotalAmount = $groupSubtotal; // Total equals subtotal
                 
-                // Generate unique SJ number for this tax group
-                $suratJalanNumber = OfflineSale::generateSuratJalanNumber($taxId, $mainCategoryId);
+                // Generate unique SJ number for this tax group with order date
+                $suratJalanNumber = OfflineSale::generateSuratJalanNumber($taxId, $mainCategoryId, $request->sale_date);
                 
                 // Create offline sale for this tax group
                 $offlineSale = OfflineSale::create([

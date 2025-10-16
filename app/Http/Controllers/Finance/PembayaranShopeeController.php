@@ -114,12 +114,17 @@ class PembayaranShopeeController extends Controller
         })->filter(); // Remove null values
         
         // Get all orders that don't have financial transactions
-        $missingOrders = Order::with('orderItems')->whereDoesntHave('shopeeFinancialTransactions')
+        $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
+            ->whereDoesntHave('shopeeFinancialTransactions')
             ->whereHas('platform', function($query) {
                 $query->where('name', 'shopee');
             })
             ->orderBy('tanggal', 'desc') // Use tanggal instead of order_date
-            ->get();
+            ->get()
+            ->filter(function($order) {
+                // Filter out fully returned orders
+                return !$order->isFullyReturned();
+            });
             
         // Group transactions by order number for display
         $groupedTransactions = $transactions->groupBy('no_order');
@@ -149,6 +154,403 @@ class PembayaranShopeeController extends Controller
     public function import()
     {
         return view('financial.shopee.import');
+    }
+
+    /**
+     * Preview imported data with optimized performance
+     */
+    public function previewDuplicateRemoved(Request $request)
+    {
+        // If this is a GET request, check if we have data in the session
+        if ($request->isMethod('get')) {
+            if (!session()->has('shopee_import_data')) {
+                return redirect()->route('finance.shopee.import')
+                    ->with('error', 'Tidak ada data preview. Silakan upload file terlebih dahulu.');
+            }
+            
+            // Get the data from the session
+            $data = session('shopee_import_data');
+            $previewData = session('shopee_preview_data');
+            $previewHeaders = session('shopee_preview_headers');
+            $headerLabels = session('shopee_header_labels');
+            $issues = session('shopee_import_issues');
+            $totalRows = session('shopee_total_rows');
+            $validRows = session('shopee_valid_rows');
+            $invalidRows = session('shopee_invalid_rows');
+            
+            // If any of the required data is missing, redirect to import
+            if (!$previewData || !$previewHeaders || !$headerLabels) {
+                return redirect()->route('finance.shopee.import')
+                    ->with('error', 'Data preview tidak lengkap. Silakan upload file kembali.');
+            }
+            
+            return view('financial.shopee.preview', compact('data', 'previewData', 'previewHeaders', 'headerLabels', 'issues', 'totalRows', 'validRows', 'invalidRows'));
+        }
+        
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls',
+        ]);
+    
+        $file = $request->file('file');
+        $path = $file->getRealPath();
+        
+        $data = [];
+        $headers = [];
+        $issues = [];
+        
+        try {
+            // Log file processing start
+            Log::info('Starting Shopee financial import preview', [
+                'file_name' => $file->getClientOriginalName(),
+                'file_size' => $file->getSize()
+            ]);
+            
+            // Load Excel file with memory optimization
+            $reader = IOFactory::createReader(IOFactory::identify($path));
+            $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+            
+            // Set additional reader options for better performance
+            if (method_exists($reader, 'setReadFilter')) {
+                // Only read first 10000 rows to prevent memory issues
+                $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                    private $maxRow = 10000;
+                    
+                    public function readCell($column, $row, $worksheetName = '') {
+                        return $row <= $this->maxRow;
+                    }
+                });
+            }
+            
+            $spreadsheet = $reader->load($path);
+            
+            // Free up memory immediately after loading
+            unset($reader);
+            
+            // Look for the 'Order details' sheet
+            $orderDetailsSheet = null;
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                \Log::info("Found sheet: " . $sheet->getTitle());
+                if (strtolower($sheet->getTitle()) === 'order details') {
+                    $orderDetailsSheet = $sheet;
+                    break;
+                }
+            }
+            
+            if (!$orderDetailsSheet) {
+                // Let's try to use the first sheet if Order details isn't found
+                $orderDetailsSheet = $spreadsheet->getActiveSheet();
+                \Log::info("Using active sheet: " . $orderDetailsSheet->getTitle());
+            }
+            
+            $worksheet = $orderDetailsSheet;
+            $highestRow = $worksheet->getHighestRow();
+            $highestColumn = $worksheet->getHighestColumn();
+            
+            \Log::info("Processing sheet: " . $worksheet->getTitle() . " (Rows: $highestRow, Columns: $highestColumn)");
+            
+            // Get headers from first row
+            $headerRow = $worksheet->rangeToArray('A1:' . $highestColumn . '1', null, true, false)[0];
+            $headers = array_filter($headerRow, function($value) {
+                return !empty(trim($value));
+            });
+            
+            // Standardize header names
+            $headerMapping = [
+                'Order ID' => 'ORDER_ID',
+                'Order Number' => 'ORDER_NUMBER', 
+                'Order Date' => 'ORDER_DATE',
+                'Payment Date' => 'PAYMENT_DATE',
+                'Payment Amount' => 'PAYMENT_AMOUNT',
+                'Voucher Ditanggung Penjual' => 'VOUCHER_DITANGGUNG_PENJUAL',
+                'KOMISI AMS/AFFILIATE' => 'KOMISI_AMS_AFFILIATE',
+                'BIAYA ADMIN' => 'BIAYA_ADMIN',
+                'BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)' => 'BIAYA_LAYANAN',
+                'DISKON 5' => 'DISKON_5',
+                'DISKON 6' => 'DISKON_6'
+            ];
+            
+            $standardizedHeaders = [];
+            foreach ($headers as $header) {
+                $standardizedHeaders[] = $headerMapping[$header] ?? $header;
+            }
+            
+            \Log::info("Mapped headers: " . json_encode($standardizedHeaders));
+            
+            // Check for missing required headers
+            $requiredHeaders = ['ORDER_ID', 'ORDER_NUMBER', 'PAYMENT_DATE', 'PAYMENT_AMOUNT'];
+            $foundRequiredHeaders = [];
+            foreach ($requiredHeaders as $requiredHeader) {
+                if (in_array($requiredHeader, $standardizedHeaders)) {
+                    $foundRequiredHeaders[] = $requiredHeader;
+                }
+            }
+            $missingHeaders = array_diff($requiredHeaders, $foundRequiredHeaders);
+            if (!empty($missingHeaders)) {
+                \Log::warning("Missing required headers: " . json_encode($missingHeaders));
+                return redirect()->back()->with('error', 'Format file tidak sesuai. Kolom yang tidak ditemukan: ' . implode(', ', $missingHeaders));
+            }
+            
+            // Get column indexes for mapped headers
+            $columnIndices = [];
+            foreach ($standardizedHeaders as $index => $header) {
+                $columnIndices[$header] = $index;
+            }
+            
+            // Helper function to get value from row using standardized header name
+            $getValue = function($row, $standardHeader) use ($columnIndices, $standardizedHeaders) {
+                // Find the index for this standard header
+                $index = array_search($standardHeader, $standardizedHeaders);
+                if ($index !== false && isset($row[$index])) {
+                    return $row[$index];
+                }
+                
+                // Try alternate method using column indices
+                if (isset($columnIndices[$standardHeader]) && isset($row[$columnIndices[$standardHeader]])) {
+                    return $row[$columnIndices[$standardHeader]];
+                }
+                
+                // Default to empty string if not found
+                return '';
+            };
+            
+            // Get data from Excel with row limit
+            $dataRange = 'A2:' . $highestColumn . min($highestRow, 10000);
+            $rows = $worksheet->rangeToArray($dataRange, null, true, false);
+            
+            // Free up memory from spreadsheet
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet, $worksheet);
+            
+            // Read data
+            $rowNumber = 1;
+            $previewData = [];
+            
+            $totalRows = count($rows);
+            
+            // Collect all order numbers first for batch query
+            $orderNumbers = [];
+            $processedRows = [];
+            
+            // First pass: collect order numbers and process basic data
+            foreach ($rows as $row) {
+                $rowNumber++;
+                
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+                
+                // Create data array based on headers
+                $rowData = [];
+                $rowData['ORDER_ID'] = $getValue($row, 'ORDER_ID');
+                $rowData['ORDER_NUMBER'] = $getValue($row, 'ORDER_NUMBER');
+                $rowData['ORDER_DATE'] = $getValue($row, 'ORDER_DATE');
+                $rowData['PAYMENT_DATE'] = $getValue($row, 'PAYMENT_DATE');
+                $rowData['PAYMENT_AMOUNT'] = $getValue($row, 'PAYMENT_AMOUNT');
+                $rowData['VOUCHER_DITANGGUNG_PENJUAL'] = $getValue($row, 'VOUCHER_DITANGGUNG_PENJUAL');
+                $rowData['KOMISI_AMS_AFFILIATE'] = $getValue($row, 'KOMISI_AMS_AFFILIATE');
+                $rowData['BIAYA_ADMIN'] = $getValue($row, 'BIAYA_ADMIN');
+                $rowData['BIAYA_LAYANAN'] = $getValue($row, 'BIAYA_LAYANAN');
+                $rowData['DISKON_5'] = $getValue($row, 'DISKON_5');
+                $rowData['DISKON_6'] = $getValue($row, 'DISKON_6');
+                
+                // Collect order number for batch query
+                if (!empty($rowData['ORDER_NUMBER'])) {
+                    $orderNumbers[] = $rowData['ORDER_NUMBER'];
+                }
+                
+                $processedRows[] = [
+                    'rowNumber' => $rowNumber,
+                    'rowData' => $rowData
+                ];
+            }
+            
+            // Batch query: Get all orders and their items in one query
+            $orders = [];
+            $existingTransactions = [];
+            
+            if (!empty($orderNumbers)) {
+                // Remove duplicates to avoid unnecessary queries
+                $orderNumbers = array_unique($orderNumbers);
+                
+                // Get all orders with their items in one query
+                $orders = Order::whereIn('order_number', $orderNumbers)
+                    ->with(['orderItems.warehouseStock'])
+                    ->get()
+                    ->keyBy('order_number');
+                
+                // Get all existing transactions in one query
+                $existingTransactions = ShopeeFinancialTransaction::whereIn('no_order', $orderNumbers)
+                    ->pluck('no_order')
+                    ->toArray();
+                
+                \Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
+            }
+            
+            // Second pass: process rows with pre-loaded data
+            foreach ($processedRows as $processedRow) {
+                $rowNumber = $processedRow['rowNumber'];
+                $rowData = $processedRow['rowData'];
+                
+                // Validate row data
+                $rowIssues = [];
+                
+                // 1. Validate order number
+                if (empty($rowData['ORDER_NUMBER'])) {
+                    $rowIssues[] = 'Nomor pesanan kosong';
+                }
+                
+                // 2. Validate date format
+                if (!empty($rowData['PAYMENT_DATE'])) {
+                    // If date is an Excel date object
+                    if ($rowData['PAYMENT_DATE'] instanceof \DateTime) {
+                        $rowData['PAYMENT_DATE'] = $rowData['PAYMENT_DATE']->format('Y-m-d');
+                    } else {
+                        // Try to parse date in various formats
+                        $date = null;
+                        $dateValue = $rowData['PAYMENT_DATE'];
+                        
+                        // If it's a numeric value (Excel serial date)
+                        if (is_numeric($dateValue)) {
+                            try {
+                                $excelDate = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($dateValue);
+                                $rowData['PAYMENT_DATE'] = $excelDate->format('Y-m-d');
+                                $date = true;
+                            } catch (\Exception $e) {
+                                \Log::warning("Failed to convert Excel date: " . $e->getMessage());
+                            }
+                        } else {
+                            // Try multiple formats
+                            $formats = [
+                                'Y-m-d', 'Y/m/d', 'd/m/Y', 'Y-m-d H:i:s', 'Y/m/d H:i:s',
+                                'd-m-Y', 'm/d/Y', 'Y.m.d', 'd.m.Y', 'm.d.Y'
+                            ];
+                            
+                            foreach ($formats as $format) {
+                                $parsedDate = \DateTime::createFromFormat($format, $dateValue);
+                                if ($parsedDate && $parsedDate->format($format) == $dateValue) {
+                                    $rowData['PAYMENT_DATE'] = $parsedDate->format('Y-m-d');
+                                    $date = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (!$date) {
+                            \Log::warning("Invalid date format: " . $dateValue);
+                            $rowIssues[] = 'Format tanggal tidak valid. Format yang didukung: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY';
+                        }
+                    }
+                } else {
+                    $rowIssues[] = 'Tanggal pembayaran kosong';
+                }
+                
+                // 3. Validate payment amount
+                if (!isset($rowData['PAYMENT_AMOUNT'])) {
+                    $rowIssues[] = 'Jumlah pembayaran tidak ditemukan';
+                } elseif ($rowData['PAYMENT_AMOUNT'] === '') {
+                    $rowIssues[] = 'Jumlah pembayaran kosong';
+                }
+                
+                // 4. Check if order exists in database (using pre-loaded data)
+                $order = $orders[$rowData['ORDER_NUMBER']] ?? null;
+                if (!$order) {
+                    \Log::warning("Order tidak ditemukan: " . $rowData['ORDER_NUMBER']);
+                    $rowIssues[] = 'Nomor order tidak ditemukan di database';
+                    
+                    // Skip this transaction instead of creating placeholder data
+                    $rowData['_valid'] = false;
+                    $rowData['_issues'] = $rowIssues;
+                    $rowData['_row'] = $rowNumber;
+                    
+                    $data[] = $rowData;
+                    $issues[$rowNumber] = $rowIssues;
+                    continue;
+                }
+                
+                // 5. Check if transaction already exists (using pre-loaded data)
+                $transactionExists = in_array($rowData['ORDER_NUMBER'], $existingTransactions);
+                if ($transactionExists) {
+                    \Log::warning("Transaksi sudah ada untuk order: " . $rowData['ORDER_NUMBER']);
+                    $rowIssues[] = 'Transaksi untuk order ini sudah ada';
+                }
+                
+                // Create preview data even if transaction exists to show in the preview
+                // Calculate total price from order items considering quantity (using pre-loaded data)
+                $nominal_harga = 0;
+                foreach ($order->orderItems as $item) {
+                    $nominal_harga += $item->price_after_discount * $item->quantity;
+                }
+                
+                // Calculate total quantity across all order items (using pre-loaded data)
+                $totalQty = $order->orderItems->sum('quantity');
+                
+                // Preview data
+                $previewData[] = [
+                    'tanggal_order' => $order->tanggal,
+                    'hari_order' => $order->hari,
+                    'no_order' => $order->order_number,
+                    'no_invoice' => 'PREVIEW-' . $order->order_number,
+                    'qty' => $totalQty,
+                    'nominal_harga' => $nominal_harga,
+                    'nominal_diskon1' => !empty($rowData['VOUCHER_DITANGGUNG_PENJUAL']) ? -abs((float) $rowData['VOUCHER_DITANGGUNG_PENJUAL']) : 0,
+                    'nominal_diskon2' => !empty($rowData['KOMISI_AMS_AFFILIATE']) ? -abs((float) $rowData['KOMISI_AMS_AFFILIATE']) : 0,
+                    'nominal_diskon3' => !empty($rowData['BIAYA_ADMIN']) ? -abs((float) $rowData['BIAYA_ADMIN']) : 0,
+                    'nominal_diskon4' => !empty($rowData['BIAYA_LAYANAN']) ? -abs((float) $rowData['BIAYA_LAYANAN']) : 0,
+                    'nominal_diskon5' => !empty($rowData['DISKON_5']) ? -abs((float) $rowData['DISKON_5']) : 0,
+                    'nominal_diskon6' => !empty($rowData['DISKON_6']) ? -abs((float) $rowData['DISKON_6']) : 0,
+                    'saldo_masuk' => !empty($rowData['PAYMENT_AMOUNT']) ? (float) $rowData['PAYMENT_AMOUNT'] : 0,
+                    'tanggal_masuk_pembayaran' => $rowData['PAYMENT_DATE'],
+                    'hari_masuk_pembayaran' => \Carbon\Carbon::parse($rowData['PAYMENT_DATE'])->format('l'),
+                    'nominal_fix' => $nominal_harga + 
+                        (!empty($rowData['VOUCHER_DITANGGUNG_PENJUAL']) ? -abs((float) $rowData['VOUCHER_DITANGGUNG_PENJUAL']) : 0) +
+                        (!empty($rowData['KOMISI_AMS_AFFILIATE']) ? -abs((float) $rowData['KOMISI_AMS_AFFILIATE']) : 0) +
+                        (!empty($rowData['BIAYA_ADMIN']) ? -abs((float) $rowData['BIAYA_ADMIN']) : 0) +
+                        (!empty($rowData['BIAYA_LAYANAN']) ? -abs((float) $rowData['BIAYA_LAYANAN']) : 0) +
+                        (!empty($rowData['DISKON_5']) ? -abs((float) $rowData['DISKON_5']) : 0) +
+                        (!empty($rowData['DISKON_6']) ? -abs((float) $rowData['DISKON_6']) : 0),
+                    'outstanding' => 0,
+                    'status' => 'preview'
+                ];
+                
+                // Store row data with validation info
+                $rowData['_valid'] = empty($rowIssues);
+                $rowData['_issues'] = $rowIssues;
+                $rowData['_row'] = $rowNumber;
+                
+                $data[] = $rowData;
+                
+                if (!empty($rowIssues)) {
+                    $issues[$rowNumber] = $rowIssues;
+                }
+            }
+            
+            // Store data in session
+            session([
+                'shopee_import_data' => $data,
+                'shopee_preview_data' => $previewData,
+                'shopee_preview_headers' => $standardizedHeaders,
+                'shopee_header_labels' => $headers,
+                'shopee_import_issues' => $issues,
+                'shopee_total_rows' => $totalRows,
+                'shopee_valid_rows' => count(array_filter($data, function($row) { return $row['_valid']; })),
+                'shopee_invalid_rows' => count(array_filter($data, function($row) { return !$row['_valid']; }))
+            ]);
+            
+            // Generate and store process token for secure processing
+            $processToken = uniqid('shopee_', true);
+            session(['shopee_process_token' => $processToken]);
+            
+            return view('financial.shopee.preview', compact('data', 'previewData', 'previewHeaders', 'headerLabels', 'issues', 'totalRows', 'validRows', 'invalidRows'));
+            
+        } catch (\Exception $e) {
+            Log::error("Error during Shopee financial import preview: " . $e->getMessage());
+            Log::error($e->getTraceAsString());
+            
+            return redirect()->back()
+                ->with('error', 'Error memproses data: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -659,6 +1061,10 @@ class PembayaranShopeeController extends Controller
     public function process(Request $request)
     {
         try {
+            // Increase execution time limit for large imports
+            set_time_limit(300); // 5 minutes
+            ini_set('memory_limit', '512M');
+            
             Log::info('Starting Shopee financial import process');
             
             // Validate process token
