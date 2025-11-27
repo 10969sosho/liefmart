@@ -199,7 +199,7 @@
                         <div class="card-body bg-warning text-dark rounded-3">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h2 class="display-5 fw-bold mb-0">{{ $filteredStocks->sum('qty') }}</h2>
+                                    <h2 class="display-5 fw-bold mb-0">{{ $filteredStocks->sum(function($stock) { return max(0, $stock->qty); }) }}</h2>
                                     <div class="text-dark opacity-75 mt-2 fw-medium">Total Quantity</div>
                                 </div>
                                 <i class="fas fa-cubes fa-3x opacity-25"></i>

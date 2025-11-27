@@ -43,6 +43,16 @@
                             </div>
                         @endif
 
+                        @if (session('info'))
+                            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                <h5 class="alert-heading d-flex align-items-center">
+                                    <i class="fas fa-info-circle me-2"></i> Informasi
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                <p class="mb-0">{{ session('info') }}</p>
+                            </div>
+                        @endif
+
                         @if (session('error'))
                             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                                 <h5 class="alert-heading d-flex align-items-center">
@@ -129,7 +139,7 @@
                                                     <h5 class="mb-0 fw-bold">{{ count($unmappedProducts) }}</h5>
                                                 </div>
                                             </div>
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center mb-2">
                                                 <div class="bg-danger text-white rounded-circle p-2 me-3" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
                                                     <i class="fas fa-exclamation-triangle"></i>
                                                 </div>
@@ -138,6 +148,17 @@
                                                     <h5 class="mb-0 fw-bold">{{ count($invalidData ?? []) }}</h5>
                                                 </div>
                                             </div>
+                                            @if(isset($totalStockRequired) && $totalStockRequired > 0)
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-primary text-white rounded-circle p-2 me-3" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+                                                    <i class="fas fa-boxes"></i>
+                                                </div>
+                                                <div>
+                                                    <p class="mb-0 small text-muted">Total Stok Dibutuhkan</p>
+                                                    <h5 class="mb-0 fw-bold">{{ number_format($totalStockRequired, 0) }}</h5>
+                                                </div>
+                                            </div>
+                                            @endif
                                         </div>
                                     </div>
                                 </div>
@@ -253,7 +274,11 @@
                                                     <small class="text-muted">Variant: {{ $variant }}</small>
                                                 @endif
                                             </div>
-                                            <a href="{{ route('master.mapping.auto-create', ['platform' => 'tiktok', 'productName' => urlencode($fullProductName)]) }}" 
+                                            <a href="{{ route('master.mapping.auto-create', [
+                                                'platform' => $platformId ?? 'tiktok', 
+                                                'productName' => rawurlencode($productName),
+                                                'variant' => $variant ? rawurlencode($variant) : null
+                                            ]) }}" 
                                                 class="btn btn-sm btn-warning">
                                                 <i class="fas fa-link me-1"></i> Mapping
                                             </a>
@@ -286,17 +311,27 @@
                             </div>
                         @endif
 
+                        {{-- Debug: Tampilkan info tentang insufficientStockProducts --}}
+                        @php
+                            $hasInsufficientStock = isset($insufficientStockProducts) && count($insufficientStockProducts) > 0;
+                            if ($hasInsufficientStock) {
+                                \Log::info('TikTok Preview View - Alert will be shown. Count: ' . count($insufficientStockProducts));
+                            } else {
+                                \Log::info('TikTok Preview View - No alert. insufficientStockProducts: ' . (isset($insufficientStockProducts) ? 'exists but empty' : 'not set'));
+                            }
+                        @endphp
+
                         {{-- Alert untuk produk dengan stok tidak mencukupi --}}
                         @if(isset($insufficientStockProducts) && count($insufficientStockProducts) > 0)
                             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                                 <h5 class="alert-heading d-flex align-items-center">
-                                    <i class="fas fa-exclamation-triangle me-2"></i> Stok Tidak Mencukupi!
+                                    <i class="fas fa-times-circle me-2"></i> ❌ ERROR: Stok Tidak Mencukupi!
                                 </h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                <p><strong>Beberapa produk memiliki stok yang tidak mencukupi dan tidak bisa dilanjutkan:</strong></p>
+                                <p><strong>Import tidak dapat dilanjutkan karena beberapa produk memiliki stok yang tidak mencukupi:</strong></p>
                                 <p class="text-danger mb-3">
                                     <i class="fas fa-exclamation-circle me-1"></i>
-                                    <strong>Contoh:</strong> Barang ini QTY 100, diperlukan 102, tidak bisa dilanjutkan
+                                    <strong>Silakan tambahkan stok terlebih dahulu sebelum melanjutkan import.</strong>
                                 </p>
                                 
                                 <div class="table-responsive mb-3">
@@ -564,11 +599,11 @@
                                 @else
                                     <div class="d-flex flex-column align-items-end">
                                         @if(isset($insufficientStockProducts) && count($insufficientStockProducts) > 0)
-                                            <div class="alert alert-warning d-flex align-items-center mb-2">
-                                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                                <span><strong>Stok Tidak Mencukupi:</strong> Tambahkan stok terlebih dahulu untuk melanjutkan import.</span>
+                                            <div class="alert alert-danger d-flex align-items-center mb-2">
+                                                <i class="fas fa-times-circle me-2"></i>
+                                                <span><strong>❌ ERROR:</strong> Stok tidak mencukupi. Import tidak dapat dilanjutkan.</span>
                                             </div>
-                                            <a href="{{ route('warehouse.stock.list') }}" class="btn btn-warning" target="_blank">
+                                            <a href="{{ route('warehouse.stock.list') }}" class="btn btn-danger" target="_blank">
                                                 <i class="fas fa-box me-2"></i> Kelola Stok
                                             </a>
                                         @elseif(isset($unmappedProducts) && count($unmappedProducts) > 0)

@@ -6,7 +6,7 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-header bg-white py-3">
-                    <h5 class="mb-0">Input Manual Penjualan - {{ $platform }}</h5>
+                    <h5 class="mb-0">Input Manual Penjualan - {{ $platformDisplayName ?? $platform }}</h5>
                 </div>
                 
                 <div class="card-body">
@@ -16,7 +16,7 @@
                                 <ol class="breadcrumb">
                                     <li class="breadcrumb-item"><a href="{{ route('sales.index') }}">Menu Penjualan</a></li>
                                     <li class="breadcrumb-item"><a href="{{ route('sales.online') }}">Penjualan Online</a></li>
-                                    <li class="breadcrumb-item active">Input Manual ({{ $platform }})</li>
+                                    <li class="breadcrumb-item active">Input Manual ({{ $platformDisplayName ?? $platform }})</li>
                                 </ol>
                             </nav>
                         </div>

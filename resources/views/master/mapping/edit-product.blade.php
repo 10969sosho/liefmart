@@ -263,8 +263,8 @@
                         <tr>
                             <th>Platform</th>
                             <td>
-                                <span class="badge platform-{{ strtolower($platformProduct->platform->name) }}">
-                                    {{ ucfirst($platformProduct->platform->name) }}
+                                <span class="badge platform-{{ $platformProduct->platform ? strtolower($platformProduct->platform->name) : 'unknown' }}">
+                                    {{ $platformProduct->platform ? $platformProduct->platform->name : 'Unknown Platform' }}
                                 </span>
                             </td>
                         </tr>

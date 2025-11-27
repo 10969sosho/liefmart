@@ -265,7 +265,7 @@
         </div>
         <div class="card-body">
             <!-- Filter Form -->
-            <form method="GET" action="{{ route('analytics.sales-detail-report') }}" id="filter-form" class="mb-4 p-3 bg-light rounded">
+            <form method="GET" action="{{ route('analytics.sales-detail-report') }}" id="filter-form" class="mb-5 p-3 bg-light rounded">
                 <div class="row g-3 align-items-end">
                     <!-- Date Range -->
                     <div class="col-md-3">
@@ -338,89 +338,123 @@
 
                     <!-- Submit and Reset Button -->
                     <div class="col-md-3">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-search"></i> Filter
-                        </button>
-                        <a href="{{ route('analytics.sales-detail-report') }}" class="btn btn-outline-secondary">
-                            <i class="bi bi-arrow-counterclockwise"></i> Reset
-                        </a>
-                        <a href="{{ route('analytics.sales-detail-report.export', request()->query()) }}" class="btn btn-success">
-                            <i class="bi bi-download"></i> Export Excel
-                        </a>
+                        <div class="d-flex flex-column gap-2">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-search"></i> Filter
+                                </button>
+                                <a href="{{ route('analytics.sales-detail-report') }}" class="btn btn-outline-secondary">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Reset
+                                </a>
+                            </div>
+                            <div class="mt-2">
+                                <a href="{{ route('analytics.sales-detail-report.export', request()->query()) }}" class="btn btn-success">
+                                    <i class="bi bi-download"></i> Export Excel
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </form>
             
             <!-- Summary Cards -->
-            <div class="row mb-4">
+            <div class="row mb-4 g-3">
                 <div class="col-md-3">
-                    <div class="card bg-primary text-white">
+                    <div class="card bg-primary text-white h-100 shadow-sm">
                         <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="text-uppercase mb-1">Total Order (Setelah Retur)</h6>
-                                    <h2 class="font-weight-bold mb-0">{{ number_format($summary['total_orders_after_returns']) }}</h2>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="flex-grow-1">
+                                    <h6 class="text-uppercase mb-2 opacity-75" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                        <i class="bi bi-cart me-1"></i>Total Order (Setelah Retur)
+                                    </h6>
+                                    <h2 class="font-weight-bold mb-0" style="font-size: 2rem;">
+                                        {{ number_format($summary['total_orders_after_returns']) }}
+                                    </h2>
                                 </div>
-                                <div class="icon-circle bg-white text-primary">
-                                    <i class="bi bi-cart"></i>
+                                <div class="icon-circle bg-white bg-opacity-20 text-white" style="flex-shrink: 0;">
+                                    <i class="bi bi-cart" style="font-size: 1.5rem;"></i>
                                 </div>
                             </div>
-                            <div class="mt-2 text-white-50 small">
-                                <span>dari {{ number_format($summary['total_orders']) }} order ({{ number_format($summary['total_orders'] - $summary['total_orders_after_returns']) }} retur)</span>
+                            <div class="mt-2 small opacity-75" style="font-size: 0.75rem; line-height: 1.4;">
+                                @php
+                                    // Gunakan total_orders_before_returns dari controller yang sudah sesuai dengan filter tanggal dan platform
+                                    $totalBeforeReturns = $summary['total_orders_before_returns'] ?? 0;
+                                    $ordersWithReturns = $summary['orders_with_returns'] ?? 0;
+                                    
+                                    // Pastikan total sebelum retur lebih besar atau sama dengan setelah retur
+                                    $totalAfterReturns = $summary['total_orders_after_returns'] ?? 0;
+                                    if ($totalBeforeReturns < $totalAfterReturns) {
+                                        // Jika tidak valid, gunakan total setelah retur sebagai fallback
+                                        $totalBeforeReturns = $totalAfterReturns;
+                                    }
+                                @endphp
+                                Retur {{ number_format($ordersWithReturns) }} dari total orderan {{ number_format($totalBeforeReturns) }}
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-success text-white">
+                    <div class="card bg-success text-white h-100 shadow-sm">
                         <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="text-uppercase mb-1">Total Value</h6>
-                                    <h2 class="font-weight-bold mb-0">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="flex-grow-1">
+                                    <h6 class="text-uppercase mb-2 opacity-75" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                        <i class="bi bi-cash-coin me-1"></i>Total Value
+                                    </h6>
+                                    <h2 class="font-weight-bold mb-0" style="font-size: 2rem;">
+                                        Rp {{ number_format($summary['total_value'], 0, ',', '.') }}
+                                    </h2>
                                 </div>
-                                <div class="icon-circle bg-white text-success">
-                                    <i class="bi bi-cash-coin"></i>
+                                <div class="icon-circle bg-white bg-opacity-20 text-white" style="flex-shrink: 0;">
+                                    <i class="bi bi-cash-coin" style="font-size: 1.5rem;"></i>
                                 </div>
                             </div>
-                            <div class="mt-2 text-white-50 small">
-                                <span>Rata-rata: Rp {{ number_format($summary['avg_order_value'], 0, ',', '.') }}/order</span>
+                            <div class="mt-2 small opacity-75" style="font-size: 0.75rem; line-height: 1.4;">
+                                Rata-rata: Rp {{ number_format($summary['avg_order_value'], 0, ',', '.') }}/order
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-info text-white">
+                    <div class="card bg-info text-white h-100 shadow-sm">
                         <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="text-uppercase mb-1">Total Volume</h6>
-                                    <h2 class="font-weight-bold mb-0">{{ number_format($summary['total_volume']) }} pcs</h2>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="flex-grow-1">
+                                    <h6 class="text-uppercase mb-2 opacity-75" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                        <i class="bi bi-box me-1"></i>Total Volume
+                                    </h6>
+                                    <h2 class="font-weight-bold mb-0" style="font-size: 2rem;">
+                                        {{ number_format($summary['total_volume']) }} <small style="font-size: 0.6em;">pcs</small>
+                                    </h2>
                                 </div>
-                                <div class="icon-circle bg-white text-info">
-                                    <i class="bi bi-box"></i>
+                                <div class="icon-circle bg-white bg-opacity-20 text-white" style="flex-shrink: 0;">
+                                    <i class="bi bi-box" style="font-size: 1.5rem;"></i>
                                 </div>
                             </div>
-                            <div class="mt-2 text-white-50 small">
-                                <span>Rata-rata: {{ number_format($summary['total_volume'] / max($summary['total_orders'], 1), 1) }} pcs/order</span>
+                            <div class="mt-2 small opacity-75" style="font-size: 0.75rem; line-height: 1.4;">
+                                Rata-rata: {{ number_format($summary['avg_order_volume'] ?? ($summary['total_volume'] / max($summary['total_orders_after_returns'], 1)), 1) }} pcs/order
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card {{ $summary['percentage_shown'] == 100 ? 'bg-secondary' : 'bg-warning' }} text-white">
+                    <div class="card {{ $summary['percentage_shown'] == 100 ? 'bg-secondary' : 'bg-warning' }} text-white h-100 shadow-sm">
                         <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="text-uppercase mb-1">Persentase Tampil</h6>
-                                    <h2 class="font-weight-bold mb-0">{{ number_format($summary['percentage_shown'], 1) }}%</h2>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="flex-grow-1">
+                                    <h6 class="text-uppercase mb-2 opacity-75" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                        <i class="bi bi-percent me-1"></i>Persentase Tampil
+                                    </h6>
+                                    <h2 class="font-weight-bold mb-0" style="font-size: 2rem;">
+                                        {{ number_format($summary['percentage_shown'], 1) }}%
+                                    </h2>
                                 </div>
-                                <div class="icon-circle bg-white {{ $summary['percentage_shown'] == 100 ? 'text-secondary' : 'text-warning' }}">
-                                    <i class="bi bi-percent"></i>
+                                <div class="icon-circle bg-white bg-opacity-20 text-white" style="flex-shrink: 0;">
+                                    <i class="bi bi-percent" style="font-size: 1.5rem;"></i>
                                 </div>
                             </div>
-                            <div class="mt-2 text-white-50 small">
-                                <span>Data terfilter dari total keseluruhan</span>
+                            <div class="mt-2 small opacity-75" style="font-size: 0.75rem; line-height: 1.4;">
+                                Data terfilter dari total keseluruhan
                             </div>
                         </div>
                     </div>
@@ -535,7 +569,7 @@
                                         <td class="text-center cell-highlight" rowspan="{{ $rowspan }}">
                                             @if($order->platform)
                                                 <div class="platform-box platform-{{ strtolower(str_replace(' ', '-', $order->platform->name)) }}">
-                                                    {{ ucfirst($order->platform->name) }}
+                                                    {{ $order->platform->name }}
                                                 </div>
                                             @else
                                                 <span class="text-muted">-</span>
@@ -651,6 +685,7 @@
             </div>
             
             <!-- Pagination -->
+            @if(method_exists($orders, 'links'))
             <div class="d-flex justify-content-between align-items-center mt-4">
                 <div class="text-muted small">
                     Menampilkan {{ $orders->firstItem() ?? 0 }} - {{ $orders->lastItem() ?? 0 }} dari {{ $orders->total() }} data
@@ -659,6 +694,7 @@
                     {{ $orders->appends(request()->query())->links('pagination::bootstrap-5') }}
                 </div>
             </div>
+            @endif
         </div>
     </div>
 </div>

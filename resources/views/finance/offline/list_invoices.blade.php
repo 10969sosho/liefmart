@@ -19,10 +19,10 @@
                     </div>
                 </div>
 
-                <div class="card-body">
+                <div class="card-body p-4">
                     <!-- Session Messages -->
                     @if(session('success') || session('error'))
-                        <div class="alert alert-{{ session('success') ? 'success' : 'danger' }} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-{{ session('success') ? 'success' : 'danger' }} alert-dismissible fade show mb-4" role="alert">
                             <div class="d-flex align-items-center">
                                 <i class="fas fa-{{ session('success') ? 'check-circle' : 'exclamation-circle' }} me-2"></i>
                                 <strong>{{ session('success') ? 'Sukses!' : 'Error!' }}</strong>
@@ -58,11 +58,21 @@
                                         <input type="text" class="form-control form-control-sm" id="invoice_number" name="invoice_number" placeholder="Cari..." value="{{ request('invoice_number') }}">
                                     </div>
                                     <div class="col-md-2">
+                                        <label for="sj_number" class="form-label small">No. SJ</label>
+                                        <input type="text" class="form-control form-control-sm" id="sj_number" name="sj_number" placeholder="Cari..." value="{{ request('sj_number') }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label for="customer" class="form-label small">Customer</label>
+                                        <input type="text" class="form-control form-control-sm" id="customer" name="customer" placeholder="Cari..." value="{{ request('customer') }}">
+                                    </div>
+                                    <div class="col-md-2">
                                         <label for="payment_status" class="form-label small">Status Pembayaran</label>
                                         <select class="form-select form-select-sm" id="payment_status" name="payment_status">
                                             <option value="">Semua</option>
-                                            <option value="paid" {{ request('payment_status') == 'paid' ? 'selected' : '' }}>Lunas</option>
-                                            <option value="unpaid" {{ request('payment_status') == 'unpaid' ? 'selected' : '' }}>Belum Lunas</option>
+                                            <option value="lunas" {{ request('payment_status') == 'lunas' ? 'selected' : '' }}>Lunas</option>
+                                            <option value="belum_lunas" {{ request('payment_status') == 'belum_lunas' ? 'selected' : '' }}>Belum Lunas</option>
+                                            <option value="retur_full" {{ request('payment_status') == 'retur_full' ? 'selected' : '' }}>Retur Full</option>
+                                            <option value="tidak_balance" {{ request('payment_status') == 'tidak_balance' ? 'selected' : '' }}>Tidak Balance</option>
                                         </select>
                                     </div>
                                     <div class="col-md-2">
@@ -83,7 +93,7 @@
                                             <input type="hidden" name="main_category_id" id="main_category_id" value="{{ session('main_category_id') }}">
                                         </div>
                                     </div>
-                                    <div class="col-md-6">
+                                    <div class="col-12 mt-2">
                                         <label class="form-label small text-muted d-block">Quick Dates</label>
                                         <div class="btn-group btn-group-sm">
                                             <button type="button" class="btn btn-outline-secondary btn-date" data-days="7">7 Hari</button>
@@ -92,7 +102,7 @@
                                             <button type="button" class="btn btn-outline-secondary btn-month" data-month="current">Bulan Ini</button>
                                         </div>
                                     </div>
-                                    <div class="col-md-6 text-end mt-3">
+                                    <div class="col-12 text-end mt-3">
                                         <a href="{{ route('finance.offline.invoices') }}" class="btn btn-sm btn-secondary">
                                             <i class="fas fa-redo me-1"></i> Reset
                                         </a>
@@ -106,81 +116,111 @@
                     </div>
 
                     <!-- Summary Cards -->
-                    <div class="row mb-4">
+                    <div class="row g-3 mb-4">
+                        <!-- Row 1: Main Overview -->
                         <div class="col-md-3">
-                            <div class="card bg-primary text-white h-100">
+                            <div class="card bg-primary text-white h-100 shadow-sm">
                                 <div class="card-body">
-                                    <h5 class="card-title">Total Invoice</h5>
-                                    <h2 class="display-5">{{ number_format($summary['total_invoices']) }}</h2>
-                                    <p>
+                                    <h6 class="card-title mb-2"><i class="fas fa-file-invoice me-2"></i>Total Invoice</h6>
+                                    <h2 class="display-6 mb-2">{{ number_format($summary['total_invoices']) }}</h2>
+                                    <small class="text-white-50">
                                         <i class="fas fa-calendar me-1"></i>
                                         @if(request('date_start') && request('date_end'))
                                             {{ \Carbon\Carbon::parse(request('date_start'))->format('d/m/Y') }} - {{ \Carbon\Carbon::parse(request('date_end'))->format('d/m/Y') }}
                                         @else
                                             Semua Periode
                                         @endif
-                                    </p>
+                                    </small>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="card bg-success text-white h-100">
+                            <div class="card bg-success text-white h-100 shadow-sm">
                                 <div class="card-body">
-                                    <h5 class="card-title">Total Value</h5>
-                                    <h2 class="display-5">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
-                                    <p>Rata-rata: Rp {{ number_format($summary['avg_invoice_value'], 0, ',', '.') }} per invoice</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-success text-white h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title">Sudah Lunas</h5>
-                                    <h2 class="display-6">{{ $summary['paid_count'] }}</h2>
-                                    <p>Invoice lunas</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-info text-white h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title">Dibayar Sebagian</h5>
-                                    <h2 class="display-6">{{ $summary['partial_count'] ?? 0 }}</h2>
-                                    <p>Invoice sebagian</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-warning text-dark h-100">
-                                <div class="card-body">
-                                    <h5 class="card-title">Belum Dibayar</h5>
-                                    <h2 class="display-6">{{ $summary['unpaid_count'] }}</h2>
-                                    <p>Invoice pending</p>
+                                    <h6 class="card-title mb-2"><i class="fas fa-calculator me-2"></i>GRAND TOTAL</h6>
+                                    <h2 class="display-6 mb-2">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
+                                    <small class="text-white-50">Rata-rata: Rp {{ number_format($summary['avg_invoice_value'], 0, ',', '.') }}/invoice</small>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="card bg-primary text-white h-100">
+                            <div class="card bg-primary text-white h-100 shadow-sm">
                                 <div class="card-body">
-                                    <h5 class="card-title">Total Terbayar</h5>
-                                    <h2 class="display-6">Rp {{ number_format($summary['total_paid'], 0, ',', '.') }}</h2>
-                                    <p>Jumlah sudah diterima</p>
+                                    <h6 class="card-title mb-2"><i class="fas fa-money-bill-wave me-2"></i>Total Terbayar</h6>
+                                    <h2 class="display-6 mb-2">Rp {{ number_format($summary['total_paid'], 0, ',', '.') }}</h2>
+                                    <small class="text-white-50">Jumlah sudah diterima</small>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="card bg-danger text-white h-100">
+                            <div class="card bg-danger text-white h-100 shadow-sm">
                                 <div class="card-body">
-                                    <h5 class="card-title">Sisa Tagihan</h5>
-                                    <h2 class="display-6">Rp {{ number_format($summary['total_unpaid'], 0, ',', '.') }}</h2>
-                                    <p>Masih harus dibayar</p>
+                                    <h6 class="card-title mb-2"><i class="fas fa-exclamation-circle me-2"></i>Sisa Tagihan</h6>
+                                    <h2 class="display-6 mb-2">Rp {{ number_format($summary['total_unpaid'], 0, ',', '.') }}</h2>
+                                    <small class="text-white-50">Masih harus dibayar</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Row 2: Status Counts -->
+                        <div class="col-md-2">
+                            <div class="card bg-success text-white h-100 shadow-sm">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-2"><i class="fas fa-check-circle me-1"></i>Lunas</h6>
+                                    <h3 class="mb-1">{{ $summary['paid_count'] }}</h3>
+                                    <small class="text-white-50">Invoice</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card bg-info text-white h-100 shadow-sm">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-2"><i class="fas fa-hourglass-half me-1"></i>Sebagian</h6>
+                                    <h3 class="mb-1">{{ $summary['partial_count'] ?? 0 }}</h3>
+                                    <small class="text-white-50">Invoice</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card bg-warning text-dark h-100 shadow-sm">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-2"><i class="fas fa-clock me-1"></i>Belum Bayar</h6>
+                                    <h3 class="mb-1">{{ $summary['unpaid_count'] }}</h3>
+                                    <small class="text-muted">Invoice</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card bg-secondary text-white h-100 shadow-sm">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-2"><i class="fas fa-undo me-1"></i>Retur Full</h6>
+                                    <h3 class="mb-1">{{ $summary['retur_full_count'] ?? 0 }}</h3>
+                                    <small class="text-white-50">Invoice</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card bg-warning text-dark h-100 shadow-sm">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-2"><i class="fas fa-balance-scale me-1"></i>Tidak Balance</h6>
+                                    <h3 class="mb-1">{{ $summary['tidak_balance_count'] ?? 0 }}</h3>
+                                    <small class="text-muted">Invoice</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card bg-danger text-white h-100 shadow-sm">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-2"><i class="fas fa-arrow-left me-1"></i>Total Retur</h6>
+                                    <h4 class="mb-1">Rp {{ number_format($summary['total_retur'] ?? 0, 0, ',', '.') }}</h4>
+                                    <small class="text-white-50">Jumlah diretur</small>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Data Table -->
-                    <div class="card shadow-sm border-0">
+                    <div class="card shadow-sm border-0 mt-4">
                         <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
                             <h6 class="mb-0 fw-bold text-primary">
                                 <i class="fas fa-list me-2"></i> Daftar Invoice
@@ -195,11 +235,13 @@
                                             <th width="40" class="text-center">#</th>
                                             <th width="130">No. Invoice</th>
                                             <th width="90">Tanggal</th>
-                                            <th width="120">No. SJ</th>
+                                            <th width="180">No. SJ</th>
                                             <th width="70">Tax ID</th>
                                             <th width="100">Kategori</th>
                                             <th>Customer</th>
                                             <th width="120" class="text-end">DPP (Rp)</th>
+                                            <th width="120" class="text-end">Retur (Rp)</th>
+                                            <th width="120" class="text-end">Net (Rp)</th>
                                             <th width="120" class="text-end">PPN (Rp)</th>
                                             <th width="120" class="text-end">Total (Rp)</th>
                                             <th width="120" class="text-end">Dibayar (Rp)</th>
@@ -214,16 +256,41 @@
                                             $firstItem = $invoice->barangKeluarItems->first();
                                             $taxId = $firstItem && $firstItem->warehouseStock && $firstItem->warehouseStock->tax_id ? $firstItem->warehouseStock->tax_id : null;
                                             
-                                            $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
-                                            $ppn = 0;
-                                            $grandTotal = $dpp;
+                                            // Check if this is partial refund (nominal already includes PPN)
+                                            $isPartialRefund = $invoice->status == 'partial_refund';
                                             
-                                            if ($taxId == 3) {
-                                                $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
-                                                $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
-                                                $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+                                            if ($isPartialRefund) {
+                                                // Nominal already includes PPN (grand total), need to reverse calculate
+                                                $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
+                                                
+                                                if ($taxId == 3) {
+                                                    // PKP: Reverse calculate DPP from grand total
+                                                    // Grand Total = DPP + PPN
+                                                    // PPN = DPP * (11/12) * 0.12 = DPP * 0.11
+                                                    // Grand Total = DPP + DPP * 0.11 = DPP * 1.11
+                                                    // DPP = Grand Total / 1.11
+                                                    $dpp = \App\Helpers\NumberFormatter::roundToWholeNumber($grandTotal / 1.11);
+                                                    $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                                                    $ppn = $grandTotal - $dpp;
+                                                    $ppn = \App\Helpers\NumberFormatter::roundToWholeNumber($ppn);
+                                                } else {
+                                                    // Non-PKP: No PPN, DPP = Grand Total
+                                                    $dpp = $grandTotal;
+                                                    $ppn = 0;
+                                                }
                                             } else {
-                                                $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+                                                // Normal case: nominal is DPP
+                                                $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
+                                                $ppn = 0;
+                                                $grandTotal = $dpp;
+                                                
+                                                if ($taxId == 3) {
+                                                    $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                                                    $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                                                    $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+                                                } else {
+                                                    $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+                                                }
                                             }
                                             
                                             $totalPaid = $invoice->payments->sum('amount');
@@ -255,23 +322,92 @@
                                                 }
                                             }
                                             
-                                            // Get status badge class
-                                            if ($totalPaid >= $grandTotal) {
-                                                $statusBadgeClass = 'bg-success';
-                                                $statusLabel = 'Lunas';
+                                            // Get retur information and calculate amounts
+                                            $returNumbers = [];
+                                            $returAmount = 0; // Nominal yang diretur (DPP)
+                                            
+                                            // Calculate DPP original (sebelum retur)
+                                            // Use invoice->nominal as DPP original since it's already updated with total_amount from offline_sale
+                                            $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
+                                            $offlineSale = null;
+                                            
+                                            if ($firstItem && $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale) {
+                                                $offlineSale = $firstItem->offlineSaleItem->offlineSale;
+                                                
+                                                // Get all returs
+                                                $returs = \App\Models\ReturOfflineSale::where('offline_sale_id', $offlineSale->id)
+                                                    ->where('status', 'selesai')
+                                                    ->get();
+                                                
+                                                foreach ($returs as $retur) {
+                                                    $returNumbers[] = $retur->kode_retur;
+                                                    
+                                                    // Calculate retur amount (DPP yang diretur)
+                                                    foreach ($retur->details as $detail) {
+                                                        $offlineSaleItem = $detail->offlineSaleItem;
+                                                        if ($offlineSaleItem) {
+                                                            // Retur amount = unit_price * qty_retur
+                                                            $returAmount += $offlineSaleItem->unit_price * $detail->qty;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Round retur amount
+                                            $returAmount = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmount);
+                                            
+                                            // NET = DPP setelah retur = DPP original - RETUR
+                                            $netDPP = max(0, $dppOriginal - $returAmount);
+                                            $netDPP = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPP);
+                                            
+                                            // PPN dari NET
+                                            $netPPN = 0;
+                                            if ($taxId == 3) {
+                                                $netDPP11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($netDPP);
+                                                $netPPN = \App\Helpers\NumberFormatter::calculatePPN($netDPP11_12);
+                                                $netPPN = \App\Helpers\NumberFormatter::roundToWholeNumber($netPPN);
+                                            }
+                                            
+                                            // Total = NET + PPN
+                                            $netTotal = $netDPP + $netPPN;
+                                            $netTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($netTotal);
+                                            
+                                            // Update remaining amount based on net total
+                                            $remainingAmount = max(0, $netTotal - $totalPaid);
+                                            
+                                            // Update status based on net total
+                                            // Check if there's a partial return
+                                            $hasPartialReturn = $returAmount > 0 && $invoice->status != 'retur_full' && $invoice->nominal > 0;
+                                            
+                                            if ($invoice->status == 'retur_full' || $invoice->nominal == 0) {
+                                                $statusBadgeClass = 'bg-secondary';
+                                                $statusLabel = 'Retur Full';
+                                            } elseif ($totalPaid > $netTotal) {
+                                                // Tidak Balance: pembayaran melebihi net total
+                                                $statusBadgeClass = 'bg-warning text-dark';
+                                                $statusLabel = 'Tidak Balance';
+                                            } elseif ($totalPaid >= $netTotal) {
+                                                // Lunas - check if there's partial return
+                                                if ($hasPartialReturn) {
+                                                    $statusBadgeClass = 'bg-success';
+                                                    $statusLabel = 'Lunas (Retur Sebagian)';
+                                                } else {
+                                                    $statusBadgeClass = 'bg-success';
+                                                    $statusLabel = 'Lunas';
+                                                }
                                             } elseif ($totalPaid > 0) {
                                                 $statusBadgeClass = 'bg-warning text-dark';
-                                                $statusLabel = 'Sebagian';
+                                                $statusLabel = 'Belum Lunas';
                                             } else {
                                                 $statusBadgeClass = 'bg-danger';
-                                                $statusLabel = 'Belum Bayar';
+                                                $statusLabel = 'Belum Lunas';
                                             }
                                         @endphp
                                         <tr data-invoice-id="{{ $invoice->id }}">
                                             <td class="text-center">{{ $invoices->firstItem() + $index }}</td>
                                             <td><span class="badge bg-success">{{ $invoice->invoice_number }}</span></td>
                                             <td>{{ $invoice->tanggal_invoice->format('d/m/Y') }}</td>
-                                            <td>{{ Str::limit($sjNumber, 15) }}</td>
+                                            <td>{{ $sjNumber }}</td>
                                             <td class="text-center">
                                                 <span class="badge {{ $taxBadgeClass }}">{{ $taxLabel }}</span>
                                             </td>
@@ -289,9 +425,11 @@
                                                 {{ $mainCategoryName }}
                                             </td>
                                             <td>{{ Str::limit($customer, 20) }}</td>
-                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($dpp) }}</td>
-                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($ppn) }}</td>
-                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($grandTotal) }}</td>
+                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($dppOriginal) }}</td>
+                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($returAmount) }}</td>
+                                            <td class="text-end"><strong>{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($netDPP) }}</strong></td>
+                                            <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($netPPN) }}</td>
+                                            <td class="text-end"><strong>{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($netTotal) }}</strong></td>
                                             <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($totalPaid) }}</td>
                                             <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($remainingAmount) }}</td>
                                             <td class="text-center">
@@ -314,7 +452,7 @@
                                         </tr>
                                         @empty
                                         <tr>
-                                            <td colspan="13" class="text-center py-4">
+                                            <td colspan="14" class="text-center py-4">
                                                 <div class="d-flex flex-column align-items-center">
                                                     <i class="fas fa-file-invoice-dollar fa-3x text-muted mb-3"></i>
                                                     <h6 class="fw-normal mb-1">Tidak ada data invoice</h6>
@@ -328,12 +466,26 @@
                             </div>
                             
                             @if($invoices->hasPages())
-                            <div class="card-footer bg-white">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div class="small text-muted">
-                                        Menampilkan {{ $invoices->firstItem() }} - {{ $invoices->lastItem() }} dari {{ $invoices->total() }} data
+                            <div class="card-footer bg-white border-top">
+                                <div class="row align-items-center">
+                                    <div class="col-md-6 mb-2 mb-md-0">
+                                        <div class="small text-muted">
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            Menampilkan <strong>{{ $invoices->firstItem() }}</strong> - <strong>{{ $invoices->lastItem() }}</strong> dari <strong>{{ $invoices->total() }}</strong> data
+                                        </div>
                                     </div>
-                                    {{ $invoices->links() }}
+                                    <div class="col-md-6">
+                                        <div class="d-flex justify-content-md-end justify-content-center">
+                                            {{ $invoices->appends(request()->query())->links('pagination.clean') }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            @else
+                            <div class="card-footer bg-white border-top">
+                                <div class="small text-muted text-center">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Menampilkan <strong>{{ $invoices->count() }}</strong> dari <strong>{{ $invoices->total() }}</strong> data
                                 </div>
                             </div>
                             @endif
@@ -351,17 +503,44 @@
     $firstItem = $invoice->barangKeluarItems->first();
     $taxId = $firstItem && $firstItem->warehouseStock && $firstItem->warehouseStock->tax_id ? $firstItem->warehouseStock->tax_id : null;
     
-    $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
-    $grandTotal = $dpp;
+    // Check if this is partial refund (nominal already includes PPN)
+    $isPartialRefund = $invoice->status == 'partial_refund';
     
-    if ($taxId == 3) {
-        $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
-        $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
-        $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+    if ($isPartialRefund) {
+        // Nominal already includes PPN (grand total), need to reverse calculate
+        $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
+        
+        if ($taxId == 3) {
+            // PKP: Reverse calculate DPP from grand total
+            // Grand Total = DPP + PPN
+            // PPN = DPP * (11/12) * 0.12 = DPP * 0.11
+            // Grand Total = DPP + DPP * 0.11 = DPP * 1.11
+            // DPP = Grand Total / 1.11
+            $dpp = \App\Helpers\NumberFormatter::roundToWholeNumber($grandTotal / 1.11);
+            $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+            $ppn = $grandTotal - $dpp;
+            $ppn = \App\Helpers\NumberFormatter::roundToWholeNumber($ppn);
+        } else {
+            // Non-PKP: No PPN, DPP = Grand Total
+            $dpp = $grandTotal;
+            $dpp11_12 = 0;
+            $ppn = 0;
+        }
     } else {
-        $dpp11_12 = 0;
+        // Normal case: nominal is DPP
+        $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
         $ppn = 0;
-        $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+        $grandTotal = $dpp;
+        
+        if ($taxId == 3) {
+            $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+            $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+            $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+        } else {
+            $dpp11_12 = 0;
+            $ppn = 0;
+            $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+        }
     }
     
     $totalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments->sum('amount'));
@@ -392,16 +571,75 @@
         }
     }
     
+    // Calculate net total for modal (same logic as in table)
+    // Use invoice->nominal as DPP original since it's already updated with total_amount from offline_sale
+    $returAmountModal = 0;
+    $dppOriginalModal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
+    $offlineSaleModal = null;
+    
+    if ($firstItem && $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale) {
+        $offlineSaleModal = $firstItem->offlineSaleItem->offlineSale;
+        
+        // Get all returs
+        $retursModal = \App\Models\ReturOfflineSale::where('offline_sale_id', $offlineSaleModal->id)
+            ->where('status', 'selesai')
+            ->get();
+        
+        foreach ($retursModal as $retur) {
+            foreach ($retur->details as $detail) {
+                $offlineSaleItem = $detail->offlineSaleItem;
+                if ($offlineSaleItem) {
+                    $returAmountModal += $offlineSaleItem->unit_price * $detail->qty;
+                }
+            }
+        }
+    }
+    
+    $returAmountModal = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmountModal);
+    $netDPPModal = max(0, $dppOriginalModal - $returAmountModal);
+    $netDPPModal = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPPModal);
+    
+    $netPPNModal = 0;
+    if ($taxId == 3) {
+        $netDPP11_12Modal = \App\Helpers\NumberFormatter::calculateDPP1112($netDPPModal);
+        $netPPNModal = \App\Helpers\NumberFormatter::calculatePPN($netDPP11_12Modal);
+        $netPPNModal = \App\Helpers\NumberFormatter::roundToWholeNumber($netPPNModal);
+    }
+    
+    $netTotalModal = $netDPPModal + $netPPNModal;
+    $netTotalModal = \App\Helpers\NumberFormatter::roundToWholeNumber($netTotalModal);
+    
+    // Check if there's payment adjustment needed (tidak balance)
+    $isTidakBalance = $totalPaid > $netTotalModal;
+    $paymentAdjustmentNeeded = $isTidakBalance ? ($totalPaid - $netTotalModal) : 0;
+    
     // Get status badge class
-    if ($totalPaid >= $grandTotal) {
-        $statusBadgeClass = 'bg-success';
-        $statusLabel = 'Lunas';
+    // Check if retur full (status = 'retur_full' or nominal = 0)
+    // Check if there's a partial return
+    $hasPartialReturnModal = $returAmountModal > 0 && $invoice->status != 'retur_full' && $invoice->nominal > 0;
+    
+    if ($invoice->status == 'retur_full' || $invoice->nominal == 0) {
+        $statusBadgeClass = 'bg-secondary';
+        $statusLabel = 'Retur Full';
+    } elseif ($totalPaid > $netTotalModal) {
+        // Tidak Balance: pembayaran melebihi net total
+        $statusBadgeClass = 'bg-warning text-dark';
+        $statusLabel = 'Tidak Balance';
+    } elseif ($totalPaid >= $netTotalModal) {
+        // Lunas - check if there's partial return
+        if ($hasPartialReturnModal) {
+            $statusBadgeClass = 'bg-success';
+            $statusLabel = 'Lunas (Retur Sebagian)';
+        } else {
+            $statusBadgeClass = 'bg-success';
+            $statusLabel = 'Lunas';
+        }
     } elseif ($totalPaid > 0) {
         $statusBadgeClass = 'bg-warning text-dark';
-        $statusLabel = 'Sebagian';
+        $statusLabel = 'Belum Lunas';
     } else {
         $statusBadgeClass = 'bg-danger';
-        $statusLabel = 'Belum Bayar';
+        $statusLabel = 'Belum Lunas';
     }
 @endphp
 
@@ -484,6 +722,25 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                @if($isTidakBalance)
+                <div class="alert alert-warning alert-dismissible fade show mb-3" role="alert">
+                    <h6 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Tidak Balance!</h6>
+                    <p class="mb-2">Pembayaran melebihi Net Total setelah retur.</p>
+                    <hr>
+                    <p class="mb-1"><strong>Net Total (setelah retur):</strong> Rp {{ number_format($netTotalModal, 0, ',', '.') }}</p>
+                    <p class="mb-1"><strong>Total Dibayar:</strong> Rp {{ number_format($totalPaid, 0, ',', '.') }}</p>
+                    <p class="mb-2"><strong>Kelebihan Pembayaran:</strong> Rp {{ number_format($paymentAdjustmentNeeded, 0, ',', '.') }}</p>
+                    <p class="mb-2 small">Pembayaran perlu disesuaikan menjadi <strong>Rp {{ number_format($netTotalModal, 0, ',', '.') }}</strong> untuk menyeimbangkan invoice.</p>
+                    @if(Auth::check() && Auth::user()->isSuperAdmin())
+                    <form action="{{ route('finance.offline.adjust-payment', $invoice->id) }}" method="POST" class="mt-2">
+                        @csrf
+                        <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Apakah Anda yakin ingin menyesuaikan pembayaran? Kelebihan pembayaran sebesar Rp {{ number_format($paymentAdjustmentNeeded, 0, ',', '.') }} akan dikurangi.')">
+                            <i class="fas fa-balance-scale me-1"></i> Sesuaikan Pembayaran
+                        </button>
+                    </form>
+                    @endif
+                </div>
+                @endif
                 <div class="card border-0 shadow-sm mb-3">
                     <div class="card-body">
                         <div class="row">
@@ -561,10 +818,12 @@
                                 </thead>
                                 <tbody>
                                     @foreach($invoice->payments as $payment)
-                                    <tr>
+                                    <tr class="{{ $payment->amount < 0 ? 'table-warning' : '' }}">
                                         <td>{{ $payment->payment_date->format('d/m/Y') }}</td>
                                         <td>
-                                            @if($payment->payment_method == 'transfer')
+                                            @if($payment->payment_method == 'adjustment')
+                                                <i class="fas fa-balance-scale text-warning me-1"></i> <strong>Penyesuaian</strong>
+                                            @elseif($payment->payment_method == 'transfer')
                                                 <i class="fas fa-university text-primary me-1"></i> Transfer
                                             @elseif($payment->payment_method == 'cash')
                                                 <i class="fas fa-money-bill text-success me-1"></i> Tunai
@@ -574,7 +833,13 @@
                                                 {{ ucfirst($payment->payment_method) }}
                                             @endif
                                         </td>
-                                        <td class="text-end">Rp {{ number_format(round($payment->amount), 0, ',', '.') }}</td>
+                                        <td class="text-end {{ $payment->amount < 0 ? 'text-danger fw-bold' : '' }}">
+                                            @if($payment->amount < 0)
+                                                - Rp {{ number_format(abs(round($payment->amount)), 0, ',', '.') }}
+                                            @else
+                                                Rp {{ number_format(round($payment->amount), 0, ',', '.') }}
+                                            @endif
+                                        </td>
                                         <td>{{ $payment->notes ?? '-' }}</td>
                                         @if(Auth::check() && Auth::user()->isSuperAdmin())
                                         <td class="text-center">
@@ -636,7 +901,7 @@
                 @endif
                 
                 @if($invoice->print_count === 0 || auth()->user()->isSuperAdmin() || $invoice->reprint_approved)
-                <a href="{{ route('finance.offline.print-invoice', $invoice->invoice_number) }}" class="btn btn-success" target="_blank">
+                <a href="{{ route('finance.offline.print-invoice', $invoice->id) }}" class="btn btn-success" target="_blank">
                     <i class="fas fa-print me-1"></i> Cetak Invoice
                 </a>
                 @elseif($invoice->print_count > 0 && !$invoice->reprint_requested)
@@ -761,6 +1026,69 @@
         border-radius: 4px;
     }
     
+    /* Pagination styling */
+    .pagination {
+        margin-bottom: 0;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .pagination .page-link {
+        color: #495057;
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+        min-width: 38px;
+        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .pagination .page-link:hover:not(.disabled):not(.active) {
+        color: #0056b3;
+        background-color: #e9ecef;
+        border-color: #dee2e6;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .pagination .page-item.active .page-link {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+        z-index: 1;
+    }
+    
+    .pagination .page-item.active .page-link:hover {
+        background-color: #0b5ed7;
+        border-color: #0a58ca;
+    }
+    
+    .pagination .page-item.disabled .page-link {
+        color: #6c757d;
+        background-color: #fff;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+    
+    .pagination .page-item.disabled .page-link:hover {
+        transform: none;
+        box-shadow: none;
+    }
+    
+    .pagination .page-link i {
+        font-size: 0.75rem;
+    }
+    
+    .card-footer {
+        padding: 1rem 1.5rem;
+    }
+    
     /* Media queries for responsive design */
     @media (max-width: 992px) {
         .table {
@@ -770,6 +1098,11 @@
         .table th, 
         .table td {
             padding: 8px 5px;
+        }
+        
+        .pagination .page-link {
+            padding: 0.375rem 0.5rem;
+            font-size: 0.8125rem;
         }
     }
     
@@ -781,6 +1114,23 @@
         .table th, 
         .table td {
             padding: 6px 4px;
+        }
+        
+        .pagination {
+            flex-wrap: wrap;
+        }
+        
+        .pagination .page-link {
+            padding: 0.25rem 0.4rem;
+            font-size: 0.75rem;
+        }
+        
+        .card-footer {
+            padding: 0.75rem 1rem;
+        }
+        
+        .card-footer .row > div {
+            text-align: center !important;
         }
     }
 </style>
@@ -877,10 +1227,10 @@
             // Create menu HTML
             let menuHTML = '';
             
-            // Print button condition
+            // Print button condition - use invoice ID instead of invoice number
             if (printCount === 0 || isSuperAdmin || (printCount > 0 && row.querySelector('td:nth-last-child(2)').textContent.includes('reprint_approved'))) {
                 menuHTML += `
-                <a href="${route('finance.offline.print-invoice', row.querySelector('.badge.bg-success').textContent)}" class="action-menu-item" target="_blank">
+                <a href="{{ url('finance/offline/print-invoice') }}/${invoiceId}" class="action-menu-item" target="_blank">
                     <i class="fas fa-print text-success"></i> Cetak Invoice
                 </a>`;
             } else if (printCount > 0 && !isAwaitingApproval) {
@@ -946,11 +1296,10 @@
         });
     });
     
-    // Function to request reprint
+    // Function to request reprint - use invoice ID instead of invoice number
     function requestReprint(invoiceId) {
         if (confirm('Anda telah mencapai batas cetak. Ajukan permintaan cetak ulang ke Super Admin?')) {
-            window.location.href = '{{ route('finance.offline.print-invoice', 'PLACEHOLDER') }}'.replace('PLACEHOLDER', 
-                document.querySelector(`tr[data-invoice-id="${invoiceId}"] .badge.bg-success`).textContent);
+            window.location.href = '{{ url('finance/offline/print-invoice') }}/' + invoiceId;
         }
     }
     

@@ -191,10 +191,6 @@
                         <input type="text" name="order_number" id="order_number" class="form-control" value="{{ request('order_number') }}" placeholder="Cari no. order">
                     </div>
                     <div class="col-md-2">
-                        <label for="customer_name" class="form-label">Nama Customer</label>
-                        <input type="text" name="customer_name" id="customer_name" class="form-control" value="{{ request('customer_name') }}" placeholder="Cari nama customer">
-                    </div>
-                    <div class="col-md-2">
                         <label for="min_value" class="form-label">Min. Nilai</label>
                         <input type="number" name="min_value" id="min_value" class="form-control" value="{{ request('min_value') }}" placeholder="Min. nilai order">
                     </div>
@@ -276,12 +272,11 @@
                         <tbody>
                             @foreach($unpaidOrders as $order)
                                 @php
-                                    $totalItems = $order->orderItems->count();
-                                    $totalQuantity = $order->orderItems->sum('quantity');
-                                    $totalValue = $order->orderItems->sum(function($item) {
-                                        return $item->price_after_discount * $item->quantity;
-                                    }) + ($order->shipping_cost ?? 0);
-                                    $daysSinceOrder = $order->tanggal ? $order->tanggal->diffInDays(now()) : 0;
+                                    // Use pre-calculated values from SQL
+                                    $totalItems = $order->total_items ?? 0;
+                                    $totalQuantity = $order->total_quantity ?? 0;
+                                    $totalValue = $order->total_value ?? 0;
+                                    $daysSinceOrder = $order->days_since_order ?? 0;
                                     
                                     // Check if this order has full return
                                     $isFullReturn = isset($order->is_return_unpaid) && $order->is_return_unpaid;
@@ -295,7 +290,7 @@
                                     </td>
                                     <td>{{ $order->tanggal ? $order->tanggal->format('d/m/Y') : '-' }}</td>
                                     <td>{{ $totalItems }}</td>
-                                    <td>{{ $totalQuantity }}</td>
+                                    <td>{{ number_format($totalQuantity, 0, ',', '.') }}</td>
                                     <td>
                                         <strong>Rp {{ number_format($totalValue, 0, ',', '.') }}</strong>
                                     </td>

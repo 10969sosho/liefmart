@@ -15,11 +15,11 @@
         }
         
         .invoice-container {
-            max-width: 800px;
+            max-width: 210mm; /* F4 width */
+            min-height: 297mm; /* F4 height */
             margin: 0 auto;
-            padding: 10px;
+            padding: 15mm;
             border: 1px solid #000;
-            min-height: 100vh;
             display: flex;
             flex-direction: column;
         }
@@ -109,15 +109,22 @@
         }
         
         @media print {
+            @page {
+                size: F4;
+                margin: 15mm;
+            }
+            
             body {
                 margin: 0;
-                padding: 10px;
+                padding: 0;
             }
             
             .invoice-container {
                 border: none;
                 box-shadow: none;
                 padding: 0;
+                max-width: 100%;
+                min-height: auto;
             }
         }
     </style>

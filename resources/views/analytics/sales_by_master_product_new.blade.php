@@ -15,293 +15,54 @@
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
     
     <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3f37c9;
-            --success-color: #0bb4aa;
-            --info-color: #4cc9f0;
-            --warning-color: #f72585;
-            --dark-color: #212529;
-            --light-color: #f8f9fa;
-        }
-        
-        body {
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
-        
-        .container-fluid {
-            padding: 20px;
-            max-width: 1440px;
-            margin: 0 auto;
-        }
-        
-        /* Custom styles for cards */
-        .card {
-            border-radius: 10px;
-            border: none;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-            margin-bottom: 20px;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
-        }
-        
-        .card-header {
-            border-radius: 10px 10px 0 0 !important;
-            font-weight: 600;
-            padding: 15px 20px;
-        }
-        
-        .card-body {
-            padding: 20px;
-        }
-        
-        /* Custom button styles */
-        .btn {
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-weight: 500;
-            transition: all 0.3s;
-        }
-        
-        .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
-        .btn-primary:hover {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
-        }
-        
-        .btn-outline-primary {
-            color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
-        .btn-outline-primary:hover {
-            background-color: var(--primary-color);
-            color: white;
-        }
-        
-        /* Table styles */
-        .table {
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .table-dark th {
-            background-color: var(--dark-color) !important;
-            color: white !important;
-            font-weight: 500;
-        }
-        
-        /* Make the table header sticky */
-        .table-responsive {
-            max-height: 600px;
-            overflow-y: auto;
-        }
-        .table thead th {
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            background-color: #212529;
-        }
-        
-        /* Make the hover effect more visible */
-        .table tbody tr:hover {
-            background-color: rgba(0, 0, 0, 0.075);
-        }
-        
-        /* Improve badge appearance */
-        .badge {
-            font-size: 0.8rem;
-            font-weight: normal;
-            border: 1px solid #dee2e6;
-        }
-        
-        /* Summary cards */
-        .summary-card {
-            border-radius: 10px;
-            color: white;
-            height: 100%;
-            min-height: 120px;
-        }
-        
-        .summary-card .card-body {
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .summary-card h6 {
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            text-align: center;
-        }
-        
-        .summary-card h3, .summary-card h4 {
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-            text-align: center;
-            word-break: break-all;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .summary-card small {
-            font-size: 0.75rem;
-            text-align: center;
-            line-height: 1.2;
-        }
-        
-        .bg-primary {
-            background-color: var(--primary-color) !important;
-        }
-        
-        .bg-success {
-            background-color: var(--success-color) !important;
-        }
-        
-        .bg-info {
-            background-color: var(--info-color) !important;
-        }
-        
-        .bg-dark {
-            background-color: var(--dark-color) !important;
-        }
-        
-        .bg-warning {
-            background-color: #f59e0b !important;
-        }
-        
-        /* Platform badges */
-        .platform-box {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 6px;
-            font-weight: 500;
-        }
-        
-        .platform-tokopedia {
-            background-color: #42b549;
-            color: white;
-        }
-        
-        .platform-shopee {
-            background-color: #f53d2d;
-            color: white;
-        }
-        
-        .platform-tiktok {
-            background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095da;
-            color: white;
-        }
-        
-        .platform-lazada {
-            background-color: #f27e30;
-            color: white;
-        }
-        
-        .platform-offline {
-            background-color: #6c757d;
-            color: white;
-        }
-        
-        /* Chart container */
-        .chart-container {
-            position: relative;
-            margin: 20px 0;
-            height: 300px;
-        }
-        
-        /* Breadcrumb */
-        .breadcrumb {
-            background-color: transparent;
-            padding: 0;
-            margin-bottom: 20px;
-        }
-        
-        .breadcrumb-item a {
-            color: var(--primary-color);
-            text-decoration: none;
-        }
-        
-        .breadcrumb-item.active {
-            color: #6c757d;
-        }
-        
-        /* Form controls */
-        .form-control, .form-select {
-            border-radius: 6px;
-            border: 1px solid #ced4da;
-            padding: 10px 15px;
-        }
-        
-        .form-control:focus, .form-select:focus {
-            box-shadow: 0 0 0 0.25rem rgba(67, 97, 238, 0.25);
-            border-color: var(--primary-color);
-        }
-        
-        /* Custom display text */
-        .display-5 {
-            font-size: 2.5rem;
-            font-weight: 600;
-        }
-        
-        /* TomSelect custom styles */
-        .ts-wrapper {
-            border-radius: 6px;
-        }
-        
-        .ts-wrapper .ts-control {
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 10px 15px;
-        }
-        
-        .ts-wrapper.focus .ts-control {
-            box-shadow: 0 0 0 0.25rem rgba(67, 97, 238, 0.25);
-            border-color: var(--primary-color);
-        }
-        
-        /* Small device adjustments */
-        @media (max-width: 768px) {
-            .container-fluid {
-                padding: 15px;
-            }
-            
-            .display-5 {
-                font-size: 2rem;
-            }
-            
-            .card-body {
-                padding: 15px;
-            }
-            
-            .btn-group {
-                flex-wrap: wrap;
-            }
-            
-            .btn-group .btn {
-                margin-bottom: 5px;
-            }
-        }
+        :root { --primary-color: #4361ee; --secondary-color: #3f37c9; --success-color: #0bb4aa; --info-color: #4cc9f0; --warning-color: #f72585; --dark-color: #212529; --light-color: #f8f9fa; }
+        body { font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; background-color: #f5f7fa; color: #333; line-height: 1.6; }
+        .container-fluid { padding: 20px; max-width: 1440px; margin: 0 auto; }
+        .card { border-radius: 10px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); transition: all 0.3s ease; margin-bottom: 20px; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1); }
+        .card-header { border-radius: 10px 10px 0 0 !important; font-weight: 600; padding: 15px 20px; }
+        .card-body { padding: 20px; }
+        .btn { border-radius: 6px; padding: 8px 16px; font-weight: 500; transition: all 0.3s; }
+        .btn-primary { background-color: var(--primary-color); border-color: var(--primary-color); }
+        .btn-primary:hover { background-color: var(--secondary-color); border-color: var(--secondary-color); }
+        .btn-outline-primary { color: var(--primary-color); border-color: var(--primary-color); }
+        .btn-outline-primary:hover { background-color: var(--primary-color); color: white; }
+        .table { border-radius: 8px; overflow: hidden; table-layout: auto; }
+        .table-dark th { background-color: var(--dark-color) !important; color: white !important; font-weight: 500; }
+        .table-responsive { max-height: 800px; overflow-y: auto; overflow-x: auto; }
+        .table thead th { position: sticky; top: 0; z-index: 1; background-color: #212529; }
+        .table tbody tr:hover { background-color: rgba(0, 0, 0, 0.075); }
+        .table th:nth-child(4), .table td:nth-child(4) { min-width: 300px !important; width: 300px !important; word-wrap: break-word; }
+        .table th:nth-child(8), .table td:nth-child(8) { min-width: 300px !important; width: 300px !important; word-wrap: break-word; }
+        .badge { font-size: 0.8rem; font-weight: normal; border: 1px solid #dee2e6; }
+        .summary-card { border-radius: 10px; color: white; height: 100%; min-height: 120px; }
+        .summary-card .card-body { padding: 1rem; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .summary-card h6 { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-align: center; }
+        .summary-card h3, .summary-card h4 { font-weight: 700; margin-bottom: 0.25rem; text-align: center; word-break: break-all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .summary-card small { font-size: 0.75rem; text-align: center; line-height: 1.2; }
+        .bg-primary { background-color: var(--primary-color) !important; }
+        .bg-success { background-color: var(--success-color) !important; }
+        .bg-info { background-color: var(--info-color) !important; }
+        .bg-dark { background-color: var(--dark-color) !important; }
+        .bg-warning { background-color: #f59e0b !important; }
+        .platform-box { display: inline-block; padding: 5px 10px; border-radius: 6px; font-weight: 500; }
+        .platform-tokopedia { background-color: #42b549; color: white; }
+        .platform-shopee { background-color: #f53d2d; color: white; }
+        .platform-tiktok { background-color: #000000; color: white; }
+        .platform-blibli { background-color: #0095da; color: white; }
+        .platform-lazada { background-color: #f27e30; color: white; }
+        .platform-offline { background-color: #6c757d; color: white; }
+        .chart-container { position: relative; margin: 20px 0; height: 300px; }
+        .breadcrumb { background-color: transparent; padding: 0; margin-bottom: 20px; }
+        .breadcrumb-item a { color: var(--primary-color); text-decoration: none; }
+        .breadcrumb-item.active { color: #6c757d; }
+        .form-control, .form-select { border-radius: 6px; border: 1px solid #ced4da; padding: 10px 15px; }
+        .form-control:focus, .form-select:focus { box-shadow: 0 0 0 0.25rem rgba(67, 97, 238, 0.25); border-color: var(--primary-color); }
+        .display-5 { font-size: 2.5rem; font-weight: 600; }
+        .ts-wrapper { border-radius: 6px; }
+        .ts-wrapper .ts-control { border: 1px solid #ced4da; border-radius: 6px; padding: 10px 15px; }
+        .ts-wrapper.focus .ts-control { box-shadow: 0 0 0 0.25rem rgba(67, 97, 238, 0.25); border-color: var(--primary-color); }
+        @media (max-width: 768px) { .container-fluid { padding: 15px; } .display-5 { font-size: 2rem; } .card-body { padding: 15px; } .btn-group { flex-wrap: wrap; } .btn-group .btn { margin-bottom: 5px; } }
     </style>
 </head>
 <body>
@@ -522,7 +283,7 @@
                         
                         <div class="row mt-3">
                             <div class="col-md-3">
-                                <button type="submit" class="btn btn-primary w-100">
+                                <button type="submit" class="btn btn-primary w-100" id="filter-submit-btn">
                                     <i class="bi bi-search"></i> Filter
                                 </button>
                             </div>
@@ -535,6 +296,16 @@
                                 <a href="{{ route('analytics.sales-by-master-product.export', request()->all()) }}" class="btn btn-success w-100">
                                     <i class="bi bi-file-earmark-excel"></i> Export Excel
                                 </a>
+                            </div>
+                        </div>
+                        
+                        <!-- Loading indicator -->
+                        <div class="row mt-3" id="loading-indicator" style="display: none;">
+                            <div class="col-12 text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Memproses data, mohon tunggu...</p>
                             </div>
                         </div>
                     </div>
@@ -618,9 +389,7 @@
                         <div class="card bg-warning summary-card h-100">
                             <div class="card-body text-center">
                                 <h6 class="card-title mb-2">Saldo Masuk - PPN</h6>
-                                @php
-                                    $totalRevenueWithoutPPN = $summary['total_revenue'] / 1.11;
-                                @endphp
+                                @php $totalRevenueWithoutPPN = $summary['total_revenue'] / 1.11; @endphp
                                 <h4 class="mb-1" style="font-size: 1.1rem; line-height: 1.2;">Rp {{ number_format($totalRevenueWithoutPPN, 0, ',', '.') }}</h4>
                                 <small class="opacity-75">Setelah PPN 11%</small>
                             </div>
@@ -639,12 +408,7 @@
                         <div class="card bg-dark summary-card h-100">
                             <div class="card-body text-center">
                                 <h6 class="card-title mb-2">Gross Profit</h6>
-                                @php
-                                    // Perhitungan Gross Profit yang sederhana:
-                                    // Total Saldo Masuk - PPN (11%) - Total Modal
-                                    $grossProfitSimple = $totalRevenueWithoutPPN - $summary['total_capital'];
-                                    $profitMarginSimple = $totalRevenueWithoutPPN > 0 ? ($grossProfitSimple / $totalRevenueWithoutPPN) * 100 : 0;
-                                @endphp
+                                @php $grossProfitSimple = $totalRevenueWithoutPPN - $summary['total_capital']; $profitMarginSimple = $totalRevenueWithoutPPN > 0 ? ($grossProfitSimple / $totalRevenueWithoutPPN) * 100 : 0; @endphp
                                 <h4 class="mb-1" style="font-size: 1.1rem; line-height: 1.2;">Rp {{ number_format($grossProfitSimple, 0, ',', '.') }}</h4>
                                 <small class="opacity-75">Margin: {{ number_format($profitMarginSimple, 2) }}%</small>
                             </div>
@@ -685,11 +449,11 @@
                                     <th style="width: 8%;">Tanggal (Pembayaran Masuk)</th>
                                     <th style="width: 7%;">No Pesanan</th>
                                     <th style="width: 7%;">No Invoice</th>
-                                    <th style="width: 12%;">Nama Produk (Platform)</th>
+                                    <th style="min-width: 300px; width: 300px;">Nama Produk (Platform)</th>
                                     <th style="width: 7%;">Variasi (Platform)</th>
                                     <th class="text-end" style="width: 5%;">Jumlah QTY (PCS) (Platform)</th>
                                     <th style="width: 8%;">SKU</th>
-                                    <th style="width: 10%;">Master Barang</th>
+                                    <th style="min-width: 300px; width: 300px;">Master Barang</th>
                                     <th class="text-end" style="width: 5%;">QTY</th>
                                     <th class="text-end" style="width: 8%;">Jumlah masuk pembayaran (Rp)</th>
                                     <th class="text-end" style="width: 8%;">Jumlah masuk pembayaran - PPN (Rp)</th>
@@ -709,72 +473,36 @@
                             <tbody>
                                 @foreach($productRows as $row)
                                     @php
+                                        // Only determine row class, no calculations
                                         $rowClass = '';
-                                        if(($row['gross_profit_per_unit'] ?? 0) < 0) {
-                                            $rowClass = 'table-danger';
-                                        }
-                                        if(($row['price'] ?? 0) == 0) {
-                                            $rowClass = 'table-warning';
-                                        }
-                                        $qty = $row['quantity'] ?? 0; // QTY (master barang)
-                                        $price = $row['price'] ?? 0;
-                                        $capital = $row['capital'] ?? 0; // total modal untuk baris ini
-                                        $grossProfitPerUnit = $row['gross_profit_per_unit'] ?? 0;
-                                        $grossProfitTotal = $row['gross_profit_total'] ?? 0;
-                                        $proportionPercent = $row['proportion_percent'] ?? 0;
-                                        $revenue = $row['revenue'] ?? 0; // total saldo masuk (revenue) untuk baris
-                                        $unitCost = $qty > 0 ? $capital / $qty : 0; // harga modal per unit
+                                        if(($row['profit_per_pcs'] ?? 0) < 0) { $rowClass = 'table-danger'; }
+                                        if(($row['price'] ?? 0) == 0) { $rowClass = 'table-warning'; }
                                     @endphp
                                     <tr class="{{ $rowClass }}">
-                                        @php
-                                            // Perhitungan yang benar menggunakan data dari backend
-                                            // $revenue sudah merupakan alokasi pembayaran untuk produk ini (alloc_total dari backend)
-                                            $paymentPerProduct = $revenue; // total pembayaran per produk (alloc_total)
-                                            $paymentPerProductPerPcs = $qty > 0 ? $revenue / $qty : 0; // per pcs (alloc_per_piece)
-                                            $paymentPerProductWithoutPPN = $paymentPerProductPerPcs / 1.11; // per pcs tanpa PPN (alloc_per_piece_net)
-                                            $profitPerPCS = $paymentPerProductWithoutPPN - $unitCost; // profit per pcs
-                                            
-                                            // RUMUS YANG DIPERBAIKI:
-                                            // 1. Gross Profit Total = profit per pcs * QTY
-                                            $grossProfitTotalCorrected = $profitPerPCS * $qty;
-                                            
-                                            // 2. Margin per PCS = (profit per pcs / masuk pembayaran produk-PPN) x 100%
-                                            $marginPerPCS = $paymentPerProductWithoutPPN > 0 ? ($profitPerPCS / $paymentPerProductWithoutPPN) * 100 : 0;
-                                            
-                                            // 3. Margin per Item = (gross profit total / (masuk pembayaran produk-PPN X QTY master produk)) x 100%
-                                            $marginPerItem = ($paymentPerProductWithoutPPN * $qty) > 0 ? ($grossProfitTotalCorrected / ($paymentPerProductWithoutPPN * $qty)) * 100 : 0;
-                                        @endphp
                                         <td>{{ \Carbon\Carbon::parse($row['order_date'] ?? null)->format('d/m/Y') }}</td>
                                         <td>{{ $row['order_number'] ?? '-' }}</td>
                                         <td>{{ $row['invoice_number'] ?? '-' }}</td>
-                                        <td>{{ $row['platform_product_name'] ?? '-' }}</td>
+                                        <td style="min-width: 300px; width: 300px;">{{ $row['platform_product_name'] ?? '-' }}</td>
                                         <td>{{ $row['platform_product_variant'] ?? '-' }}</td>
                                         <td class="text-end">{{ number_format($row['platform_quantity'] ?? 0, 0) }}</td>
                                         <td>{{ $row['sku'] ?? '-' }}</td>
-                                        <td>
+                                        <td style="min-width: 300px; width: 300px;">
                                             <strong>{{ $row['product_name'] ?? '-' }}</strong>
-                                            @if(isset($row['package_info']) && isset($row['package_info']['is_package_item']) && $row['package_info']['is_package_item'])
-                                                <div class="small text-muted">
-                                                    <span class="badge bg-info ms-1" title="Item ini merupakan bagian dari paket">
-                                                        <i class="bi bi-box-seam"></i> Dari Paket: {{ $row['package_info']['package_name'] ?? '-' }}
-                                                    </span>
-                                                </div>
-                                            @endif
                                         </td>
-                                        <td class="text-end">{{ number_format($qty, 0) }}</td>
+                                        <td class="text-end">{{ number_format($row['quantity'] ?? 0, 0) }}</td>
                                         <td class="text-end">{{ number_format($row['order_total_payment'] ?? 0, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format(($row['order_total_payment'] ?? 0) / 1.11, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format($row['price'] ?? 0, 0, ',', '.') }}</td>
-                                        <td class="text-end">{{ number_format(($row['price'] ?? 0) * $qty, 0, ',', '.') }}</td>
+                                        <td class="text-end">{{ number_format($row['pricelist_total'] ?? 0, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format($row['total_order_value_from_products'] ?? 0, 0, ',', '.') }}</td>
                                         <td class="text-end">{{ number_format($row['proportion_percent'] ?? 0, 2) }}%</td>
-                                        <td class="text-end">{{ number_format($paymentPerProductPerPcs, 0, ',', '.') }}</td>
-                                        <td class="text-end">{{ number_format($paymentPerProductWithoutPPN, 0, ',', '.') }}</td>
-                                        <td class="text-end">{{ number_format($unitCost, 0, ',', '.') }}</td>
-                                        <td class="text-end fw-bold {{ $profitPerPCS < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($profitPerPCS, 0, ',', '.') }}</td>
-                                        <td class="text-end fw-bold {{ $grossProfitTotalCorrected < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($grossProfitTotalCorrected, 0, ',', '.') }}</td>
-                                        <td class="text-end fw-bold {{ $marginPerPCS < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($marginPerPCS, 2) }}%</td>
-                                        <td class="text-end fw-bold {{ $marginPerItem < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($marginPerItem, 2) }}%</td>
+                                        <td class="text-end">{{ number_format($row['payment_per_product_per_pcs'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end">{{ number_format($row['payment_per_product_without_ppn'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end">{{ number_format($row['unit_cost'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end fw-bold {{ ($row['profit_per_pcs'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($row['profit_per_pcs'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end fw-bold {{ ($row['gross_profit_total'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($row['gross_profit_total'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end fw-bold {{ ($row['margin_per_pcs'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($row['margin_per_pcs'] ?? 0, 2) }}%</td>
+                                        <td class="text-end fw-bold {{ ($row['margin_per_item'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($row['margin_per_item'] ?? 0, 2) }}%</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -786,7 +514,6 @@
                                     <td class="text-end"><strong>{{ number_format($summary['total_quantity']) }}</strong></td>
                                     <td class="text-end"><strong>{{ number_format($summary['total_revenue'], 0, ',', '.') }}</strong></td>
                                     <td class="text-end"><strong>{{ number_format($summary['total_revenue'] / 1.11, 0, ',', '.') }}</strong></td>
-                                    <td class="text-end">-</td>
                                     <td class="text-end">-</td>
                                     <td class="text-end">-</td>
                                     <td class="text-end">-</td>
@@ -804,11 +531,11 @@
                     
                     <!-- Pagination -->
                     <div class="d-flex justify-content-between align-items-center mt-4">
-                    <div class="text-muted small">
-                        Menampilkan {{ $productRows->firstItem() ?? 0 }} - {{ $productRows->lastItem() ?? 0 }} dari {{ number_format($summary['total_rows']) }} data ({{ number_format($summary['total_products']) }} barang keluar)
-                    </div>
+                        <div class="text-muted small">
+                            Menampilkan {{ $productRows->firstItem() ?? 0 }} - {{ $productRows->lastItem() ?? 0 }} dari {{ number_format($summary['total_rows']) }} data ({{ number_format($summary['total_products']) }} barang keluar)
+                        </div>
                         <div>
-                            {{ $productRows->links('pagination::bootstrap-5') }}
+                            {{ $productRows->appends(request()->query())->links('pagination::bootstrap-5') }}
                         </div>
                     </div>
                 @else
@@ -842,35 +569,17 @@
                         <div class="col-md-6">
                             <h6 class="text-primary">Informasi Produk</h6>
                             <table class="table table-sm">
-                                <tr>
-                                    <td width="30%"><strong>SKU:</strong></td>
-                                    <td id="modal-sku"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Nama Produk:</strong></td>
-                                    <td id="modal-product-name"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Nama di Platform:</strong></td>
-                                    <td id="modal-platform-name"></td>
-                                </tr>
+                                <tr><td width="30%"><strong>SKU:</strong></td><td id="modal-sku"></td></tr>
+                                <tr><td><strong>Nama Produk:</strong></td><td id="modal-product-name"></td></tr>
+                                <tr><td><strong>Nama di Platform:</strong></td><td id="modal-platform-name"></td></tr>
                             </table>
                         </div>
                         <div class="col-md-6">
                             <h6 class="text-primary">Informasi Order</h6>
                             <table class="table table-sm">
-                                <tr>
-                                    <td width="30%"><strong>No. Order:</strong></td>
-                                    <td id="modal-order-number"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Platform:</strong></td>
-                                    <td id="modal-platform"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Tanggal:</strong></td>
-                                    <td id="modal-order-date"></td>
-                                </tr>
+                                <tr><td width="30%"><strong>No. Order:</strong></td><td id="modal-order-number"></td></tr>
+                                <tr><td><strong>Platform:</strong></td><td id="modal-platform"></td></tr>
+                                <tr><td><strong>Tanggal:</strong></td><td id="modal-order-date"></td></tr>
                             </table>
                         </div>
                     </div>
@@ -887,66 +596,18 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td><strong>QTY (Platform)</strong></td>
-                                    <td class="text-end" id="modal-platform-qty"></td>
-                                    <td class="small text-muted">Jumlah yang diorder di platform</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>QTY (Master Barang)</strong></td>
-                                    <td class="text-end" id="modal-qty"></td>
-                                    <td class="small text-muted">Platform order qty × mapping qty</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Jumlah Masuk Pembayaran</strong></td>
-                                    <td class="text-end" id="modal-payment-amount"></td>
-                                    <td class="small text-muted">Total saldo masuk dari order</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Jumlah Masuk Pembayaran - PPN</strong></td>
-                                    <td class="text-end" id="modal-payment-amount-no-ppn"></td>
-                                    <td class="small text-muted">Jumlah masuk pembayaran ÷ 1.11</td>
-                                </tr>
-                                <tr class="table-info">
-                                    <td><strong>% Distribusi Revenue</strong></td>
-                                    <td class="text-end" id="modal-proportion"></td>
-                                    <td class="small text-muted">Proporsi nilai produk dalam total order</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Masuk Pembayaran per Produk</strong></td>
-                                    <td class="text-end" id="modal-payment-per-product"></td>
-                                    <td class="small text-muted">(Jumlah masuk pembayaran × % distribusi) ÷ QTY master barang</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Masuk Pembayaran per Produk - PPN</strong></td>
-                                    <td class="text-end" id="modal-payment-per-product-no-ppn"></td>
-                                    <td class="small text-muted">Masuk pembayaran per produk ÷ 1.11</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Harga Modal (COGS)</strong></td>
-                                    <td class="text-end" id="modal-capital-per-unit"></td>
-                                    <td class="small text-muted">Total capital ÷ quantity</td>
-                                </tr>
-                                <tr class="table-success">
-                                    <td><strong>Profit per PCS</strong></td>
-                                    <td class="text-end" id="modal-profit-per-pcs"></td>
-                                    <td class="small text-muted">Masuk pembayaran produk-PPN - harga modal</td>
-                                </tr>
-                                <tr class="table-warning">
-                                    <td><strong>Gross Profit Total</strong></td>
-                                    <td class="text-end" id="modal-profit-total"></td>
-                                    <td class="small text-muted">Profit per PCS × QTY master produk</td>
-                                </tr>
-                                <tr class="table-info">
-                                    <td><strong>Margin per PCS (%)</strong></td>
-                                    <td class="text-end" id="modal-margin-per-pcs"></td>
-                                    <td class="small text-muted">(Profit per PCS ÷ Masuk pembayaran produk-PPN) × 100%</td>
-                                </tr>
-                                <tr class="table-info">
-                                    <td><strong>Margin per Item (%)</strong></td>
-                                    <td class="text-end" id="modal-margin-per-item"></td>
-                                    <td class="small text-muted">(Gross Profit Total ÷ (Masuk pembayaran produk-PPN × QTY master produk)) × 100%</td>
-                                </tr>
+                                <tr><td><strong>QTY (Platform)</strong></td><td class="text-end" id="modal-platform-qty"></td><td class="small text-muted">Jumlah yang diorder di platform</td></tr>
+                                <tr><td><strong>QTY (Master Barang)</strong></td><td class="text-end" id="modal-qty"></td><td class="small text-muted">Platform order qty × mapping qty</td></tr>
+                                <tr><td><strong>Jumlah Masuk Pembayaran</strong></td><td class="text-end" id="modal-payment-amount"></td><td class="small text-muted">Total saldo masuk dari order</td></tr>
+                                <tr><td><strong>Jumlah Masuk Pembayaran - PPN</strong></td><td class="text-end" id="modal-payment-amount-no-ppn"></td><td class="small text-muted">Jumlah masuk pembayaran ÷ 1.11</td></tr>
+                                <tr class="table-info"><td><strong>% Distribusi Revenue</strong></td><td class="text-end" id="modal-proportion"></td><td class="small text-muted">Proporsi nilai produk dalam total order</td></tr>
+                                <tr><td><strong>Masuk Pembayaran per Produk</strong></td><td class="text-end" id="modal-payment-per-product"></td><td class="small text-muted">(Jumlah masuk pembayaran × % distribusi) ÷ QTY master barang</td></tr>
+                                <tr><td><strong>Masuk Pembayaran per Produk - PPN</strong></td><td class="text-end" id="modal-payment-per-product-no-ppn"></td><td class="small text-muted">Masuk pembayaran per produk ÷ 1.11</td></tr>
+                                <tr><td><strong>Harga Modal (COGS)</strong></td><td class="text-end" id="modal-capital-per-unit"></td><td class="small text-muted">Total capital ÷ quantity</td></tr>
+                                <tr class="table-success"><td><strong>Profit per PCS</strong></td><td class="text-end" id="modal-profit-per-pcs"></td><td class="small text-muted">Masuk pembayaran produk-PPN - harga modal</td></tr>
+                                <tr class="table-warning"><td><strong>Gross Profit Total</strong></td><td class="text-end" id="modal-profit-total"></td><td class="small text-muted">Profit per PCS × QTY master produk</td></tr>
+                                <tr class="table-info"><td><strong>Margin per PCS (%)</strong></td><td class="text-end" id="modal-margin-per-pcs"></td><td class="small text-muted">(Profit per PCS ÷ Masuk pembayaran produk-PPN) × 100%</td></tr>
+                                <tr class="table-info"><td><strong>Margin per Item (%)</strong></td><td class="text-end" id="modal-margin-per-item"></td><td class="small text-muted">(Gross Profit Total ÷ (Masuk pembayaran produk-PPN × QTY master produk)) × 100%</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -989,96 +650,46 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize TomSelect for multiple select filters
-            const multiSelects = [
-                'brands', 
-                'sub_brands',
-                'product_categories',
-                'product_types',
-                'product_sizes',
-                'product_variants'
-            ];
-            
-            multiSelects.forEach(function(selectId) {
-                if (document.getElementById(selectId)) {
-                    new TomSelect('#' + selectId, {
-                        plugins: ['remove_button'],
-                        maxItems: null,
-                        placeholder: 'Pilih ' + selectId.replace(/_/g, ' '),
-                        allowEmptyOption: true
-                    });
-                }
-            });
-
-            // Disable sub brand until brand selected; fetch cascading options
+            const filterForm = document.getElementById('filter-form');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const submitBtn = document.getElementById('filter-submit-btn');
+            if (filterForm) {
+                filterForm.addEventListener('submit', function(e) {
+                    loadingIndicator.style.display = 'block';
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Memproses...';
+                    loadingIndicator.scrollIntoView({ behavior: 'smooth' });
+                });
+            }
+            const startDateInput = document.getElementById('start_date');
+            const endDateInput = document.getElementById('end_date');
+            if (startDateInput && !startDateInput.value) { startDateInput.value = new Date().toISOString().split('T')[0]; }
+            if (endDateInput && !endDateInput.value) { endDateInput.value = new Date().toISOString().split('T')[0]; }
+            const multiSelects = ['brands','sub_brands','product_categories','product_types','product_sizes','product_variants'];
+            multiSelects.forEach(function(selectId) { if (document.getElementById(selectId)) { new TomSelect('#' + selectId, { plugins: ['remove_button'], maxItems: null, placeholder: 'Pilih ' + selectId.replace(/_/g, ' '), allowEmptyOption: true }); } });
             const brandSelect = document.getElementById('brands');
             const subBrandSelect = document.getElementById('sub_brands');
-            let subBrandTS = null;
-            if (subBrandSelect && window.TomSelect) {
-                subBrandTS = subBrandSelect.tomselect;
-            }
-
-            // Helper to hard reset a TomSelect field (clear items, options, and disable)
-            function resetField(selectEl, ts) {
-                if (!selectEl) return;
-                selectEl.setAttribute('disabled', 'disabled');
-                if (ts) {
-                    ts.clear(true); // clear selected items silently
-                    ts.clearOptions();
-                    if (!ts.isDisabled) ts.disable();
-                    ts.refreshOptions(false);
-                } else {
-                    selectEl.innerHTML = '';
-                }
-            }
+            let subBrandTS = null; if (subBrandSelect && window.TomSelect) { subBrandTS = subBrandSelect.tomselect; }
+            function resetField(selectEl, ts) { if (!selectEl) return; selectEl.setAttribute('disabled', 'disabled'); if (ts) { ts.clear(true); ts.clearOptions(); if (!ts.isDisabled) ts.disable(); ts.refreshOptions(false); } else { selectEl.innerHTML = ''; } }
             function updateSubBrands() {
-                const selectedBrands = brandSelect?.tomselect
-                    ? (brandSelect.tomselect.items || [])
-                    : Array.from(brandSelect?.selectedOptions || []).map(o => o.value);
-                console.log('[MasterProduct] Brand selected IDs:', selectedBrands);
-
-                // Reset all downstream fields whenever brand changes
+                const selectedBrands = brandSelect?.tomselect ? (brandSelect.tomselect.items || []) : Array.from(brandSelect?.selectedOptions || []).map(o => o.value);
                 resetField(subBrandSelect, subBrandTS);
                 resetField(categorySelect, categorySelect?.tomselect);
                 resetField(typeSelect, typeTS);
                 resetField(sizeSelect, sizeTS);
                 resetField(variantSelect, variantTS);
-
-                if (!selectedBrands.length) {
-                    // No brand selected → keep everything disabled
-                    return;
-                }
-                subBrandSelect.removeAttribute('disabled');
-                if (subBrandTS && subBrandTS.isDisabled) subBrandTS.enable();
+                if (!selectedBrands.length) { return; }
+                subBrandSelect.removeAttribute('disabled'); if (subBrandTS && subBrandTS.isDisabled) subBrandTS.enable();
                 fetch(`{{ route('analytics.get-subbrands') }}?` + new URLSearchParams({ brand_ids: selectedBrands }))
                     .then(r => r.json())
                     .then(items => {
-                        console.log('[MasterProduct] Loaded subbrands:', items);
                         if (subBrandTS) { subBrandTS.clear(true); subBrandTS.clearOptions(); }
                         subBrandSelect.innerHTML = '';
-                        items.forEach(it => {
-                            const opt = document.createElement('option');
-                            opt.value = it.id;
-                            opt.textContent = it.name;
-                            subBrandSelect.appendChild(opt);
-                        });
-                        if (subBrandTS) {
-                            subBrandTS.addOptions(items.map(it => ({ value: it.id, text: it.name })));
-                            subBrandTS.refreshOptions(false);
-                        }
-                        console.log('[MasterProduct] SubBrand select enabled with', items.length, 'options');
+                        items.forEach(it => { const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; subBrandSelect.appendChild(opt); });
+                        if (subBrandTS) { subBrandTS.addOptions(items.map(it => ({ value: it.id, text: it.name }))); subBrandTS.refreshOptions(false); }
                     });
             }
-            if (brandSelect) {
-                brandSelect.addEventListener('change', updateSubBrands);
-                const hasBrand = brandSelect?.tomselect ? (brandSelect.tomselect.items || []).length > 0 : Array.from(brandSelect.selectedOptions).length > 0;
-                if (!hasBrand) {
-                    subBrandSelect?.setAttribute('disabled', 'disabled');
-                } else {
-                    updateSubBrands();
-                }
-            }
-            // Cascading: Category -> Type -> Size -> Variant
+            if (brandSelect) { brandSelect.addEventListener('change', updateSubBrands); const hasBrand = brandSelect?.tomselect ? (brandSelect.tomselect.items || []).length > 0 : Array.from(brandSelect.selectedOptions).length > 0; if (!hasBrand) { subBrandSelect?.setAttribute('disabled', 'disabled'); } else { updateSubBrands(); } }
             const categorySelect = document.getElementById('product_categories');
             const typeSelect = document.getElementById('product_types');
             const sizeSelect = document.getElementById('product_sizes');
@@ -1086,216 +697,31 @@
             const typeTS = typeSelect?.tomselect || null;
             const sizeTS = sizeSelect?.tomselect || null;
             const variantTS = variantSelect?.tomselect || null;
-
-            // SubBrand -> Category
             const subBrandTS2 = subBrandSelect?.tomselect || null;
-            function updateCategories() {
-                const ids = Array.from(subBrandSelect?.selectedOptions || []).map(o => o.value);
-                if (!ids.length) {
-                    categorySelect.setAttribute('disabled', 'disabled');
-                    if (categorySelect.tomselect) { categorySelect.tomselect.clearOptions(); categorySelect.tomselect.disable(); categorySelect.tomselect.refreshOptions(false); }
-                    return;
-                }
-                categorySelect.removeAttribute('disabled');
-                if (categorySelect.tomselect && categorySelect.tomselect.isDisabled) { categorySelect.tomselect.enable(); }
-                fetch(`{{ route('analytics.get-product-categories') }}?` + new URLSearchParams({ sub_brand_ids: ids }))
-                    .then(r => r.json())
-                    .then(items => {
-                        if (categorySelect.tomselect) { categorySelect.tomselect.clear(true); categorySelect.tomselect.clearOptions(); }
-                        categorySelect.innerHTML = '';
-                        items.forEach(it => {
-                            const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; categorySelect.appendChild(opt);
-                        });
-                        if (categorySelect.tomselect) {
-                            categorySelect.tomselect.addOptions(items.map(it => ({ value: it.id, text: it.name })));
-                            categorySelect.tomselect.refreshOptions(false);
-                        }
-                        updateTypes();
-                    });
-            }
-            subBrandSelect?.addEventListener('change', updateCategories);
-            if (subBrandSelect?.tomselect) { subBrandSelect.tomselect.on('change', updateCategories); }
-
-            function updateTypes() {
-                const ids = categorySelect?.tomselect
-                    ? (categorySelect.tomselect.items || [])
-                    : Array.from(categorySelect?.selectedOptions || []).map(o => o.value);
-                if (!ids.length) {
-                    typeSelect.setAttribute('disabled', 'disabled');
-                    if (typeTS) { typeTS.clearOptions(); typeTS.disable(); typeTS.refreshOptions(false); }
-                    // reset downstream
-                    sizeSelect.setAttribute('disabled', 'disabled');
-                    if (sizeTS) { sizeTS.clearOptions(); sizeTS.disable(); sizeTS.refreshOptions(false); }
-                    variantSelect.setAttribute('disabled', 'disabled');
-                    if (variantTS) { variantTS.clearOptions(); variantTS.disable(); variantTS.refreshOptions(false); }
-                    return;
-                }
-                typeSelect.removeAttribute('disabled');
-                if (typeTS && typeTS.isDisabled) typeTS.enable();
-                fetch(`{{ route('analytics.get-product-types') }}?` + new URLSearchParams({ category_ids: ids }))
-                    .then(r => r.json())
-                    .then(items => {
-                        if (typeTS) { typeTS.clearOptions(); }
-                        typeSelect.innerHTML = '';
-                        items.forEach(it => {
-                            const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; typeSelect.appendChild(opt);
-                        });
-                        if (typeTS) { typeTS.addOptions(items.map(it => ({ value: it.id, text: it.name }))); typeTS.refreshOptions(false); }
-                        updateSizes();
-                    });
-            }
-
-            function updateSizes() {
-                const ids = typeSelect?.tomselect
-                    ? (typeSelect.tomselect.items || [])
-                    : Array.from(typeSelect?.selectedOptions || []).map(o => o.value);
-                if (!ids.length) {
-                    sizeSelect.setAttribute('disabled', 'disabled');
-                    if (sizeTS) { sizeTS.clearOptions(); sizeTS.disable(); sizeTS.refreshOptions(false); }
-                    // reset downstream
-                    variantSelect.setAttribute('disabled', 'disabled');
-                    if (variantTS) { variantTS.clearOptions(); variantTS.disable(); variantTS.refreshOptions(false); }
-                    return;
-                }
-                sizeSelect.removeAttribute('disabled');
-                if (sizeTS && sizeTS.isDisabled) sizeTS.enable();
-                fetch(`{{ route('analytics.get-product-sizes') }}?` + new URLSearchParams({ type_ids: ids }))
-                    .then(r => r.json())
-                    .then(items => {
-                        if (sizeTS) { sizeTS.clearOptions(); }
-                        sizeSelect.innerHTML = '';
-                        items.forEach(it => {
-                            const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; sizeSelect.appendChild(opt);
-                        });
-                        if (sizeTS) { sizeTS.addOptions(items.map(it => ({ value: it.id, text: it.name }))); sizeTS.refreshOptions(false); }
-                        updateVariants();
-                    });
-            }
-
-            function updateVariants() {
-                const ids = sizeSelect?.tomselect
-                    ? (sizeSelect.tomselect.items || [])
-                    : Array.from(sizeSelect?.selectedOptions || []).map(o => o.value);
-                if (!ids.length) {
-                    variantSelect.setAttribute('disabled', 'disabled');
-                    if (variantTS) { variantTS.clearOptions(); variantTS.disable(); variantTS.refreshOptions(false); }
-                    return;
-                }
-                variantSelect.removeAttribute('disabled');
-                if (variantTS && variantTS.isDisabled) variantTS.enable();
-                fetch(`{{ route('analytics.get-product-variants') }}?` + new URLSearchParams({ size_ids: ids }))
-                    .then(r => r.json())
-                    .then(items => {
-                        if (variantTS) { variantTS.clearOptions(); }
-                        variantSelect.innerHTML = '';
-                        items.forEach(it => {
-                            const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; variantSelect.appendChild(opt);
-                        });
-                        if (variantTS) { variantTS.addOptions(items.map(it => ({ value: it.id, text: it.name }))); variantTS.refreshOptions(false); }
-                    });
-            }
-
-            categorySelect?.addEventListener('change', updateTypes);
-            if (categorySelect?.tomselect) { categorySelect.tomselect.on('change', updateTypes); }
-            typeSelect?.addEventListener('change', updateSizes);
-            if (typeSelect?.tomselect) { typeSelect.tomselect.on('change', updateSizes); }
-            sizeSelect?.addEventListener('change', updateVariants);
-            if (sizeSelect?.tomselect) { sizeSelect.tomselect.on('change', updateVariants); }
-            
-            // Enable tooltips
+            function updateCategories() { const ids = Array.from(subBrandSelect?.selectedOptions || []).map(o => o.value); if (!ids.length) { categorySelect.setAttribute('disabled', 'disabled'); if (categorySelect.tomselect) { categorySelect.tomselect.clearOptions(); categorySelect.tomselect.disable(); categorySelect.tomselect.refreshOptions(false); } return; } categorySelect.removeAttribute('disabled'); if (categorySelect.tomselect && categorySelect.tomselect.isDisabled) { categorySelect.tomselect.enable(); } fetch(`{{ route('analytics.get-product-categories') }}?` + new URLSearchParams({ sub_brand_ids: ids })) .then(r => r.json()).then(items => { if (categorySelect.tomselect) { categorySelect.tomselect.clear(true); categorySelect.tomselect.clearOptions(); } categorySelect.innerHTML = ''; items.forEach(it => { const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; categorySelect.appendChild(opt); }); if (categorySelect.tomselect) { categorySelect.tomselect.addOptions(items.map(it => ({ value: it.id, text: it.name }))); categorySelect.tomselect.refreshOptions(false); } updateTypes(); }); }
+            subBrandSelect?.addEventListener('change', updateCategories); if (subBrandSelect?.tomselect) { subBrandSelect.tomselect.on('change', updateCategories); }
+            function updateTypes() { const ids = categorySelect?.tomselect ? (categorySelect.tomselect.items || []) : Array.from(categorySelect?.selectedOptions || []).map(o => o.value); if (!ids.length) { typeSelect.setAttribute('disabled', 'disabled'); if (typeTS) { typeTS.clearOptions(); typeTS.disable(); typeTS.refreshOptions(false); } sizeSelect.setAttribute('disabled', 'disabled'); if (sizeTS) { sizeTS.clearOptions(); sizeTS.disable(); sizeTS.refreshOptions(false); } variantSelect.setAttribute('disabled', 'disabled'); if (variantTS) { variantTS.clearOptions(); variantTS.disable(); variantTS.refreshOptions(false); } return; } typeSelect.removeAttribute('disabled'); if (typeTS && typeTS.isDisabled) typeTS.enable(); fetch(`{{ route('analytics.get-product-types') }}?` + new URLSearchParams({ category_ids: ids })) .then(r => r.json()).then(items => { if (typeTS) { typeTS.clearOptions(); } typeSelect.innerHTML = ''; items.forEach(it => { const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; typeSelect.appendChild(opt); }); if (typeTS) { typeTS.addOptions(items.map(it => ({ value: it.id, text: it.name }))); typeTS.refreshOptions(false); } updateSizes(); }); }
+            function updateSizes() { const ids = typeSelect?.tomselect ? (typeSelect.tomselect.items || []) : Array.from(typeSelect?.selectedOptions || []).map(o => o.value); if (!ids.length) { sizeSelect.setAttribute('disabled', 'disabled'); if (sizeTS) { sizeTS.clearOptions(); sizeTS.disable(); sizeTS.refreshOptions(false); } variantSelect.setAttribute('disabled', 'disabled'); if (variantTS) { variantTS.clearOptions(); variantTS.disable(); variantTS.refreshOptions(false); } return; } sizeSelect.removeAttribute('disabled'); if (sizeTS && sizeTS.isDisabled) sizeTS.enable(); fetch(`{{ route('analytics.get-product-sizes') }}?` + new URLSearchParams({ type_ids: ids })) .then(r => r.json()).then(items => { if (sizeTS) { sizeTS.clearOptions(); } sizeSelect.innerHTML = ''; items.forEach(it => { const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; sizeSelect.appendChild(opt); }); if (sizeTS) { sizeTS.addOptions(items.map(it => ({ value: it.id, text: it.name }))); sizeTS.refreshOptions(false); } updateVariants(); }); }
+            function updateVariants() { const ids = sizeSelect?.tomselect ? (sizeSelect.tomselect.items || []) : Array.from(sizeSelect?.selectedOptions || []).map(o => o.value); if (!ids.length) { variantSelect.setAttribute('disabled', 'disabled'); if (variantTS) { variantTS.clearOptions(); variantTS.disable(); variantTS.refreshOptions(false); } return; } variantSelect.removeAttribute('disabled'); if (variantTS && variantTS.isDisabled) variantTS.enable(); fetch(`{{ route('analytics.get-product-variants') }}?` + new URLSearchParams({ size_ids: ids })) .then(r => r.json()).then(items => { if (variantTS) { variantTS.clearOptions(); } variantSelect.innerHTML = ''; items.forEach(it => { const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name; variantSelect.appendChild(opt); }); if (variantTS) { variantTS.addOptions(items.map(it => ({ value: it.id, text: it.name }))); variantTS.refreshOptions(false); } }); }
+            categorySelect?.addEventListener('change', updateTypes); if (categorySelect?.tomselect) { categorySelect.tomselect.on('change', updateTypes); } typeSelect?.addEventListener('change', updateSizes); if (typeSelect?.tomselect) { typeSelect.tomselect.on('change', updateSizes); } sizeSelect?.addEventListener('change', updateVariants); if (sizeSelect?.tomselect) { sizeSelect.tomselect.on('change', updateVariants); }
             var tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'))
-            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl)
-            });
-            
-            // Set default date to today if not already set
-            const startDateInput = document.getElementById('start_date');
-            const endDateInput = document.getElementById('end_date');
-            
-            // Get today's date in YYYY-MM-DD format
-            const today = new Date();
-            const todayFormatted = getTodayYYYYMMDD();
-            
-            // Set default values if empty
-            if (!startDateInput.value) {
-                startDateInput.value = todayFormatted;
-            }
-            
-            if (!endDateInput.value) {
-                endDateInput.value = todayFormatted;
-            }
-            
-            // If URL doesn't have date parameters, submit the form with today's date
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl) });
+            const todayFormatted = (new Date()).toISOString().split('T')[0];
+            if (!startDateInput.value) { startDateInput.value = todayFormatted; }
+            if (!endDateInput.value) { endDateInput.value = todayFormatted; }
             const urlParams = new URLSearchParams(window.location.search);
-            if (!urlParams.has('start_date') && !urlParams.has('end_date') && !document.referrer.includes('sales-by-master-product')) {
-                document.getElementById('filter-form').submit();
-            }
+            if (!urlParams.has('start_date') && !urlParams.has('end_date') && !document.referrer.includes('sales-by-master-product')) { document.getElementById('filter-form').submit(); }
         });
-        
-        // Function to show calculation details in modal
         function showCalculationDetails(sku, productName, orderNumber, qty, price, capital, proportionPercent, revenue, grossProfitPerUnit, grossProfitTotal, platformProductName, platform, orderDate) {
-            // Product information
             document.getElementById('modal-sku').textContent = sku || '-';
             document.getElementById('modal-product-name').textContent = productName || '-';
             document.getElementById('modal-platform-name').textContent = platformProductName || '-';
-            
-            // Order information  
             document.getElementById('modal-order-number').textContent = orderNumber || '-';
-            document.getElementById('modal-platform').innerHTML = platform ? 
-                '<span class="platform-box platform-' + platform.toLowerCase().replace(' ', '-') + '">' + platform + '</span>' : '-';
-            
-            // Format order date
-            if (orderDate && orderDate !== '') {
-                const date = new Date(orderDate);
-                document.getElementById('modal-order-date').textContent = date.toLocaleDateString('id-ID', {
-                    day: '2-digit',
-                    month: 'short', 
-                    year: 'numeric'
-                });
-            } else {
-                document.getElementById('modal-order-date').textContent = '-';
-            }
-            
-            // Financial calculations dengan rumus yang benar
-            const capitalPerUnit = qty > 0 ? capital / qty : 0;
-            const totalPrice = price * qty;
-            const paymentAmount = revenue; // jumlah masuk pembayaran total
-            const paymentAmountWithoutPPN = paymentAmount / 1.11;
-            
-            // Gunakan nilai yang sudah dihitung dengan benar dari backend
-            // $revenue sudah merupakan alokasi pembayaran untuk produk ini (alloc_total dari backend)
-            const paymentPerProduct = revenue; // total pembayaran per produk (alloc_total)
-            const paymentPerProductPerPcs = qty > 0 ? revenue / qty : 0; // per pcs (alloc_per_piece)
-            const paymentPerProductWithoutPPN = paymentPerProductPerPcs / 1.11; // per pcs tanpa PPN (alloc_per_piece_net)
-            const profitPerPCS = paymentPerProductWithoutPPN - capitalPerUnit;
-            
-            // RUMUS YANG DIPERBAIKI:
-            // 1. Gross Profit Total = profit per pcs * QTY
-            const grossProfitTotalCorrected = profitPerPCS * qty;
-            
-            // 2. Margin per PCS = (profit per pcs / masuk pembayaran produk-PPN) x 100%
-            const marginPerPCS = paymentPerProductWithoutPPN > 0 ? (profitPerPCS / paymentPerProductWithoutPPN) * 100 : 0;
-            
-            // 3. Margin per Item = (gross profit total / (masuk pembayaran produk-PPN X QTY master produk)) x 100%
-            const marginPerItem = (paymentPerProductWithoutPPN * qty) > 0 ? (grossProfitTotalCorrected / (paymentPerProductWithoutPPN * qty)) * 100 : 0;
-            
-            // Format numbers with rupiah
-            const formatRupiah = (number) => {
-                return 'Rp ' + new Intl.NumberFormat('id-ID', {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0
-                }).format(number);
-            };
-            
-            // Format percentage
-            const formatPercent = (number) => {
-                return new Intl.NumberFormat('id-ID', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                }).format(number) + '%';
-            };
-            
-            // Update modal fields
+            document.getElementById('modal-platform').innerHTML = platform ? '<span class="platform-box platform-' + platform.toLowerCase().replace(' ', '-') + '">' + platform + '</span>' : '-';
+            if (orderDate && orderDate !== '') { const date = new Date(orderDate); document.getElementById('modal-order-date').textContent = date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }); } else { document.getElementById('modal-order-date').textContent = '-'; }
+            const capitalPerUnit = qty > 0 ? capital / qty : 0; const paymentAmount = revenue; const paymentAmountWithoutPPN = paymentAmount / 1.11; const paymentPerProduct = revenue; const paymentPerProductPerPcs = qty > 0 ? revenue / qty : 0; const paymentPerProductWithoutPPN = paymentPerProductPerPcs / 1.11; const profitPerPCS = paymentPerProductWithoutPPN - capitalPerUnit; const grossProfitTotalCorrected = profitPerPCS * qty; const marginPerPCS = paymentPerProductWithoutPPN > 0 ? (profitPerPCS / paymentPerProductWithoutPPN) * 100 : 0; const marginPerItem = (paymentPerProductWithoutPPN * qty) > 0 ? (grossProfitTotalCorrected / (paymentPerProductWithoutPPN * qty)) * 100 : 0;
+            const formatRupiah = (number) => { return 'Rp ' + new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(number); };
+            const formatPercent = (number) => { return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number) + '%'; };
             document.getElementById('modal-platform-qty').textContent = new Intl.NumberFormat('id-ID').format(qty);
             document.getElementById('modal-qty').textContent = new Intl.NumberFormat('id-ID').format(qty);
             document.getElementById('modal-payment-amount').textContent = formatRupiah(paymentAmount);
@@ -1308,13 +734,10 @@
             document.getElementById('modal-profit-total').textContent = formatRupiah(grossProfitTotalCorrected);
             document.getElementById('modal-margin-per-pcs').textContent = formatPercent(marginPerPCS);
             document.getElementById('modal-margin-per-item').textContent = formatPercent(marginPerItem);
-            
-            // Add color classes based on profit and margin values
             const profitPerPcsEl = document.getElementById('modal-profit-per-pcs');
             const profitTotalEl = document.getElementById('modal-profit-total');
             const marginPerPcsEl = document.getElementById('modal-margin-per-pcs');
             const marginPerItemEl = document.getElementById('modal-margin-per-item');
-
             profitPerPcsEl.className = 'text-end fw-bold ' + (profitPerPCS < 0 ? 'text-danger' : 'text-success');
             profitTotalEl.className = 'text-end fw-bold ' + (grossProfitTotalCorrected < 0 ? 'text-danger' : 'text-success');
             marginPerPcsEl.className = 'text-end fw-bold ' + (marginPerPCS < 0 ? 'text-danger' : 'text-success');
@@ -1322,4 +745,6 @@
         }
     </script>
 </body>
-</html> 
+</html>
+
+

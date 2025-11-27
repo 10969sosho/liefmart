@@ -480,7 +480,7 @@
                         <tr class="text-center">
                             <th width="50">No</th>
                             <th>Tanggal</th>
-                            <th>No. Surat Jalan</th>
+                            <th>No. Invoice</th>
                             <th>Customer</th>
                             <th class="text-end">Value (DPP)</th>
                             <th class="text-end">Nominal + PPN</th>
@@ -520,11 +520,26 @@
                             $qtyRetur = $sale->total_retur_qty ?? 0;
                             $hargaTotal = $sale->value_after_returns ?? 0;
                             $totalVolumeAfterRetur = $sale->total_volume_after_returns ?? $sale->total_volume;
+                            
+                            // Get invoice numbers for this sale
+                            $invoices = $sale->getInvoices();
+                            $invoiceNumbers = $invoices->pluck('invoice_number')->filter()->unique()->values();
                         @endphp
                         <tr class="table-row-hover">
                             <td class="text-center">{{ $index + 1 }}</td>
                             <td>{{ $sale->sale_date ? $sale->sale_date->format('d-m-Y') : 'N/A' }}</td>
-                            <td><span class="fw-medium">{{ $sale->surat_jalan_number }}</span></td>
+                            <td>
+                                @if($invoiceNumbers->isNotEmpty())
+                                    @foreach($invoiceNumbers as $invoiceNumber)
+                                        <span class="fw-medium">{{ $invoiceNumber }}</span>
+                                        @if(!$loop->last)
+                                            <br>
+                                        @endif
+                                    @endforeach
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
                             <td>
                                 <div class="customer-badge">
                                     {{ $sale->customerInfo ? $sale->customerInfo->name : 'Unknown' }}

@@ -239,7 +239,7 @@
 
         <div class="card">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Analisis Saldo Masuk per Hari</h5>
+                <h5 class="mb-0">Analisis Penjualan per Hari</h5>
                 <a href="{{ route('analytics.sales-by-day-of-week.export', request()->all()) }}" class="btn btn-light btn-sm">
                     <i class="bi bi-download me-1"></i> Export Excel
                 </a>
@@ -309,7 +309,7 @@
 
                             <!-- Submit and Reset Button -->
                             <div class="col-md-3">
-                                <button type="submit" class="btn btn-primary w-100">
+                                <button type="submit" class="btn btn-primary w-100" id="filter-submit-btn">
                                     <i class="bi bi-search"></i> Filter
                                 </button>
                             </div>
@@ -319,6 +319,16 @@
                                 </a>
                             </div>
 
+                        </div>
+                        
+                        <!-- Loading indicator -->
+                        <div class="row mt-3" id="loading-indicator" style="display: none;">
+                            <div class="col-12 text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Memproses data, mohon tunggu...</p>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -365,7 +375,7 @@
                 <div class="alert alert-info mb-4">
                     <h5 class="alert-heading"><i class="bi bi-info-circle-fill me-2"></i>Informasi Data</h5>
                     <p class="mb-0">
-                        Data yang ditampilkan <strong>hanya mencakup transaksi yang memiliki saldo masuk (pembayaran valid)</strong>. 
+                        Data yang ditampilkan <strong>hanya mencakup transaksi penjualan yang memiliki pembayaran valid</strong>. 
                         Pesanan yang belum memiliki catatan pembayaran tidak dimasukkan dalam analisis.
                     </p>
                     <hr>
@@ -384,7 +394,7 @@
                 @if($summary['total_orders'] == 0)
                 <div class="alert alert-info my-4">
                     <h5 class="alert-heading">Tidak ada data</h5>
-                    <p>Tidak ditemukan transaksi dengan saldo masuk {{ $startDate && $endDate ? ' untuk periode '.$startDate.' sampai '.$endDate : '' }}.</p>
+                    <p>Tidak ditemukan transaksi penjualan {{ $startDate && $endDate ? ' untuk periode '.$startDate.' sampai '.$endDate : '' }}.</p>
                     @if($startDate && $endDate)
                     <p>Kemungkinan penyebab:</p>
                     <ul>
@@ -422,7 +432,7 @@
                     <div class="col-md-4">
                         <div class="card bg-success summary-card">
                             <div class="card-body">
-                                <h5 class="card-title">Total Saldo Masuk</h5>
+                                <h5 class="card-title">Saldo Masuk</h5>
                                 <h2 class="display-5">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
                                 <p>Rata-rata: Rp {{ number_format($summary['avg_order_value'], 0, ',', '.') }} per order</p>
                             </div>
@@ -445,7 +455,7 @@
                         <div class="card">
                             <div class="card-header bg-dark text-white">
                                 <h5 class="mb-0">
-                                    Ringkasan Saldo Masuk per Hari
+                                    Ringkasan Penjualan per Hari
                                     @if($selectedPlatform || $startDate != now()->format('Y-m-d') || $endDate != now()->format('Y-m-d'))
                                     <span class="badge bg-warning text-dark ms-2">Data Terfilter</span>
                                     @endif
@@ -461,32 +471,38 @@
                 </div>
                 
                 <!-- Day of Week Detail Table -->
-                <h5 class="mb-3">Detail Saldo Masuk per Hari</h5>
+                <h5 class="mb-3">Detail Penjualan per Hari</h5>
                 <div class="table-responsive mb-4">
                     <table class="table table-striped table-bordered">
                         <thead class="table-dark">
                             <tr>
                                 <th>Hari</th>
                                 <th class="text-end">Jumlah Order</th>
-                                <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Nominal Penjualan (Rp)</th>
+                                <th class="text-end">Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
-                                <th class="text-end">Avg Saldo/Order (Rp)</th>
+                                <th class="text-end">Avg Penjualan/Order (Rp)</th>
                                 <th class="text-end">Avg Volume/Order</th>
-                                <th class="text-end">Saldo/Volume (Rp)</th>
+                                <th class="text-end">Penjualan/Volume (Rp)</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach([1, 2, 3, 4, 5, 6, 7] as $dayNum)
+                            @foreach([0, 1, 2, 3, 4, 5, 6] as $jsDayNum)
                                 @php
-                                    $day = $dayOfWeekSummary[($dayNum % 7)]; // Convert MySQL day to JS day
+                                    // JS day numbers: 0=Sunday, 1=Monday, ..., 6=Saturday
+                                    $day = $dayOfWeekSummary[$jsDayNum];
                                     $avgValue = $day['order_count'] > 0 ? $day['total_value'] / $day['order_count'] : 0;
                                     $avgVolume = $day['order_count'] > 0 ? $day['total_volume'] / $day['order_count'] : 0;
                                     $valueVolumeRatio = $day['total_volume'] > 0 ? $day['total_value'] / $day['total_volume'] : 0;
+                                    $grossProfit = ($day['total_gross_profit'] ?? ($day['total_value'] - ($day['total_hpp'] ?? 0)));
                                 @endphp
                                 <tr class="{{ $day['order_count'] > 0 ? '' : 'table-secondary' }}">
                                     <td class="fw-bold">{{ $day['day_name'] }}</td>
                                     <td class="text-end">{{ number_format($day['order_count']) }}</td>
+                                    <td class="text-end">{{ number_format($day['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($day['total_value'], 0, ',', '.') }}</td>
+                                    <td class="text-end">{{ number_format($grossProfit, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($day['total_volume']) }}</td>
                                     <td class="text-end">{{ number_format($avgValue, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($avgVolume, 1) }}</td>
@@ -498,7 +514,9 @@
                             <tr>
                                 <th>TOTAL</th>
                                 <th class="text-end">{{ number_format($summary['total_orders']) }}</th>
+                                <th class="text-end">{{ number_format($summary['total_nominal'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_value'], 0, ',', '.') }}</th>
+                                <th class="text-end">{{ number_format($summary['total_gross_profit'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_volume']) }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_value'], 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_volume'], 1) }}</th>
@@ -510,17 +528,19 @@
                 
                 <!-- Platform Summary -->
                 @if(count($platformSummary) > 1)
-                <h5 class="mb-3">Ringkasan Saldo Masuk per Platform</h5>
+                <h5 class="mb-3">Ringkasan Penjualan per Platform</h5>
                 <div class="table-responsive mb-4">
                     <table class="table table-striped table-bordered">
                         <thead class="table-dark">
                             <tr>
                                 <th>Platform</th>
                                 <th class="text-end">Jumlah Order</th>
-                                <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Nominal Penjualan (Rp)</th>
+                                <th class="text-end">Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">% dari Total</th>
-                                <th class="text-end">Saldo/Volume (Rp)</th>
+                                <th class="text-end">Penjualan/Volume (Rp)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -532,7 +552,9 @@
                                     </div>
                                 </td>
                                 <td class="text-end">{{ number_format($platformData['order_count']) }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_value'], 0, ',', '.') }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_gross_profit'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_volume']) }}</td>
                                 <td class="text-end">
                                     @if(isset($platformData['total_volume']) && $summary['total_volume'] > 0)
@@ -551,7 +573,7 @@
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="6" class="text-center">Tidak ada data platform</td>
+                                <td colspan="8" class="text-center">Tidak ada data platform</td>
                             </tr>
                             @endforelse
                         </tbody>
@@ -568,7 +590,7 @@
         <div class="card mt-4">
             <div class="card-header bg-dark text-white">
                 <h5 class="mb-0">
-                    Trend Linear Saldo Masuk per Hari dalam Seminggu
+                    Trend Linear Penjualan per Hari dalam Seminggu
                     @if($selectedPlatform || $startDate != now()->format('Y-m-d') || $endDate != now()->format('Y-m-d'))
                     <span class="badge bg-warning text-dark ms-2">Data Terfilter</span>
                     @endif
@@ -580,7 +602,7 @@
                 </div>
                 <div class="mt-3 text-center text-muted">
                     <small>
-                        Grafik menunjukkan trend saldo masuk berdasarkan hari dalam seminggu.
+                        Grafik menunjukkan trend penjualan berdasarkan hari dalam seminggu.
                         X-axis: Hari, Y-axis: Jumlah Order
                     </small>
                 </div>
@@ -595,6 +617,35 @@
     <!-- Chart Scripts -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Handle form submission with loading state
+            const filterForm = document.getElementById('filter-form');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const submitBtn = document.getElementById('filter-submit-btn');
+            
+            if (filterForm) {
+                filterForm.addEventListener('submit', function(e) {
+                    // Show loading indicator
+                    loadingIndicator.style.display = 'block';
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Memproses...';
+                    
+                    // Scroll to loading indicator
+                    loadingIndicator.scrollIntoView({ behavior: 'smooth' });
+                });
+            }
+            
+            // Set default date to today if not already set
+            const startDateInput = document.getElementById('start_date');
+            const endDateInput = document.getElementById('end_date');
+            
+            if (startDateInput && !startDateInput.value) {
+                startDateInput.value = new Date().toISOString().split('T')[0];
+            }
+            
+            if (endDateInput && !endDateInput.value) {
+                endDateInput.value = new Date().toISOString().split('T')[0];
+            }
+            
             var ctx = document.getElementById('dayOfWeekChart').getContext('2d');
             
             // Get data from the controller
@@ -618,7 +669,7 @@
                 data: {
                     labels: chartLabels,
                     datasets: [{
-                        label: 'Saldo Masuk (Rp)',
+                        label: 'Penjualan (Rp)',
                         data: chartData,
                         backgroundColor: [
                             'rgba(199, 199, 199, 0.7)',  // Sunday
@@ -649,7 +700,8 @@
                             beginAtZero: true,
                             ticks: {
                                 callback: function(value, index, values) {
-                                    return value;
+                                    // Format angka dengan titik sebagai pemisah ribuan
+                                    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
                                 }
                             }
                         }
@@ -674,7 +726,7 @@
                 data: {
                     labels: chartLabels,
                     datasets: [{
-                        label: 'Trend Saldo Masuk',
+                        label: 'Trend Penjualan',
                         data: chartData,
                         borderColor: 'rgba(255, 99, 132, 1)',
                         backgroundColor: 'rgba(255, 99, 132, 0.2)',
@@ -699,11 +751,12 @@
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Saldo Masuk (Rp)'
+                                text: 'Penjualan (Rp)'
                             },
                             ticks: {
                                 callback: function(value, index, values) {
-                                    return value;
+                                    // Format angka dengan titik sebagai pemisah ribuan
+                                    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
                                 }
                             }
                         }

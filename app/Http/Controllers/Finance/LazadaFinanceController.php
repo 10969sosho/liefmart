@@ -4,32 +4,29 @@ namespace App\Http\Controllers\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\LazadaFinancialTransaction;
-use App\Models\Order;
-use App\Imports\LazadaFinancialImport;
+use App\Models\Platform;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 
 class LazadaFinanceController extends Controller
 {
+    protected $platform;
+    
     /**
-     * Display a listing of the financial data for Lazada.
+     * Constructor
      */
-    public function index()
+    public function __construct()
     {
-        $transactions = LazadaFinancialTransaction::with('order')
-            ->orderBy('tanggal_pembayaran', 'desc')
-            ->orderBy('created_at', 'desc')
-            ->paginate(15);
-
-        return view('financial.lazada.index', [
-            'platform' => 'lazada',
-            'transactions' => $transactions
-        ]);
+        // Dapatkan platform Lazada dari database
+        $this->platform = Platform::where('name', 'lazada')->first();
+        
+        // Jika platform tidak ditemukan, throw exception
+        if (!$this->platform) {
+            throw new \Exception('Platform Lazada tidak ditemukan di database.');
+        }
     }
-
     /**
-     * Show the form for importing financial data.
+     * Tampilkan halaman import financial data Lazada
      */
     public function import()
     {
@@ -37,101 +34,115 @@ class LazadaFinanceController extends Controller
     }
 
     /**
-     * Preview the imported data before processing.
+     * Preview data financial sebelum import
      */
     public function preview(Request $request)
     {
         $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:10240',
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv',
         ]);
 
         try {
-            $import = new LazadaFinancialImport();
-            Excel::import($import, $request->file('file'));
+            $file = $request->file('excel_file');
+            $tempPath = $file->store('temp');
+            $fullPath = storage_path('app/' . $tempPath);
 
-            $data = $import->getData();
-            $stats = $import->getStats();
-            $invalidData = $import->getInvalidData();
-            $headerIssues = $import->getHeaderIssues();
+            // Baca data Excel
+            $data = Excel::toArray(new \App\Imports\LazadaImport($this->platform->id), $fullPath);
+            
+            // Hapus file sementara
+            \Storage::delete($tempPath);
 
-            // Simpan data ke session untuk proses import
-            session([
-                'lazada_financial_import_data' => $data,
-                'lazada_financial_import_stats' => $stats,
-                'lazada_financial_invalid_data' => $invalidData,
-                'lazada_financial_header_issues' => $headerIssues,
-            ]);
+            if (empty($data) || empty($data[0])) {
+                return redirect()->route('finance.lazada.import')
+                    ->with('error', 'File Excel kosong atau tidak dapat dibaca.');
+            }
 
-            return view('financial.lazada.preview', compact('data', 'stats', 'invalidData', 'headerIssues'));
+            $previewData = $data[0];
+            $headers = array_shift($previewData);
+
+            // Simpan data ke session
+            session(['lazada_finance_preview' => $previewData]);
+            session(['lazada_finance_headers' => $headers]);
+
+            return view('financial.lazada.preview', compact('previewData', 'headers'));
 
         } catch (\Exception $e) {
-            \Log::error('Error in Lazada financial preview: ' . $e->getMessage());
             return redirect()->route('finance.lazada.import')
-                ->with('error', 'Terjadi kesalahan saat memproses file: ' . $e->getMessage());
+                ->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
         }
     }
 
     /**
-     * Process the imported data.
+     * Proses import financial data
      */
     public function process(Request $request)
     {
         try {
-            // Ambil data dari session
-            $data = session('lazada_financial_import_data', []);
-            
-            if (empty($data)) {
+            $data = session('lazada_finance_preview');
+            $headers = session('lazada_finance_headers');
+
+            if (!$data || !$headers) {
                 return redirect()->route('finance.lazada.import')
-                    ->with('error', 'Tidak ada data untuk diimport. Silakan upload file Excel terlebih dahulu.');
+                    ->with('error', 'Data preview tidak ditemukan.');
             }
 
-            // Simpan data ke database
-            $import = new LazadaFinancialImport();
-            $import->data = $data;
-            $result = $import->saveToDatabase();
-            
-            // Clear session data
-            session()->forget([
-                'lazada_financial_import_data',
-                'lazada_financial_import_stats',
-                'lazada_financial_invalid_data',
-                'lazada_financial_header_issues'
-            ]);
-            
-            if ($result['success']) {
-                return redirect()->route('finance.lazada.index')->with('success', $result['message']);
-            } else {
-                return redirect()->route('finance.lazada.import')->with('error', $result['message']);
+            $successCount = 0;
+            $errorCount = 0;
+
+            foreach ($data as $row) {
+                try {
+                    $rowData = array_combine($headers, $row);
+                    
+                    LazadaFinancialTransaction::create([
+                        'transaction_id' => $rowData['transaction_id'] ?? '',
+                        'order_id' => $rowData['order_id'] ?? '',
+                        'amount' => $rowData['amount'] ?? 0,
+                        'fee' => $rowData['fee'] ?? 0,
+                        'net_amount' => $rowData['net_amount'] ?? 0,
+                        'transaction_date' => $rowData['transaction_date'] ?? now(),
+                        'status' => $rowData['status'] ?? 'pending',
+                    ]);
+
+                    $successCount++;
+
+                } catch (\Exception $e) {
+                    $errorCount++;
+                }
             }
+
+            // Hapus data dari session
+            session()->forget(['lazada_finance_preview', 'lazada_finance_headers']);
+
+            return redirect()->route('finance.lazada.index')
+                ->with('success', "Import selesai! Berhasil: {$successCount}, Gagal: {$errorCount}");
+
         } catch (\Exception $e) {
-            \Log::error('Lazada financial import error: ' . $e->getMessage());
             return redirect()->route('finance.lazada.import')
-                ->with('error', 'Terjadi kesalahan saat menyimpan data: ' . $e->getMessage());
+                ->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
         }
     }
 
     /**
-     * Show the specified financial transaction.
+     * Tampilkan detail transaction
      */
     public function show(LazadaFinancialTransaction $transaction)
     {
-        $transaction->load('order');
         return view('financial.lazada.show', compact('transaction'));
     }
 
     /**
-     * Remove the specified financial transaction.
+     * Hapus transaction
      */
     public function destroy(LazadaFinancialTransaction $transaction)
     {
         try {
             $transaction->delete();
             return redirect()->route('finance.lazada.index')
-                ->with('success', 'Transaksi keuangan berhasil dihapus.');
+                ->with('success', 'Transaction berhasil dihapus!');
         } catch (\Exception $e) {
-            \Log::error('Error deleting Lazada financial transaction: ' . $e->getMessage());
             return redirect()->route('finance.lazada.index')
-                ->with('error', 'Terjadi kesalahan saat menghapus transaksi: ' . $e->getMessage());
+                ->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
         }
     }
 }

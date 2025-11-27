@@ -34,7 +34,7 @@
                     </div>
                     <div class="mt-2">
                         <h6 class="text-muted mb-0">{{ $platformProduct->platform_product_name }}</h6>
-                        <small class="text-muted">{{ $platformProduct->platform->name }}</small>
+                        <small class="text-muted">{{ $platformProduct->platform ? $platformProduct->platform->name : 'Unknown Platform' }}</small>
                     </div>
                 </div>
                 

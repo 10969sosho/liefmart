@@ -24,13 +24,54 @@ class ReturOfflineSaleController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $returOfflineSales = ReturOfflineSale::with(['offlineSale', 'user'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
+        $query = ReturOfflineSale::with(['offlineSale', 'user']);
 
-        return view('retur.offline.index', compact('returOfflineSales'));
+        // Search filters
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('kode_retur', 'like', '%' . $search . '%')
+                  ->orWhereHas('offlineSale', function($saleQuery) use ($search) {
+                      $saleQuery->where('surat_jalan_number', 'like', '%' . $search . '%')
+                               ->orWhere('customer_name', 'like', '%' . $search . '%')
+                               ->orWhere('No_PO', 'like', '%' . $search . '%')
+                               ->orWhereHas('customerInfo', function($customerQuery) use ($search) {
+                                   $customerQuery->where('name', 'like', '%' . $search . '%');
+                               });
+                  })
+                  ->orWhereHas('user', function($userQuery) use ($search) {
+                      $userQuery->where('name', 'like', '%' . $search . '%');
+                  });
+            });
+        }
+
+        // Status filter
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Date range filter
+        if ($request->filled('date_from')) {
+            $query->whereDate('tanggal_retur', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('tanggal_retur', '<=', $request->date_to);
+        }
+
+        // User filter
+        if ($request->filled('user_id')) {
+            $query->where('user_id', $request->user_id);
+        }
+
+        $returOfflineSales = $query->orderBy('created_at', 'desc')->paginate(10);
+
+        // Get filter options
+        $users = \App\Models\User::orderBy('name')->get();
+
+        return view('retur.offline.index', compact('returOfflineSales', 'users'));
     }
 
     /**
@@ -308,11 +349,29 @@ class ReturOfflineSaleController extends Controller
                     'subtotal' => $newSubtotal
                 ]);
                 
+                // Refresh to ensure update is saved
+                $offlineSaleItem->refresh();
+                
+                \Log::info('Updated offline sale item', [
+                    'offline_sale_item_id' => $offlineSaleItem->id,
+                    'old_quantity' => $offlineSaleItem->quantity + floatval($detail->qty),
+                    'new_quantity' => $newQuantity,
+                    'old_subtotal' => $offlineSaleItem->subtotal + ($offlineSaleItem->unit_price * floatval($detail->qty)),
+                    'new_subtotal' => $newSubtotal,
+                    'updated_subtotal' => $offlineSaleItem->subtotal
+                ]);
+                
                 // Handle stock based on condition
+                // PERBAIKAN: Untuk process(), kita perlu mendapatkan tax_id dari barang keluar asli
+                $offlineSaleItem = OfflineSaleItem::with(['barangKeluar.warehouseStock'])->findOrFail($detail->offline_sale_item_id);
+                $barangKeluar = $offlineSaleItem->barangKeluar()->with('warehouseStock')->first();
+                $originalTaxId = $barangKeluar && $barangKeluar->warehouseStock ? $barangKeluar->warehouseStock->tax_id : null;
+                \Log::info('Process retur offline - Original tax_id from barang keluar: ' . ($originalTaxId ?? 'null') . ' for product ID: ' . $detail->product_id);
+                
                 if ($detail->kondisi === 'BAGUS') {
-                    $this->addBackToStock($detail->product_id, floatval($detail->qty), false, $returOfflineSale->tanggal_retur->format('Y-m-d'), $returOfflineSale->id);
+                    $this->addBackToStock($detail->product_id, floatval($detail->qty), false, $returOfflineSale->tanggal_retur->format('Y-m-d'), $returOfflineSale->id, $originalTaxId);
                 } else if ($detail->kondisi === 'RUSAK') {
-                    $this->addBackToStock($detail->product_id, floatval($detail->qty), true, $returOfflineSale->tanggal_retur->format('Y-m-d'), $returOfflineSale->id);
+                    $this->addBackToStock($detail->product_id, floatval($detail->qty), true, $returOfflineSale->tanggal_retur->format('Y-m-d'), $returOfflineSale->id, $originalTaxId);
                 } else {
                     \Log::info('Product marked as HILANG, not adding to stock: product ID ' . $detail->product_id);
                 }
@@ -322,6 +381,16 @@ class ReturOfflineSaleController extends Controller
             $returOfflineSale->update([
                 'status' => 'selesai',
                 'user_id' => Auth::id(),
+            ]);
+            
+            // Refresh offline sale to get latest data
+            $returOfflineSale->refresh();
+            $offlineSale = $returOfflineSale->offlineSale;
+            
+            \Log::info('Before calling finance service', [
+                'retur_offline_sale_id' => $returOfflineSale->id,
+                'offline_sale_id' => $offlineSale->id,
+                'invoices_count' => $offlineSale->getInvoices()->count()
             ]);
 
             // Handle finance logic for offline return
@@ -437,7 +506,7 @@ class ReturOfflineSaleController extends Controller
      * @param string|null $returDate
      * @param int|null $returOfflineSaleId
      */
-    private function addBackToStock($productId, $quantity, $isDamaged, $returDate = null, $returOfflineSaleId = null)
+    private function addBackToStock($productId, $quantity, $isDamaged, $returDate = null, $returOfflineSaleId = null, $originalTaxId = null)
     {
         $product = Product::findOrFail($productId);
         \Log::info("Adding back to stock: product ID {$productId}, qty {$quantity}, damaged: " . ($isDamaged ? 'Yes' : 'No'));
@@ -453,46 +522,69 @@ class ReturOfflineSaleController extends Controller
             \Log::info("Created new retur location with ID: {$returLocation->id}");
         }
         
-        // Find a suitable warehouse stock to reference for ED and tax_id
-        // We'll look for the most recent stock with the same product and damage status
-        $referenceStock = WarehouseStock::where('product_id', $productId)
-            ->where('is_damaged', $isDamaged)
-            ->where('qty', '>', 0)
-            ->orderBy('created_at', 'asc')   // Layer 1: FIFO berdasarkan tanggal penerimaan
-            ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
-            ->first();
+        // PERBAIKAN: Prioritaskan menggunakan tax_id dari barang keluar asli
+        // Jika originalTaxId tersedia, gunakan itu untuk mempertahankan tax_id yang benar
+        $taxId = $originalTaxId;
         
-        // If no reference stock found, try to find any stock for this product
+        // Find a suitable warehouse stock to reference for ED dan atribut lainnya
+        // Prioritas: cari stock dengan tax_id yang sama dengan originalTaxId (jika ada)
+        $referenceStock = null;
+        
+        if ($originalTaxId) {
+            // Cari stock dengan tax_id yang sama dengan originalTaxId
+            $referenceStock = WarehouseStock::where('product_id', $productId)
+                ->where('is_damaged', $isDamaged)
+                ->where('tax_id', $originalTaxId)
+                ->where('qty', '>', 0)
+                ->orderBy('created_at', 'asc')
+                ->first();
+        }
+        
+        // Jika tidak ditemukan dengan tax_id yang sama, cari stock apapun dengan product dan damage status yang sama
+        if (!$referenceStock) {
+            $referenceStock = WarehouseStock::where('product_id', $productId)
+                ->where('is_damaged', $isDamaged)
+                ->where('qty', '>', 0)
+                ->orderBy('created_at', 'asc')
+                ->orderBy('tax_id', 'asc')
+                ->first();
+        }
+        
+        // Jika masih tidak ditemukan, cari stock apapun untuk product ini
         if (!$referenceStock) {
             $referenceStock = WarehouseStock::where('product_id', $productId)
                 ->where('qty', '>', 0)
-                ->orderBy('created_at', 'asc')   // Layer 1: FIFO berdasarkan tanggal penerimaan
-                ->orderBy('tax_id', 'asc') // Layer 2: HGN (tax_id=3) dulu, baru LM (tax_id=4)
+                ->orderBy('created_at', 'asc')
+                ->orderBy('tax_id', 'asc')
                 ->first();
         }
         
         // Set default values
         $penerimaanDetailId = null;
-        $taxId = null;
         $expiredDate = null;
         $statusEd = 'aman';
         
         if ($referenceStock) {
-            // Use reference stock's attributes
+            // Use reference stock's attributes untuk ED dan penerimaan_detail_id
+            // TAPI tetap gunakan originalTaxId jika tersedia
             $penerimaanDetailId = $referenceStock->penerimaan_detail_id;
-            $taxId = $referenceStock->tax_id;
+            if (!$taxId) {
+                $taxId = $referenceStock->tax_id; // Fallback jika originalTaxId tidak tersedia
+            }
             $expiredDate = $referenceStock->expired_date;
             $statusEd = $referenceStock->status_ed;
             
-            \Log::info("Using reference stock ID: {$referenceStock->id} for ED and tax_id", [
+            \Log::info("Using reference stock ID: {$referenceStock->id} for ED and other attributes", [
                 'penerimaan_detail_id' => $penerimaanDetailId,
                 'tax_id' => $taxId,
+                'original_tax_id' => $originalTaxId,
                 'expired_date' => $expiredDate,
                 'status_ed' => $statusEd
             ]);
         } else {
             // Fallback: find any penerimaan_detail for this product
             $penerimaanDetail = PenerimaanDetail::where('penerimaan_detail.product_id', $productId)
+                ->with('penerimaan')
                 ->orderBy('penerimaan_detail.id', 'desc')
                 ->first();
                 
@@ -501,6 +593,16 @@ class ReturOfflineSaleController extends Controller
                 \Log::info("Found penerimaan_detail_id: {$penerimaanDetailId} for product");
             } else {
                 \Log::warning("No penerimaan_detail found for product ID: {$productId}");
+            }
+        }
+        
+        // PERBAIKAN: Jika tax_id masih null, ambil dari penerimaan_detail->penerimaan->tax_category_id
+        // Ini memastikan warehouse stock selalu punya tax_id karena selalu ada penerimaan_detail_id
+        if (!$taxId && $penerimaanDetailId) {
+            $penerimaanDetailForTax = PenerimaanDetail::with('penerimaan')->find($penerimaanDetailId);
+            if ($penerimaanDetailForTax && $penerimaanDetailForTax->penerimaan) {
+                $taxId = $penerimaanDetailForTax->penerimaan->tax_category_id;
+                \Log::info("Using tax_id from penerimaan: {$taxId} for penerimaan_detail_id: {$penerimaanDetailId}");
             }
         }
         
@@ -516,7 +618,7 @@ class ReturOfflineSaleController extends Controller
                 'product_id' => $productId,
                 'lokasi_id' => $returLocation->id, // Use retur location
                 'penerimaan_detail_id' => $penerimaanDetailId,
-                'tax_id' => $taxId,
+                'tax_id' => $taxId, // Menggunakan originalTaxId jika tersedia, atau dari reference stock, atau dari penerimaan
                 'qty' => $isDamaged ? 0 : $quantity,
                 'qty_damaged' => $isDamaged ? $quantity : 0,
                 'expired_date' => $expiredDate,
@@ -531,19 +633,27 @@ class ReturOfflineSaleController extends Controller
             \Log::info("Created new warehouse stock record ID: {$warehouseStock->id}", [
                 'penerimaan_detail_id' => $penerimaanDetailId,
                 'tax_id' => $taxId,
+                'original_tax_id_provided' => $originalTaxId !== null,
                 'expired_date' => $expiredDate,
                 'status_ed' => $statusEd,
                 'is_damaged' => $isDamaged
             ]);
         } else {
             // Update existing stock based on condition
+            // Use DB::table() to avoid global scope JOIN conflicts during update
             if ($isDamaged) {
                 // For damaged items, update qty_damaged
-                $warehouseStock->increment('qty_damaged', $quantity);
+                DB::table('warehouse_stock')
+                    ->where('id', $warehouseStock->id)
+                    ->increment('qty_damaged', $quantity);
+                $warehouseStock->refresh();
                 \Log::info("Updated damaged stock, new qty_damaged: {$warehouseStock->qty_damaged}");
             } else {
                 // For good items, update regular qty
-                $warehouseStock->increment('qty', $quantity);
+                DB::table('warehouse_stock')
+                    ->where('id', $warehouseStock->id)
+                    ->increment('qty', $quantity);
+                $warehouseStock->refresh();
                 \Log::info("Updated good stock, new qty: {$warehouseStock->qty}");
             }
         }
@@ -586,6 +696,7 @@ class ReturOfflineSaleController extends Controller
 
     /**
      * Remove stock that was added during return processing
+     * PERBAIKAN: Hapus warehouse stock entries yang dibuat saat retur (berdasarkan source_type dan source_id)
      * 
      * @param  int  $productId
      * @param  float  $qty
@@ -595,65 +706,69 @@ class ReturOfflineSaleController extends Controller
      */
     private function removeReturnedStock($productId, $qty, $isDamaged, $returOfflineSaleId)
     {
-        \Log::info("removeReturnedStock called for product ID: {$productId}, qty: {$qty}, isDamaged: " . ($isDamaged ? 'yes' : 'no'));
+        \Log::info("removeReturnedStock called for product ID: {$productId}, qty: {$qty}, isDamaged: " . ($isDamaged ? 'yes' : 'no') . ", returOfflineSaleId: {$returOfflineSaleId}");
         
         try {
             // Find warehouse stock entries that were created by this return
+            // PERBAIKAN: Hapus semua warehouse stock yang dibuat dari retur ini
             $returnedStocks = WarehouseStock::where('product_id', $productId)
                 ->where('is_damaged', $isDamaged)
                 ->where('source_type', 'retur_offline')
                 ->where('source_id', $returOfflineSaleId)
-                ->where('qty', '>', 0)
                 ->orderBy('created_at', 'desc') // Most recent first
                 ->get();
 
             if ($returnedStocks->isEmpty()) {
-                // If no specific return stock found, try to find general stock to remove
-                \Log::warning("No specific return stock found, looking for general stock to remove");
-                $returnedStocks = WarehouseStock::where('product_id', $productId)
-                    ->where('is_damaged', $isDamaged)
-                    ->where('qty', '>', 0)
-                    ->orderBy('created_at', 'desc') // Most recent first (likely to be return stock)
-                    ->get();
+                \Log::warning("No specific return stock found for product ID: {$productId}, returOfflineSaleId: {$returOfflineSaleId}");
+                // Don't throw error, just log warning - mungkin stock sudah dihapus atau tidak ada
+                return;
             }
 
-            if ($returnedStocks->isEmpty()) {
-                throw new \Exception("Tidak dapat menemukan stok untuk dikurangi pada produk ID: {$productId}");
-            }
-
-            $remainingQty = $qty;
+            $remainingQty = floatval($qty);
+            $deletedStockIds = [];
             
             foreach ($returnedStocks as $stock) {
                 if ($remainingQty <= 0) break;
 
-                $qtyToRemove = min($remainingQty, $stock->qty);
-                
-                \Log::info("Removing from stock ID: {$stock->id}, removing: {$qtyToRemove}, current: {$stock->qty}");
-                
                 // For offline returns, check if we're dealing with damaged/good stock columns
+                $stockQty = 0;
                 if ($isDamaged && isset($stock->qty_damaged)) {
-                    // Handle damaged stock in qty_damaged column
-                    $qtyToRemove = min($remainingQty, $stock->qty_damaged);
-                    $stock->qty_damaged -= $qtyToRemove;
+                    $stockQty = floatval($stock->qty_damaged);
                 } else {
-                    // Handle regular stock in qty column
-                    $stock->qty -= $qtyToRemove;
+                    $stockQty = floatval($stock->qty);
                 }
                 
-                $stock->save();
+                \Log::info("Checking stock ID: {$stock->id}, qty: {$stockQty}, remaining to delete: {$remainingQty}");
                 
-                // Update remaining quantity
-                $remainingQty -= $qtyToRemove;
-                
-                \Log::info("Stock ID: {$stock->id} updated, new qty: {$stock->qty}" . ($isDamaged ? ", new qty_damaged: {$stock->qty_damaged}" : ""));
+                if ($stockQty <= $remainingQty) {
+                    // Hapus seluruh stock entry jika qty-nya <= remaining qty
+                    \Log::info("Deleting entire stock ID: {$stock->id} with qty: {$stockQty}");
+                    $deletedStockIds[] = $stock->id;
+                    $stock->delete();
+                    $remainingQty -= $stockQty;
+                } else {
+                    // Jika stock qty > remaining qty, kurangi qty-nya saja
+                    \Log::info("Reducing stock ID: {$stock->id} from {$stockQty} to " . ($stockQty - $remainingQty));
+                    if ($isDamaged && isset($stock->qty_damaged)) {
+                        // Use DB::table() to avoid global scope JOIN conflicts during update
+                        DB::table('warehouse_stock')
+                            ->where('id', $stock->id)
+                            ->decrement('qty_damaged', $remainingQty);
+                    } else {
+                        DB::table('warehouse_stock')
+                            ->where('id', $stock->id)
+                            ->decrement('qty', $remainingQty);
+                    }
+                    $remainingQty = 0;
+                }
             }
 
             if ($remainingQty > 0) {
                 \Log::warning("Could not remove all requested quantity. Remaining: {$remainingQty}");
-                throw new \Exception("Tidak dapat mengurangi seluruh kuantitas yang diminta untuk produk ID: {$productId}. Sisa: {$remainingQty}");
+                // Don't throw error, just log warning - mungkin ada perbedaan karena rounding atau data tidak konsisten
             }
 
-            \Log::info("Successfully removed returned stock for product ID: {$productId}");
+            \Log::info("Successfully removed returned stock for product ID: {$productId}. Deleted stock IDs: " . implode(', ', $deletedStockIds));
             
         } catch (\Exception $e) {
             \Log::error("Error in removeReturnedStock: " . $e->getMessage());

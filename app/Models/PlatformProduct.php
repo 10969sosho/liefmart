@@ -37,6 +37,22 @@ class PlatformProduct extends Model
     }
 
     /**
+     * Get mappings that were active on a specific date
+     */
+    public function getMappingsForDate($date)
+    {
+        return MappingBarang::getMappingsForDate($this->id, $date);
+    }
+
+    /**
+     * Get mapping that was active on a specific date (single mapping)
+     */
+    public function getMappingForDate($date)
+    {
+        return MappingBarang::getMappingForDate($this->id, $date);
+    }
+
+    /**
      * Customize the array representation
      * 
      * @return array

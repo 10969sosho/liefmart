@@ -16,21 +16,27 @@ class IncreaseUploadLimits
      */
     public function handle(Request $request, Closure $next)
     {
-        // Periksa apakah request memiliki file
-        if ($request->hasFile('file')) {
-            \Log::info('File terdeteksi dalam request: ' . $request->file('file')->getClientOriginalName());
-        } else {
-            $hasFiles = $request->allFiles();
-            \Log::info('Tidak ada file terdeteksi dalam request. Files present: ' . json_encode(array_keys($hasFiles)));
-        }
+        // NOTE: max_input_vars, post_max_size, dan upload_max_filesize 
+        // TIDAK BISA diubah via ini_set() - harus diubah di php.ini!
+        // Setting di bawah hanya untuk yang bisa diubah di runtime.
         
-        // Log current PHP settings without modifying them to let hosting settings take precedence
-        \Log::info('Current PHP settings:', [
+        // Increase limits yang bisa diubah via ini_set()
+        @ini_set('max_execution_time', '300');    // ✅ Bisa diubah
+        @ini_set('memory_limit', '512M');         // ✅ Bisa diubah
+        
+        // Setting di bawah TIDAK EFEKTIF (hanya untuk dokumentasi)
+        // Harus diubah di php.ini XAMPP!
+        // @ini_set('max_input_vars', '5000');       // ❌ Tidak bisa diubah
+        // @ini_set('post_max_size', '100M');        // ❌ Tidak bisa diubah
+        // @ini_set('upload_max_filesize', '100M');  // ❌ Tidak bisa diubah
+        
+        // Log settings untuk debugging (hanya log, tidak ubah setting)
+        \Log::info('PHP settings check:', [
             'memory_limit' => ini_get('memory_limit'),
-            'upload_max_filesize' => ini_get('upload_max_filesize'),
-            'post_max_size' => ini_get('post_max_size'),
             'max_execution_time' => ini_get('max_execution_time'),
-            'max_input_vars' => ini_get('max_input_vars')
+            'max_input_vars' => ini_get('max_input_vars'),
+            'post_max_size' => ini_get('post_max_size'),
+            'upload_max_filesize' => ini_get('upload_max_filesize'),
         ]);
         
         return $next($request);

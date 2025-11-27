@@ -18,8 +18,8 @@
                         <tr>
                             <th>Platform</th>
                             <td>
-                                <span class="badge" style="background-color: var(--{{ strtolower($mapping->platformProduct->platform->name) == 'shopee' ? 'warning-color' : (strtolower($mapping->platformProduct->platform->name) == 'tokopedia' ? 'success-color' : 'info-color') }}); color: var(--text-color);">
-                                    {{ ucfirst($mapping->platformProduct->platform->name) }}
+                                <span class="badge" style="background-color: var(--{{ $mapping->platformProduct->platform ? (strtolower($mapping->platformProduct->platform->name) == 'shopee' ? 'warning-color' : (strtolower($mapping->platformProduct->platform->name) == 'tokopedia' ? 'success-color' : 'info-color')) : 'info-color' }}); color: var(--text-color);">
+                                    {{ $mapping->platformProduct->platform ? $mapping->platformProduct->platform->name : 'Unknown Platform' }}
                                 </span>
                             </td>
                         </tr>

@@ -47,5 +47,19 @@ class ReturPenjualanDetail extends Model
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Get the platform product through order item
+     */
+    public function platformProduct()
+    {
+        return $this->hasOneThrough(
+            PlatformProduct::class,
+            OrderItem::class,
+            'id', // Foreign key on OrderItem table
+            'id', // Foreign key on PlatformProduct table
+            'order_item_id', // Local key on ReturPenjualanDetail table
+            'platform_product_id' // Local key on OrderItem table
+        );
+    }
 
 } 

@@ -49,15 +49,28 @@ class TiktokImport implements ToCollection, WithMultipleSheets
 
     /**
      * Constructor
+     * 
+     * @param int|null $platformId ID platform (jika null, akan menggunakan platform_id dari session atau default)
      */
-    public function __construct()
+    public function __construct($platformId = null)
     {
-        // Dapatkan platform tiktok dari database
-        $this->platform = Platform::where('name', 'tiktok')->first();
+        // Jika platform_id diberikan, gunakan itu
+        if ($platformId !== null) {
+            $this->platform = Platform::find($platformId);
+        } else {
+            // Coba ambil dari session jika ada
+            $platformId = session('platform_id');
+            if ($platformId) {
+                $this->platform = Platform::find($platformId);
+            } else {
+                // Fallback: cari berdasarkan nama (untuk backward compatibility)
+                $this->platform = Platform::where('name', 'tiktok')->first();
+            }
+        }
 
         // Jika platform tidak ditemukan, throw exception
         if (!$this->platform) {
-            throw new \Exception('Platform tiktok tidak ditemukan di database.');
+            throw new \Exception('Platform tidak ditemukan di database.');
         }
     }
 
@@ -1017,21 +1030,23 @@ class TiktokImport implements ToCollection, WithMultipleSheets
                         'error' => $e->getMessage()
                     ];
                     \Log::error("Import error for order $orderNumber: " . $e->getMessage());
-                    // Don't throw the exception, just log it and continue with next order
-                    // This prevents the entire transaction from being rolled back
-                    continue;
+                    
+                    // Buat pesan error yang lebih user-friendly
+                    $userFriendlyMessage = $e->getMessage();
+                    if (strpos($e->getMessage(), 'Stok tidak cukup') !== false) {
+                        $userFriendlyMessage = "Stok tidak mencukupi untuk order $orderNumber. Silakan periksa stok warehouse.";
+                    }
+                    
+                    // CRITICAL: Throw exception to ensure atomic transaction
+                    // All orders must succeed or none should be imported
+                    throw new \Exception($userFriendlyMessage);
                 }
             }
 
-            // Commit transaksi jika ada setidaknya satu order yang berhasil diproses
-            if ($results['success'] > 0) {
-                DB::commit();
-                \Log::info("Transaction committed successfully. {$results['success']} orders imported.");
-            } else {
-                // Jika tidak ada order yang berhasil, rollback
-                DB::rollBack();
-                \Log::warning("No orders were successfully imported. Transaction rolled back.");
-            }
+            // CRITICAL: Commit transaksi hanya jika SEMUA order berhasil diproses
+            // Jika ada error, transaction akan di-rollback otomatis oleh catch block
+            DB::commit();
+            \Log::info("Transaction committed successfully. {$results['success']} orders imported.");
         } catch (\Exception $e) {
             // Jika ada error kritis, rollback semua perubahan
             DB::rollBack();
@@ -1155,7 +1170,14 @@ class TiktokImport implements ToCollection, WithMultipleSheets
                     }
 
                     // Hitung quantity yang akan dikurangi dari stok ini
+                    // Pastikan qty minimal 1 (tidak ada desimal seperti 0.5)
                     $qtyToTake = min($remainingQty, $stock->qty);
+                    
+                    // Jika qtyToTake kurang dari 1, skip stock ini dan lanjut ke stock berikutnya
+                    if ($qtyToTake < 1) {
+                        continue;
+                    }
+                    
                     \Log::info("Reducing from stock ID: {$stock->id}, Available: {$stock->qty}, Taking: {$qtyToTake}");
 
                     // Set warehouse_stock_id pada order item jika ini adalah stok pertama yang digunakan
@@ -1349,11 +1371,15 @@ class TiktokImport implements ToCollection, WithMultipleSheets
             return $rawValue;
         }
 
-        // For variasi field
+        // For variasi field - return as is from Excel, no trimming or normalization
         if ($fieldType === 'variasi') {
-            if (is_string($rawValue)) {
-                return trim($rawValue);
-            }
+            // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
+            return $rawValue;
+        }
+        
+        // For nama_barang field - return as is from Excel, no trimming or normalization
+        if ($fieldType === 'nama_barang') {
+            // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
             return $rawValue;
         }
         

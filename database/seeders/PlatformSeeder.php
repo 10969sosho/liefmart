@@ -15,8 +15,10 @@ class PlatformSeeder extends Seeder
         // Buat data platform e-commerce
         $platforms = [
             ['name' => 'shopee'],
+            ['name' => 'shopee2'],
             ['name' => 'tokopedia'],
             ['name' => 'tiktok'],
+            ['name' => 'tiktok2'],
             ['name' => 'blibli'],
             ['name' => 'lazada'],
         ];

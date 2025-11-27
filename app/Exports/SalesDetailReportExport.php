@@ -92,14 +92,19 @@ class SalesDetailReportExport extends DefaultValueBinder implements FromCollecti
                 ->sum('qty');
             $qtyReturIndividual = (float) ($qtyReturIndividual ?? 0);
             
+            // PERBAIKAN: Gunakan MappingBarang::getMappingsForOrderCreatedAt untuk mendapatkan mapping yang benar
             // Check if this is a package product and get total package quantity
             $packageQuantity = 1; // Default for non-package products
-            if ($item->platformProduct && $item->platformProduct->mappingBarang && $item->platformProduct->mappingBarang->count() > 0) {
-                $packageQuantity = $item->platformProduct->mappingBarang->sum('quantity');
+            if ($item->platformProduct) {
+                $orderCreatedAt = $item->order ? ($item->order->created_at ?? $item->created_at) : $item->created_at;
+                $mappings = \App\Models\MappingBarang::getMappingsForOrderCreatedAt($item->platformProduct->id, $orderCreatedAt);
+                if ($mappings->count() > 0) {
+                    $packageQuantity = $mappings->sum('quantity');
+                }
             }
             
             // Convert individual retur quantity back to package quantity
-            $qtyRetur = $packageQuantity > 0 ? $qtyReturIndividual / $packageQuantity : $qtyReturIndividual;
+            $qtyRetur = $packageQuantity > 0 ? round($qtyReturIndividual / $packageQuantity, 4) : $qtyReturIndividual;
             
             // Calculate original quantity (current quantity + returned quantity)
             $currentQty = (float) ($item->quantity ?? 0);
@@ -121,14 +126,19 @@ class SalesDetailReportExport extends DefaultValueBinder implements FromCollecti
                         ->sum('qty');
                     $itemQtyReturIndividual = (float) ($itemQtyReturIndividual ?? 0);
                     
+                    // PERBAIKAN: Gunakan MappingBarang::getMappingsForOrderCreatedAt untuk mendapatkan mapping yang benar
                     // Check if this is a package product and get total package quantity
                     $itemPackageQuantity = 1;
-                    if ($orderItem->platformProduct && $orderItem->platformProduct->mappingBarang && $orderItem->platformProduct->mappingBarang->count() > 0) {
-                        $itemPackageQuantity = $orderItem->platformProduct->mappingBarang->sum('quantity');
+                    if ($orderItem->platformProduct) {
+                        $orderCreatedAt = $item->order ? ($item->order->created_at ?? $orderItem->created_at) : $orderItem->created_at;
+                        $mappings = \App\Models\MappingBarang::getMappingsForOrderCreatedAt($orderItem->platformProduct->id, $orderCreatedAt);
+                        if ($mappings->count() > 0) {
+                            $itemPackageQuantity = $mappings->sum('quantity');
+                        }
                     }
                     
                     // Convert individual retur quantity back to package quantity
-                    $itemQtyRetur = $itemPackageQuantity > 0 ? $itemQtyReturIndividual / $itemPackageQuantity : $itemQtyReturIndividual;
+                    $itemQtyRetur = $itemPackageQuantity > 0 ? round($itemQtyReturIndividual / $itemPackageQuantity, 4) : $itemQtyReturIndividual;
                     
                     // Calculate original quantity (current + returned) and then remaining
                     $currentItemQty = (float) ($orderItem->quantity ?? 0);
@@ -214,7 +224,7 @@ class SalesDetailReportExport extends DefaultValueBinder implements FromCollecti
             $productName ?: '-',
             $variant ?: '-',
             (string)$quantity,        // Force string conversion to ensure "0" is displayed
-            (string)$qtyRetur,        // Force string conversion to ensure "0" is displayed
+            (string)$qtyRetur . ' pcs',  // Format qty retur dengan "pcs" seperti di view
             (string)$price,           // Force string conversion to ensure "0" is displayed
             (string)$totalItem,       // Force string conversion to ensure "0" is displayed
             (string)$qtyTotal,        // Force string conversion to ensure "0" is displayed

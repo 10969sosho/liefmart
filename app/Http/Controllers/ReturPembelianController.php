@@ -23,13 +23,50 @@ class ReturPembelianController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $returPembelians = ReturPembelian::with(['penerimaan', 'user', 'details.penerimaanDetail'])
-            ->orderBy('retur_pembelians.created_at', 'desc')
-            ->paginate(10);
+        $query = ReturPembelian::with(['penerimaan', 'user', 'details.penerimaanDetail']);
 
-        return view('retur.pembelian.index', compact('returPembelians'));
+        // Search filters
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('kode_retur', 'like', '%' . $search . '%')
+                  ->orWhereHas('penerimaan', function($penerimaanQuery) use ($search) {
+                      $penerimaanQuery->where('nomor_po', 'like', '%' . $search . '%')
+                                     ->orWhere('kode_penerimaan', 'like', '%' . $search . '%');
+                  })
+                  ->orWhereHas('user', function($userQuery) use ($search) {
+                      $userQuery->where('name', 'like', '%' . $search . '%');
+                  });
+            });
+        }
+
+        // Tipe retur filter
+        if ($request->filled('tipe_retur')) {
+            $query->where('tipe_retur', $request->tipe_retur);
+        }
+
+        // Date range filter
+        if ($request->filled('date_from')) {
+            $query->whereDate('tanggal_retur', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('tanggal_retur', '<=', $request->date_to);
+        }
+
+        // User filter
+        if ($request->filled('user_id')) {
+            $query->where('user_id', $request->user_id);
+        }
+
+        $returPembelians = $query->orderBy('retur_pembelians.created_at', 'desc')->paginate(10);
+
+        // Get filter options
+        $users = \App\Models\User::orderBy('name')->get();
+
+        return view('retur.pembelian.index', compact('returPembelians', 'users'));
     }
 
     /**

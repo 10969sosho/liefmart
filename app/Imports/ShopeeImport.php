@@ -52,15 +52,28 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
 
     /**
      * Constructor
+     * 
+     * @param int|null $platformId ID platform (jika null, akan menggunakan platform_id dari session atau default)
      */
-    public function __construct()
+    public function __construct($platformId = null)
     {
-        // Dapatkan platform Shopee dari database
-        $this->platform = Platform::where('name', 'shopee')->first();
+        // Jika platform_id diberikan, gunakan itu
+        if ($platformId !== null) {
+            $this->platform = Platform::find($platformId);
+        } else {
+            // Coba ambil dari session jika ada
+            $platformId = session('platform_id');
+            if ($platformId) {
+                $this->platform = Platform::find($platformId);
+            } else {
+                // Fallback: cari berdasarkan nama (untuk backward compatibility)
+                $this->platform = Platform::where('name', 'shopee')->first();
+            }
+        }
 
         // Jika platform tidak ditemukan, throw exception
         if (! $this->platform) {
-            throw new \Exception('Platform Shopee tidak ditemukan di database.');
+            throw new \Exception('Platform tidak ditemukan di database.');
         }
     }
 
@@ -602,8 +615,14 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                     $value = (float) $value;
                 }
             }
-            else if (in_array($key, ['no_order', 'variasi', 'no_resi']) && is_string($value)) {
-                // Trim and clean string values
+            // For nama_barang and variasi, preserve exactly as in Excel (no processing)
+            else if ($key === 'nama_barang' || $key === 'variasi') {
+                // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
+                $result[$key] = $value;
+                continue;
+            }
+            else if (in_array($key, ['no_order', 'no_resi']) && is_string($value)) {
+                // Trim and clean string values (variasi already handled above, no trim)
                 $value = trim($value);
             }
             else if ($key === 'status_hari' && is_string($value)) {
@@ -1010,9 +1029,9 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                         'error' => $e->getMessage()
                     ];
                     \Log::error("Import error for order $orderNumber: " . $e->getMessage());
-                    // Don't throw the exception, just log it and continue with next order
-                    // This prevents the entire transaction from being rolled back
-                    continue;
+                    // CRITICAL: Throw exception to ensure atomic transaction
+                    // All orders must succeed or none should be imported
+                    throw $e;
                 }
             }
             
@@ -1022,15 +1041,10 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 \Log::info(count($ordersWithUnmappedProducts) . " orders skipped due to unmapped products");
             }
 
-            // Commit transaksi jika ada setidaknya satu order yang berhasil diproses
-            if ($results['success'] > 0) {
-                DB::commit();
-                \Log::info("Transaction committed successfully. {$results['success']} orders imported.");
-            } else {
-                // Jika tidak ada order yang berhasil, rollback
-                DB::rollBack();
-                \Log::warning("No orders were successfully imported. Transaction rolled back.");
-            }
+            // CRITICAL: Commit transaksi hanya jika SEMUA order berhasil diproses
+            // Jika ada error, transaction akan di-rollback otomatis oleh catch block
+            DB::commit();
+            \Log::info("Transaction committed successfully. {$results['success']} orders imported.");
         } catch (\Exception $e) {
             // Jika ada error kritis, rollback semua perubahan
             DB::rollBack();
@@ -1163,86 +1177,41 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                 $remainingQty = $qtyToReduce;
                 $isFirstStock = true;  // Flag untuk menandai stok pertama
 
-                // Group stocks by tax_id if consolidation is enabled
-                if (\App\Models\WarehouseStock::$consolidateOrderItemsByProduct) {
-                    \Log::info('Consolidation by product enabled - grouping by tax_id');
-                    $stocksByTaxId = [];
+                // FIFO processing - tax_id hanya untuk prioritas sorting (HGN dulu), bukan untuk operasi pembagian
+                // Tax_id adalah label dari masa pembelian, tidak boleh dibagi
+                foreach ($stocks as $stock) {
+                    if ($remainingQty <= 0) {
+                        break;
+                    }
+
+                    // Hitung quantity yang akan dikurangi dari stok ini
+                    // Pastikan qty minimal 1 (tidak ada desimal seperti 0.5)
+                    $qtyToTake = min($remainingQty, $stock->qty);
                     
-                    // Group stocks by tax_id
-                    foreach ($stocks as $stock) {
-                        $taxId = $stock->tax_id ?: 0; // Default to 0 if null
-                        if (!isset($stocksByTaxId[$taxId])) {
-                            $stocksByTaxId[$taxId] = [];
-                        }
-                        $stocksByTaxId[$taxId][] = $stock;
+                    // Jika qtyToTake kurang dari 1, skip stock ini dan lanjut ke stock berikutnya
+                    if ($qtyToTake < 1) {
+                        continue;
                     }
                     
-                    // Process stocks from each tax_id group separately
-                    foreach ($stocksByTaxId as $taxId => $taxIdStocks) {
-                        \Log::info("Processing tax_id group: $taxId with " . count($taxIdStocks) . " stock items");
-                        $remainingQtyForTaxId = $qtyToReduce / count($stocksByTaxId); // Divide quantity among tax groups
-                        $isFirstStockInGroup = true;
-                        
-                        foreach ($taxIdStocks as $stock) {
-                            if ($remainingQtyForTaxId <= 0) {
-                                break;
-                            }
-                            
-                            // Hitung quantity yang akan dikurangi dari stok ini
-                            $qtyToTake = min($remainingQtyForTaxId, $stock->qty);
-                            \Log::info("Reducing from stock ID: {$stock->id}, Available: {$stock->qty}, Taking: {$qtyToTake}");
-                            
-                            // Set warehouse_stock_id pada order item untuk stok pertama dari hasil pencarian
-                            if ($isFirstStock && $isFirstStockInGroup) {
-                                $orderItem->warehouse_stock_id = $stock->id;
-                                $orderItem->save();
-                                $isFirstStock = false; // Only set once across all tax groups
-                                \Log::info("Set warehouse_stock_id: {$stock->id} for OrderItem ID: {$orderItem->id}");
-                            }
-                            
-                            $isFirstStockInGroup = false;
-                            
-                            // Catat barang keluar sebelum kurangi stok
-                            $this->recordBarangKeluar($orderItem, $stock, $qtyToTake);
-                            
-                            // Kurangi stok
-                            $stock->qty -= $qtyToTake;
-                            $stock->save();
-                            
-                            // Update sisa quantity
-                            $remainingQtyForTaxId -= $qtyToTake;
-                            $remainingQty -= $qtyToTake;
-                        }
+                    \Log::info("Reducing from stock ID: {$stock->id}, Available: {$stock->qty}, Taking: {$qtyToTake}");
+
+                    // Set warehouse_stock_id pada order item jika ini adalah stok pertama yang digunakan
+                    if ($isFirstStock) {
+                        $orderItem->warehouse_stock_id = $stock->id;
+                        $orderItem->save();
+                        $isFirstStock = false;
+                        \Log::info("Set warehouse_stock_id: {$stock->id} for OrderItem ID: {$orderItem->id}");
                     }
-                } else {
-                    // Original processing method - no consolidation by tax_id
-                    foreach ($stocks as $stock) {
-                        if ($remainingQty <= 0) {
-                            break;
-                        }
 
-                        // Hitung quantity yang akan dikurangi dari stok ini
-                        $qtyToTake = min($remainingQty, $stock->qty);
-                        \Log::info("Reducing from stock ID: {$stock->id}, Available: {$stock->qty}, Taking: {$qtyToTake}");
+                    // Catat barang keluar sebelum kurangi stok
+                    $this->recordBarangKeluar($orderItem, $stock, $qtyToTake);
 
-                        // Set warehouse_stock_id pada order item jika ini adalah stok pertama yang digunakan
-                        if ($isFirstStock) {
-                            $orderItem->warehouse_stock_id = $stock->id;
-                            $orderItem->save();
-                            $isFirstStock = false;
-                            \Log::info("Set warehouse_stock_id: {$stock->id} for OrderItem ID: {$orderItem->id}");
-                        }
+                    // Kurangi stok
+                    $stock->qty -= $qtyToTake;
+                    $stock->save();
 
-                        // Catat barang keluar sebelum kurangi stok
-                        $this->recordBarangKeluar($orderItem, $stock, $qtyToTake);
-
-                        // Kurangi stok
-                        $stock->qty -= $qtyToTake;
-                        $stock->save();
-
-                        // Update sisa quantity yang perlu dikurangi
-                        $remainingQty -= $qtyToTake;
-                    }
+                    // Update sisa quantity yang perlu dikurangi
+                    $remainingQty -= $qtyToTake;
                 }
 
                 // Jika masih ada sisa quantity yang perlu dikurangi, stok tidak cukup

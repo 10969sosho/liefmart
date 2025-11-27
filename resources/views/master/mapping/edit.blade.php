@@ -437,8 +437,8 @@
                             <tr>
                                 <th>Platform</th>
                                 <td>
-                                <span class="badge platform-{{ strtolower($mapping->platformProduct->platform->name) }}">
-                                        {{ ucfirst($mapping->platformProduct->platform->name) }}
+                                <span class="badge platform-{{ strtolower($mapping->platformProduct->platform ? $mapping->platformProduct->platform->name : 'unknown') }}">
+                                        {{ $mapping->platformProduct->platform ? $mapping->platformProduct->platform->name : 'Unknown Platform' }}
                                     </span>
                                 </td>
                             </tr>
@@ -498,13 +498,14 @@
                                 $allMappings = App\Models\MappingBarang::where('platform_product_id', $mapping->platform_product_id)
                                     ->where('is_active', true)
                                     ->where('version', $latestVersion)
+                                    ->with('product') // Eager load relasi product untuk menghindari null
                                     ->get();
                             @endphp
                             
                             @foreach($allMappings as $item)
                 <div class="mapping-item-card">
                     <div class="mapping-item-header">
-                        <div class="mapping-item-name">{{ $item->product->name }}</div>
+                        <div class="mapping-item-name">{{ $item->product ? $item->product->name : 'Product tidak ditemukan (ID: ' . $item->product_id . ')' }}</div>
                         <div class="quantity-controls">
                             <form action="{{ route('master.mapping.update', $item->id) }}" method="POST" class="d-inline">
                                         @csrf

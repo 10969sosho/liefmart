@@ -267,6 +267,58 @@ class TiktokFinancialTransaction extends Model
     }
 
     /**
+     * Synchronize order date with the related order
+     * This method ensures that tanggal_order matches the order's tanggal
+     */
+    public function syncOrderDate()
+    {
+        if ($this->order && $this->order->tanggal) {
+            $this->tanggal_order = $this->order->tanggal;
+            $this->hari_order = $this->order->hari;
+            return $this->save();
+        }
+        return false;
+    }
+
+    /**
+     * Static method to synchronize all transactions with their order dates
+     */
+    public static function syncAllOrderDates()
+    {
+        $updated = 0;
+        
+        // Use chunking to avoid memory issues
+        self::whereNotNull('order_id')
+            ->with('order')
+            ->chunk(100, function ($transactions) use (&$updated) {
+                foreach ($transactions as $transaction) {
+                    if ($transaction->order && $transaction->order->tanggal) {
+                        $needsUpdate = false;
+                        
+                        // Check if tanggal_order needs updating
+                        if (!$transaction->tanggal_order || $transaction->tanggal_order != $transaction->order->tanggal) {
+                            $transaction->tanggal_order = $transaction->order->tanggal;
+                            $needsUpdate = true;
+                        }
+                        
+                        // Check if hari_order needs updating
+                        if (!$transaction->hari_order || $transaction->hari_order != $transaction->order->hari) {
+                            $transaction->hari_order = $transaction->order->hari;
+                            $needsUpdate = true;
+                        }
+                        
+                        if ($needsUpdate) {
+                            $transaction->save();
+                            $updated++;
+                        }
+                    }
+                }
+            });
+        
+        return $updated;
+    }
+
+    /**
      * Get active bank account for this transaction
      * 
      * @return \App\Models\BankAccount|null

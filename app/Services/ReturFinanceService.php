@@ -187,16 +187,16 @@ class ReturFinanceService
                 // Recalculate nominal based on updated subtotals
                 $newNominal = $this->recalculateInvoiceNominal($invoice);
                 
-                // Set invoice values to 0 and mark as refunded
+                // Set invoice values to 0 and mark as retur_full
                 $invoice->update([
-                    'nominal' => $newNominal,
+                    'nominal' => 0,
                     'outstanding' => 0,
-                    'status' => 'refunded',
+                    'status' => 'retur_full',
                     'notes' => 'Retur penuh - invoice dibatalkan'
                 ]);
             }
             
-            Log::info("Marked offline sale invoices as refunded for sale {$offlineSale->id}");
+            Log::info("Marked offline sale invoices as retur_full for sale {$offlineSale->id}");
             
             DB::commit();
         } catch (\Exception $e) {
@@ -218,15 +218,64 @@ class ReturFinanceService
             $invoices = $offlineSale->getInvoices();
             
             foreach ($invoices as $invoice) {
-                // Recalculate nominal based on updated subtotals
-                $newNominal = $this->recalculateInvoiceNominal($invoice);
+                $oldNominal = $invoice->nominal;
                 
-                // Set invoice values to new nominal but keep outstanding for deduction
-                $invoice->update([
-                    'nominal' => $newNominal,
-                    'outstanding' => -$additionalDeduction,
+                Log::info("Processing invoice for partial refund", [
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'old_nominal' => $oldNominal
+                ]);
+                
+                // Recalculate nominal based on updated subtotals (DPP)
+                $newNominalDPP = $this->recalculateInvoiceNominal($invoice);
+                
+                // Get tax_id from first item - refresh to get latest data
+                $firstItem = $invoice->barangKeluarItems()->with('warehouseStock')->first();
+                $taxId = $firstItem && $firstItem->warehouseStock && $firstItem->warehouseStock->tax_id 
+                    ? $firstItem->warehouseStock->tax_id 
+                    : null;
+                
+                // Calculate grand total (nominal + PPN)
+                $dpp = \App\Helpers\NumberFormatter::calculateDPP($newNominalDPP);
+                $grandTotal = $dpp;
+                
+                if ($taxId == 3) {
+                    // PKP: Calculate PPN
+                    $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                    $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                    $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+                } else {
+                    // Non-PKP: Just round DPP
+                    $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+                }
+                
+                // Update invoice with grand total (nominal + PPN)
+                // Set status as 'partial_refund' to indicate nominal already includes PPN
+                $updateData = [
+                    'nominal' => $grandTotal,
                     'status' => 'partial_refund',
-                    'notes' => 'Retur dengan potongan tambahan: Rp ' . number_format($additionalDeduction, 0, ',', '.')
+                    'notes' => 'Retur sebagian - nominal sudah termasuk PPN'
+                ];
+                
+                // Only update outstanding if there's additional deduction
+                if ($additionalDeduction > 0) {
+                    $updateData['outstanding'] = -$additionalDeduction;
+                    $updateData['notes'] = 'Retur dengan potongan tambahan: Rp ' . number_format($additionalDeduction, 0, ',', '.') . ' - nominal sudah termasuk PPN';
+                }
+                
+                $invoice->update($updateData);
+                
+                // Refresh to verify update
+                $invoice->refresh();
+                
+                Log::info("Invoice updated for partial refund", [
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'old_nominal' => $oldNominal,
+                    'new_nominal_dpp' => $newNominalDPP,
+                    'new_nominal_grand_total' => $grandTotal,
+                    'tax_id' => $taxId,
+                    'status' => $invoice->status
                 ]);
             }
             
@@ -300,17 +349,28 @@ class ReturFinanceService
      */
     private function recalculateInvoiceNominal(FinanceOffline $invoice): float
     {
-        // Get all barang keluar items for this invoice
-        $barangKeluarItems = $invoice->barangKeluarItems;
+        // Refresh invoice to get latest data
+        $invoice->refresh();
+        
+        // Get all barang keluar items for this invoice with fresh data
+        $barangKeluarItems = $invoice->barangKeluarItems()->with('offlineSaleItem')->get();
         
         $totalNominal = 0;
         
         foreach ($barangKeluarItems as $barangKeluar) {
             if ($barangKeluar->offlineSaleItem) {
+                // Refresh offlineSaleItem to get updated subtotal
+                $barangKeluar->offlineSaleItem->refresh();
                 // Use the updated subtotal from offlineSaleItem
                 $totalNominal += $barangKeluar->offlineSaleItem->subtotal ?? 0;
             }
         }
+        
+        Log::info("Recalculated invoice nominal", [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'new_nominal_dpp' => $totalNominal
+        ]);
         
         return $totalNominal;
     }

@@ -101,6 +101,44 @@ class FinanceOffline extends Model
     }
 
     /**
+     * Generate invoice number from Surat Jalan number
+     * Menggunakan nomor yang sama dengan Surat Jalan
+     *
+     * @param string $suratJalanNumber Nomor Surat Jalan (format: {counter}/{yearMonth}/{suffix}/{taxCode})
+     * @param int $taxId Tax ID untuk menentukan taxCode
+     * @return string Nomor Invoice (format: {counter}/{yearMonth}/{suffix}/{taxCode})
+     */
+    public static function generateInvoiceNumberFromSuratJalan($suratJalanNumber, $taxId)
+    {
+        // Parse surat jalan number
+        // Format SJ: {counter}/{yearMonth}/{suffix}/{taxCode}
+        // Format INV: {counter}/{yearMonth}/{suffix}/{taxCode}
+        // Contoh: 0003/2508/HGNSDA-KOS/01
+        
+        // Split by '/'
+        $parts = explode('/', $suratJalanNumber);
+        
+        if (count($parts) < 3) {
+            // Jika format tidak sesuai, fallback ke generateInvoiceNumber biasa
+            \Log::warning("Invalid surat jalan format: {$suratJalanNumber}, falling back to normal generation");
+            return self::generateInvoiceNumber($taxId);
+        }
+        
+        $counter = $parts[0]; // Contoh: 0003
+        $yearMonth = $parts[1]; // Contoh: 2508
+        $suffix = $parts[2]; // Contoh: HGNSDA-KOS
+        
+        // Tentukan taxCode berdasarkan tax_id
+        $taxCode = in_array($taxId, [3, 5]) ? '01' : '02';
+        
+        // Jika ada part ke-4 (taxCode dari SJ), kita tetap gunakan taxCode berdasarkan tax_id
+        // karena tax_id dari barang keluar mungkin berbeda dengan tax_id dari SJ
+        
+        // Format invoice number: {counter}/{yearMonth}/{suffix}/{taxCode}
+        return "{$counter}/{$yearMonth}/{$suffix}/{$taxCode}";
+    }
+
+    /**
      * Scope a query to only include unpaid invoices
      */
     public function scopeUnpaid($query)
@@ -212,5 +250,113 @@ class FinanceOffline extends Model
     public function mainCategory()
     {
         return $this->belongsTo(MainCategory::class);
+    }
+
+    /**
+     * Recalculate nominal from offline_sales total_amount
+     * This ensures nominal matches the offline_sales total_amount
+     * 
+     * @return float The recalculated nominal
+     */
+    public function recalculateNominal()
+    {
+        $barangKeluarItems = $this->barangKeluarItems;
+        
+        if ($barangKeluarItems->isEmpty()) {
+            return 0;
+        }
+        
+        // Get all unique offline sales from this invoice's barang_keluar items
+        $offlineSales = collect();
+        foreach ($barangKeluarItems as $bk) {
+            if ($bk->offlineSaleItem && $bk->offlineSaleItem->offlineSale) {
+                $offlineSales->push($bk->offlineSaleItem->offlineSale);
+            }
+        }
+        $offlineSales = $offlineSales->unique('id');
+        
+        if ($offlineSales->isEmpty()) {
+            return 0;
+        }
+        
+        $nominal = 0;
+        foreach ($offlineSales as $sale) {
+            // Load sale items to calculate proportion
+            $sale->load('items');
+            
+            // Calculate total value of all items in the sale (with discounts)
+            $totalSaleItemsValue = 0;
+            foreach ($sale->items as $saleItem) {
+                $itemValue = $this->calculateItemValue($saleItem);
+                $totalSaleItemsValue += $itemValue;
+            }
+            
+            // Calculate value of items from this sale that are in this invoice
+            $invoiceItemsValue = 0;
+            foreach ($barangKeluarItems as $bk) {
+                if ($bk->offlineSaleItem && $bk->offlineSaleItem->offline_sale_id == $sale->id) {
+                    $saleItem = $bk->offlineSaleItem;
+                    $itemValue = $this->calculateItemValue($saleItem);
+                    $invoiceItemsValue += $itemValue;
+                }
+            }
+            
+            // Calculate proportion
+            $proportion = $totalSaleItemsValue > 0 ? ($invoiceItemsValue / $totalSaleItemsValue) : 0;
+            
+            // Use total_amount if proportion is close to 1 (all items), otherwise use proportion
+            if ($proportion >= 0.99) {
+                // All items are in invoice, use full total_amount
+                $nominal += $sale->total_amount;
+            } else {
+                // Partial items, use proportion of total_amount
+                $nominal += $sale->total_amount * $proportion;
+            }
+        }
+        
+        return \App\Helpers\NumberFormatter::formatForDatabase($nominal);
+    }
+    
+    /**
+     * Calculate item value with all discounts
+     */
+    private function calculateItemValue($item)
+    {
+        $basePrice = (float)($item->unit_price ?? 0);
+        $qty = (float)($item->quantity ?? 0);
+        
+        // Start with base total (price × quantity)
+        $currentTotal = $basePrice * $qty;
+        
+        // Apply percentage discounts (1-5) in cascading order
+        for($i = 1; $i <= 5; $i++) {
+            $percentField = "discount_percent_" . $i;
+            $discountPercent = (float)($item->$percentField ?? 0);
+            if($discountPercent > 0) {
+                $currentTotal = \App\Helpers\NumberFormatter::calculatePercentageDiscount($currentTotal, $discountPercent);
+            }
+        }
+        
+        // Apply nominal discounts (1-5) in cascading order
+        for($i = 1; $i <= 5; $i++) {
+            $amountField = "discount_amount_" . $i;
+            $discountAmount = (float)($item->$amountField ?? 0);
+            if($discountAmount > 0) {
+                $currentTotal = \App\Helpers\NumberFormatter::calculateNominalDiscount($currentTotal, $discountAmount * $qty);
+            }
+        }
+        
+        return \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+    }
+
+    /**
+     * Update nominal using recalculateNominal and save
+     * 
+     * @return bool
+     */
+    public function updateNominal()
+    {
+        $this->nominal = $this->recalculateNominal();
+        return $this->save();
     }
 }

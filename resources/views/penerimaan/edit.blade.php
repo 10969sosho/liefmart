@@ -61,7 +61,7 @@
                         
                         console.log('Product selected:', selectedOption.textContent);
                         
-                        // Get data attributes from the selected option
+                        // Get data attributes from the selected option - handle null safely
                         const hargaHpp = selectedOption.dataset.hargaHpp;
                         const defaultSatuanId = selectedOption.dataset.defaultSatuanId;
                         
@@ -69,12 +69,15 @@
                         const hargaInput = document.getElementById('harga_hpp');
                         const isFreeCheckbox = document.getElementById('is_free');
                         
-                        if (hargaInput && hargaHpp && !isFreeCheckbox.checked) {
-                            hargaInput.value = hargaHpp;
+                        if (hargaInput && hargaHpp && hargaHpp !== '0' && hargaHpp !== 'null' && !isFreeCheckbox.checked) {
+                            const hargaNum = parseFloat(hargaHpp);
+                            if (!isNaN(hargaNum) && hargaNum > 0) {
+                                hargaInput.value = hargaNum;
+                            }
                         }
                         
                         // Set satuan if available
-                        if (satuanSelect && defaultSatuanId) {
+                        if (satuanSelect && defaultSatuanId && defaultSatuanId !== '' && defaultSatuanId !== 'null') {
                             satuanSelect.value = defaultSatuanId;
                         }
                     });
@@ -146,9 +149,9 @@
                                     option.value = product.id;
                                     option.textContent = product.text || product.name;
                                     
-                                    // Store additional data as data attributes
-                                    option.dataset.hargaHpp = product.harga_hpp;
-                                    option.dataset.defaultSatuanId = product.default_satuan_id;
+                                    // Store additional data as data attributes - handle null safely
+                                    option.dataset.hargaHpp = product.harga_hpp || '0';
+                                    option.dataset.defaultSatuanId = product.default_satuan_id || '';
                                     
                                     barangSelect.appendChild(option);
                                 });
@@ -269,9 +272,7 @@
             </div>
         @endif
 
-        <form action="{{ route('penerimaan.update', $penerimaan->id) }}" method="POST" id="formPenerimaan">
-            @csrf
-            @method('PUT')
+        <form onsubmit="return false;" id="formPenerimaan">
             <div class="row">
                 <!-- Left Column - Main Information -->
                 <div class="col-lg-12 mb-4">
@@ -427,19 +428,13 @@
                                                 <tr id="item-{{ $index }}" class="item-row">
                                                     <td class="ps-4">
                                                         <p class="fw-medium mb-0">{{ $detail->product->name }}</p>
-                                                        <input type="hidden" name="barang_id[]"
-                                                            value="{{ $detail->product_id }}">
                                                     </td>
                                                     <td class="text-center">
                                                         <span
                                                             class="badge bg-light text-dark rounded-pill px-3 py-2">{{ $detail->qty }}</span>
-                                                        <input type="hidden" name="qty[]"
-                                                            value="{{ $detail->qty }}">
                                                     </td>
                                                     <td class="text-center">
                                                         {{ $detail->satuan->name }}
-                                                        <input type="hidden" name="satuan_id[]"
-                                                            value="{{ $detail->satuan_id }}">
                                                     </td>
                                                     <td class="text-end">
                                                         @if ($detail->is_free)
@@ -447,8 +442,6 @@
                                                         @else
                                                             Rp {{ number_format($detail->harga_hpp, 0, ',', '.') }}
                                                         @endif
-                                                        <input type="hidden" name="harga_hpp[]"
-                                                            value="{{ $detail->harga_hpp }}">
                                                     </td>
                                                     <td class="text-end">
                                                         @php
@@ -478,29 +471,6 @@
                                                         @if (!$hasDiscount && !$detail->is_free)
                                                             -
                                                         @endif
-
-                                                        <input type="hidden" name="diskon_persen_1[]"
-                                                            value="{{ $detail->diskon_persen_1 }}">
-                                                        <input type="hidden" name="diskon_nominal_1[]"
-                                                            value="{{ $detail->diskon_nominal_1 }}">
-                                                        <input type="hidden" name="diskon_persen_2[]"
-                                                            value="{{ $detail->diskon_persen_2 }}">
-                                                        <input type="hidden" name="diskon_nominal_2[]"
-                                                            value="{{ $detail->diskon_nominal_2 }}">
-                                                        <input type="hidden" name="diskon_persen_3[]"
-                                                            value="{{ $detail->diskon_persen_3 }}">
-                                                        <input type="hidden" name="diskon_nominal_3[]"
-                                                            value="{{ $detail->diskon_nominal_3 }}">
-                                                        <input type="hidden" name="diskon_persen_4[]"
-                                                            value="{{ $detail->diskon_persen_4 }}">
-                                                        <input type="hidden" name="diskon_nominal_4[]"
-                                                            value="{{ $detail->diskon_nominal_4 }}">
-                                                        <input type="hidden" name="diskon_persen_5[]"
-                                                            value="{{ $detail->diskon_persen_5 }}">
-                                                        <input type="hidden" name="diskon_nominal_5[]"
-                                                            value="{{ $detail->diskon_nominal_5 }}">
-                                                        <input type="hidden" name="is_free[]"
-                                                            value="{{ $detail->is_free ? 1 : 0 }}">
                                                     </td>
                                                     <td class="text-end">
                                                         @if ($detail->is_free)
@@ -508,8 +478,6 @@
                                                         @else
                                                             Rp {{ number_format($detail->subtotal, 0, ',', '.') }}
                                                         @endif
-                                                        <input type="hidden" name="subtotal[]"
-                                                            value="{{ $detail->subtotal }}">
                                                     </td>
                                                     <td class="text-center pe-4">
                                                         <button type="button" class="btn-delete"
@@ -840,9 +808,9 @@
                                     option.value = product.id;
                                     option.textContent = product.text || product.name;
                                     
-                                    // Store additional data as data attributes
-                                    option.dataset.hargaHpp = product.harga_hpp;
-                                    option.dataset.defaultSatuanId = product.default_satuan_id;
+                                    // Store additional data as data attributes - handle null safely
+                                    option.dataset.hargaHpp = product.harga_hpp || '0';
+                                    option.dataset.defaultSatuanId = product.default_satuan_id || '';
                                     
                                     barangSelect.appendChild(option);
                                 });
@@ -879,7 +847,7 @@
                                         
                                         if (!selectedOption) return;
                                         
-                                        // Get data attributes
+                                        // Get data attributes - handle null safely
                                         const hargaHpp = selectedOption.dataset.hargaHpp;
                                         const defaultSatuanId = selectedOption.dataset.defaultSatuanId;
                                         
@@ -887,13 +855,19 @@
                                         const hargaInput = document.getElementById('harga_hpp');
                                         const isFreeCheckbox = document.getElementById('is_free');
                                         
-                                        if (hargaInput && hargaHpp && !isFreeCheckbox.checked) {
-                                            hargaInput.value = hargaHpp;
+                                        if (hargaInput && hargaHpp && hargaHpp !== '0' && hargaHpp !== 'null' && !isFreeCheckbox.checked) {
+                                            const hargaNum = parseFloat(hargaHpp);
+                                            if (!isNaN(hargaNum) && hargaNum > 0) {
+                                                hargaInput.value = hargaNum;
+                                            }
                                         }
                                         
                                         // Set satuan if available
-                                        if (defaultSatuanId && document.getElementById('satuan_id')) {
-                                            document.getElementById('satuan_id').value = defaultSatuanId;
+                                        if (defaultSatuanId && defaultSatuanId !== '' && defaultSatuanId !== 'null') {
+                                            const satuanInput = document.getElementById('satuan_id');
+                                            if (satuanInput) {
+                                                satuanInput.value = defaultSatuanId;
+                                            }
                                         }
                                     }
                                 };
@@ -1041,21 +1015,30 @@
             // Array to store detail items
             let detailItems = [];
             
-            // Initialize existing items
+            // Initialize existing items - Store ALL data in detailItems array (NO HIDDEN INPUTS)
             @if($penerimaan->details->count() > 0)
                 @foreach($penerimaan->details as $index => $detail)
                     detailItems.push({
                         id: {{ $index }},
-                        product_id: {{ $detail->product_id }},
-                        product_name: '{{ $detail->product->name }}',
+                        barang_id: {{ $detail->product_id }},
+                        barangText: '{{ addslashes($detail->product->name) }}',
                         qty: {{ $detail->qty }},
                         satuan_id: {{ $detail->satuan_id }},
-                        satuan_name: '{{ $detail->satuan->name }}',
+                        satuanText: '{{ addslashes($detail->satuan->name) }}',
                         harga_hpp: {{ $detail->harga_hpp }},
-                        is_free: {{ $detail->is_free ? 'true' : 'false' }},
-                        diskon_persen: [{{ $detail->diskon_persen_1 }}, {{ $detail->diskon_persen_2 }}, {{ $detail->diskon_persen_3 }}, {{ $detail->diskon_persen_4 }}, {{ $detail->diskon_persen_5 }}],
-                        diskon_nominal: [{{ $detail->diskon_nominal_1 }}, {{ $detail->diskon_nominal_2 }}, {{ $detail->diskon_nominal_3 }}, {{ $detail->diskon_nominal_4 }}, {{ $detail->diskon_nominal_5 }}],
-                        subtotal: {{ $detail->subtotal }}
+                        diskon_persen_1: {{ $detail->diskon_persen_1 }},
+                        diskon_persen_2: {{ $detail->diskon_persen_2 }},
+                        diskon_persen_3: {{ $detail->diskon_persen_3 }},
+                        diskon_persen_4: {{ $detail->diskon_persen_4 }},
+                        diskon_persen_5: {{ $detail->diskon_persen_5 }},
+                        diskon_nominal_1: {{ $detail->diskon_nominal_1 }},
+                        diskon_nominal_2: {{ $detail->diskon_nominal_2 }},
+                        diskon_nominal_3: {{ $detail->diskon_nominal_3 }},
+                        diskon_nominal_4: {{ $detail->diskon_nominal_4 }},
+                        diskon_nominal_5: {{ $detail->diskon_nominal_5 }},
+                        is_free: {{ $detail->is_free ? 1 : 0 }},
+                        subtotal: {{ $detail->subtotal }},
+                        catatan: null
                     });
                 @endforeach
             @endif
@@ -1121,19 +1104,27 @@
                     return;
                 }
                 
-                if (!qtyInput.value || parseFloat(qtyInput.value) <= 0) {
+                // Validation with safe parsing
+                const qtyVal = qtyInput.value ? parseFloat(qtyInput.value) : 0;
+                if (!qtyInput.value || isNaN(qtyVal) || qtyVal <= 0) {
                     alert('Masukkan quantity yang valid');
+                    qtyInput.focus();
                     return;
                 }
                 
                 if (!satuanSelect.value) {
                     alert('Pilih satuan terlebih dahulu');
+                    satuanSelect.focus();
                     return;
                 }
                 
-                if (!isFreeCheckbox.checked && (!hargaInput.value || parseFloat(hargaInput.value) < 0)) {
-                    alert('Masukkan harga yang valid');
-                    return;
+                if (!isFreeCheckbox.checked) {
+                    const hargaVal = hargaInput.value ? parseFloat(hargaInput.value) : 0;
+                    if (!hargaInput.value || isNaN(hargaVal) || hargaVal < 0) {
+                        alert('Masukkan harga yang valid');
+                        hargaInput.focus();
+                        return;
+                    }
                 }
                 
                 // Get selected product info
@@ -1141,35 +1132,55 @@
                 const productName = selectedOption.textContent;
                 const productId = barangSelect.value;
                 const satuanName = satuanSelect.options[satuanSelect.selectedIndex].textContent;
-                const qty = parseFloat(qtyInput.value);
+                
+                // Parse values safely - handle null/empty/NaN
+                const qtyValue = qtyInput.value ? parseFloat(qtyInput.value) : 0;
+                const qty = isNaN(qtyValue) || qtyValue <= 0 ? 0 : qtyValue;
+                
                 const satuanId = satuanSelect.value;
-                const harga = isFreeCheckbox.checked ? 0 : parseFloat(hargaInput.value);
+                
+                const hargaValue = hargaInput.value ? parseFloat(hargaInput.value) : 0;
+                const harga = isFreeCheckbox.checked ? 0 : (isNaN(hargaValue) ? 0 : hargaValue);
+                
                 const isFree = isFreeCheckbox.checked;
                 
-                // Get discount values
+                // Get discount values - handle null/empty safely
                 const diskonPersen = [];
                 const diskonNominal = [];
                 for (let i = 1; i <= 5; i++) {
-                    diskonPersen.push(parseFloat(document.getElementById(`diskon_persen_${i}`).value) || 0);
-                    diskonNominal.push(parseFloat(document.getElementById(`diskon_nominal_${i}`).value) || 0);
+                    const persenInput = document.getElementById(`diskon_persen_${i}`);
+                    const nominalInput = document.getElementById(`diskon_nominal_${i}`);
+                    const persenValue = persenInput && persenInput.value ? parseFloat(persenInput.value) : 0;
+                    const nominalValue = nominalInput && nominalInput.value ? parseFloat(nominalInput.value) : 0;
+                    diskonPersen.push(isNaN(persenValue) ? 0 : persenValue);
+                    diskonNominal.push(isNaN(nominalValue) ? 0 : nominalValue);
                 }
                 
                 // Calculate subtotal
                 const subtotal = calculateSubtotal(qty, harga, diskonPersen, diskonNominal, isFree);
                 
-                // Create item object
+                // Create item object - Store ALL data (NO HIDDEN INPUTS)
                 const newItem = {
                     id: itemCounter,
-                    product_id: productId,
-                    product_name: productName,
-                    qty: qty,
-                    satuan_id: satuanId,
-                    satuan_name: satuanName,
-                    harga_hpp: harga,
-                    is_free: isFree,
-                    diskon_persen: diskonPersen,
-                    diskon_nominal: diskonNominal,
-                    subtotal: subtotal
+                    barang_id: productId ? (isNaN(parseInt(productId)) ? 0 : parseInt(productId)) : 0,
+                    barangText: productName || '',
+                    qty: qty || 0,
+                    satuan_id: satuanId ? (isNaN(parseInt(satuanId)) ? 0 : parseInt(satuanId)) : 0,
+                    satuanText: satuanName || '',
+                    harga_hpp: harga || 0,
+                    diskon_persen_1: diskonPersen[0] || 0,
+                    diskon_persen_2: diskonPersen[1] || 0,
+                    diskon_persen_3: diskonPersen[2] || 0,
+                    diskon_persen_4: diskonPersen[3] || 0,
+                    diskon_persen_5: diskonPersen[4] || 0,
+                    diskon_nominal_1: diskonNominal[0] || 0,
+                    diskon_nominal_2: diskonNominal[1] || 0,
+                    diskon_nominal_3: diskonNominal[2] || 0,
+                    diskon_nominal_4: diskonNominal[3] || 0,
+                    diskon_nominal_5: diskonNominal[4] || 0,
+                    is_free: isFree ? 1 : 0,
+                    subtotal: subtotal || 0,
+                    catatan: null
                 };
                 
                 // Add to array
@@ -1194,37 +1205,21 @@
                 newRow.innerHTML = `
                     <td class="ps-4">
                         <p class="fw-medium mb-0">${productName}</p>
-                        <input type="hidden" name="barang_id[]" value="${productId}">
                     </td>
                     <td class="text-center">
                         <span class="badge bg-light text-dark rounded-pill px-3 py-2">${qty}</span>
-                        <input type="hidden" name="qty[]" value="${qty}">
                     </td>
                     <td class="text-center">
                         ${satuanName}
-                        <input type="hidden" name="satuan_id[]" value="${satuanId}">
                     </td>
                     <td class="text-end">
                         ${isFree ? '<span class="badge bg-secondary rounded-pill">Free</span>' : `Rp ${formatRupiah(harga)}`}
-                        <input type="hidden" name="harga_hpp[]" value="${harga}">
                     </td>
                     <td class="text-end">
                         ${isFree ? '<span class="badge bg-secondary rounded-pill">Free</span>' : discountBadgesHTML}
-                        <input type="hidden" name="diskon_persen_1[]" value="${diskonPersen[0]}">
-                        <input type="hidden" name="diskon_nominal_1[]" value="${diskonNominal[0]}">
-                        <input type="hidden" name="diskon_persen_2[]" value="${diskonPersen[1]}">
-                        <input type="hidden" name="diskon_nominal_2[]" value="${diskonNominal[1]}">
-                        <input type="hidden" name="diskon_persen_3[]" value="${diskonPersen[2]}">
-                        <input type="hidden" name="diskon_nominal_3[]" value="${diskonNominal[2]}">
-                        <input type="hidden" name="diskon_persen_4[]" value="${diskonPersen[3]}">
-                        <input type="hidden" name="diskon_nominal_4[]" value="${diskonNominal[3]}">
-                        <input type="hidden" name="diskon_persen_5[]" value="${diskonPersen[4]}">
-                        <input type="hidden" name="diskon_nominal_5[]" value="${diskonNominal[4]}">
-                        <input type="hidden" name="is_free[]" value="${isFree ? 1 : 0}">
                     </td>
                     <td class="text-end">
                         ${isFree ? '<span class="badge bg-secondary rounded-pill">Free</span>' : `Rp ${formatRupiah(subtotal)}`}
-                        <input type="hidden" name="subtotal[]" value="${subtotal}">
                     </td>
                     <td class="text-center pe-4">
                         <button type="button" class="btn-delete" data-id="${itemCounter}" title="Hapus item">
@@ -1295,6 +1290,180 @@
             
             // Initialize total
             updateTotalHarga();
+            
+            // Find submit button - try multiple selectors
+            let submitButton = document.querySelector('#formPenerimaan button[type="submit"]');
+            if (!submitButton) {
+                submitButton = formPenerimaan.querySelector('button[type="submit"]');
+            }
+            if (!submitButton) {
+                submitButton = document.querySelector('form button[type="submit"]');
+            }
+            
+            console.log('Submit button found:', !!submitButton);
+            console.log('Form found:', !!formPenerimaan);
+            
+            // AJAX Form submission - Full JSON approach for EDIT
+            async function handleSubmit(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                
+                if (detailItems.length === 0) {
+                    alert('Mohon tambahkan minimal satu barang sebelum menyimpan.');
+                    return false;
+                }
+                
+                if (!submitButton) {
+                    console.error('Submit button not found!');
+                    alert('Terjadi kesalahan: Tombol simpan tidak ditemukan.');
+                    return false;
+                }
+                
+                const originalButtonText = submitButton.innerHTML;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Memproses...';
+                submitButton.disabled = true;
+                
+                const penerimaanId = {{ $penerimaan->id }};
+                
+                try {
+                    // Step 1: POST /penerimaan/{id}/update-header
+                    const tanggalJatuhTempoInput = document.getElementById('tanggal_jatuh_tempo');
+                    const metodePembayaran = document.getElementById('metode_pembayaran').value;
+                    
+                    // Handle tanggal_jatuh_tempo - hanya kirim jika metode pembayaran adalah "Jatuh Tempo" dan value ada
+                    let tanggalJatuhTempo = null;
+                    if (metodePembayaran === 'Jatuh Tempo' && tanggalJatuhTempoInput && tanggalJatuhTempoInput.value) {
+                        tanggalJatuhTempo = tanggalJatuhTempoInput.value;
+                    }
+                    
+                    const headerData = {
+                        main_category_id: document.getElementById('main_category_id').value,
+                        tax_category_id: document.getElementById('tax_category_id').value,
+                        nomor_po: document.getElementById('nomor_po').value,
+                        tanggal_penerimaan: document.getElementById('tanggal_penerimaan').value,
+                        metode_pembayaran: metodePembayaran,
+                        tanggal_jatuh_tempo: tanggalJatuhTempo,
+                        catatan: (document.getElementById('catatan').value || '').trim() || null
+                    };
+                    
+                    const headerResponse = await fetch(`/penerimaan/${penerimaanId}/update-header`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify(headerData)
+                    });
+                    
+                    const headerResult = await headerResponse.json();
+                    
+                    if (!headerResult.success) {
+                        throw new Error(headerResult.message || 'Gagal mengupdate header penerimaan');
+                    }
+                    
+                    // Step 2: POST /penerimaan/{id}/clear-details
+                    const clearResponse = await fetch(`/penerimaan/${penerimaanId}/clear-details`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({})
+                    });
+                    
+                    const clearResult = await clearResponse.json();
+                    
+                    if (!clearResult.success) {
+                        throw new Error(clearResult.message || 'Gagal membersihkan detail penerimaan');
+                    }
+                    
+                    // Step 3: POST /penerimaan/{id}/store-batch-details (JSON dengan items)
+                    const detailsData = {
+                        items: detailItems.map(item => ({
+                            barang_id: item.barang_id,
+                            qty: item.qty,
+                            satuan_id: item.satuan_id,
+                            harga_hpp: item.harga_hpp,
+                            diskon_persen_1: item.diskon_persen_1,
+                            diskon_persen_2: item.diskon_persen_2,
+                            diskon_persen_3: item.diskon_persen_3,
+                            diskon_persen_4: item.diskon_persen_4,
+                            diskon_persen_5: item.diskon_persen_5,
+                            diskon_nominal_1: item.diskon_nominal_1,
+                            diskon_nominal_2: item.diskon_nominal_2,
+                            diskon_nominal_3: item.diskon_nominal_3,
+                            diskon_nominal_4: item.diskon_nominal_4,
+                            diskon_nominal_5: item.diskon_nominal_5,
+                            is_free: item.is_free,
+                            catatan: item.catatan
+                        }))
+                    };
+                    
+                    const detailsResponse = await fetch(`/penerimaan/${penerimaanId}/store-batch-details`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify(detailsData)
+                    });
+                    
+                    const detailsResult = await detailsResponse.json();
+                    
+                    if (!detailsResult.success) {
+                        throw new Error(detailsResult.message || 'Gagal menyimpan detail penerimaan');
+                    }
+                    
+                    // Step 4: POST /penerimaan/{id}/finalize-update
+                    const finalizeResponse = await fetch(`/penerimaan/${penerimaanId}/finalize-update`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ old_data: headerResult.old_data })
+                    });
+                    
+                    const finalizeResult = await finalizeResponse.json();
+                    
+                    if (!finalizeResult.success) {
+                        throw new Error(finalizeResult.message || 'Gagal finalisasi update penerimaan');
+                    }
+                    
+                    // Success - redirect
+                    window.location.href = '{{ route("penerimaan.index") }}';
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Terjadi kesalahan: ' + error.message);
+                    if (submitButton) {
+                        submitButton.innerHTML = originalButtonText;
+                        submitButton.disabled = false;
+                    }
+                }
+            }
+            
+            // Attach event listeners - both submit and click
+            if (formPenerimaan) {
+                formPenerimaan.addEventListener('submit', handleSubmit);
+                console.log('Form submit listener attached');
+            } else {
+                console.error('Form not found!');
+            }
+            
+            if (submitButton) {
+                submitButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Submit button clicked');
+                    handleSubmit(e);
+                });
+                console.log('Submit button click listener attached');
+            } else {
+                console.error('Submit button not found! Check selector or button exists in DOM');
+            }
         });
     </script>
 

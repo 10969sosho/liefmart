@@ -8,7 +8,12 @@
 <div class="container-fluid">
     <div class="mapping-card">
         <div class="card-header">
-            <h5 class="mb-0">Mapping Produk Platform {{ ucfirst($platform) }}</h5>
+            @php
+                $platformName = \App\Models\Platform::whereRaw('LOWER(name) = ?', [strtolower($platform)])->first()->name 
+                    ?? \App\Models\Platform::where('name', 'like', '%' . $platform . '%')->first()->name 
+                    ?? ucfirst($platform);
+            @endphp
+            <h5 class="mb-0">Mapping Produk Platform {{ $platformName }}</h5>
         </div>
         <div class="card-body">
             <div class="alert alert-warning mb-4">

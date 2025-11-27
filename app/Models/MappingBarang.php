@@ -180,6 +180,91 @@ class MappingBarang extends Model
     }
 
     /**
+     * Get mapping that was active on a specific date
+     */
+    public static function getMappingForDate($platformProductId, $date)
+    {
+        return static::where('platform_product_id', $platformProductId)
+            ->where(function($query) use ($date) {
+                $query->where(function($q) use ($date) {
+                    // Mapping was active before the date and either still active or ended after the date
+                    $q->where('valid_from', '<=', $date)
+                      ->where(function($subQ) use ($date) {
+                          $subQ->whereNull('valid_until')
+                               ->orWhere('valid_until', '>=', $date);
+                      });
+                });
+            })
+            ->orderBy('valid_from', 'desc')
+            ->first();
+    }
+
+    /**
+     * Get all mappings that were active on a specific date for a platform product
+     */
+    public static function getMappingsForDate($platformProductId, $date)
+    {
+        return static::where('platform_product_id', $platformProductId)
+            ->where(function($query) use ($date) {
+                $query->where(function($q) use ($date) {
+                    // Mapping was active before the date and either still active or ended after the date
+                    $q->where('valid_from', '<=', $date)
+                      ->where(function($subQ) use ($date) {
+                          $subQ->whereNull('valid_until')
+                               ->orWhere('valid_until', '>=', $date);
+                      });
+                });
+            })
+            ->orderBy('valid_from', 'desc')
+            ->get();
+    }
+
+    /**
+     * Get mappings based on version that was created before or on the order created date
+     * This is the correct logic: find the latest version created before/on order created_at
+     * 
+     * @param int $platformProductId
+     * @param \Carbon\Carbon|string $orderCreatedAt
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public static function getMappingsForOrderCreatedAt($platformProductId, $orderCreatedAt)
+    {
+        // Convert to Carbon if string
+        if (is_string($orderCreatedAt)) {
+            $orderCreatedAt = \Carbon\Carbon::parse($orderCreatedAt);
+        }
+        
+        // 1. Find the latest version that was created before or on the order created date
+        // Use valid_from to determine when version was created
+        $latestVersion = static::where('platform_product_id', $platformProductId)
+            ->where(function($query) use ($orderCreatedAt) {
+                $query->where(function($q) use ($orderCreatedAt) {
+                    // If valid_from exists, use valid_from
+                    $q->whereNotNull('valid_from')
+                      ->where('valid_from', '<=', $orderCreatedAt);
+                })
+                ->orWhere(function($q) use ($orderCreatedAt) {
+                    // If valid_from is null, use created_at
+                    $q->whereNull('valid_from')
+                      ->where('created_at', '<=', $orderCreatedAt);
+                });
+            })
+            ->max('version');
+        
+        // 2. If version found, get all mappings with that version
+        if ($latestVersion !== null) {
+            return static::where('platform_product_id', $platformProductId)
+                ->where('version', $latestVersion)
+                ->get();
+        }
+        
+        // 3. If no version found, fallback to active mappings
+        return static::where('platform_product_id', $platformProductId)
+            ->where('is_active', true)
+            ->get();
+    }
+
+    /**
      * Get duplicate product IDs in an array
      */
     public static function getDuplicateProductIds($productIds)

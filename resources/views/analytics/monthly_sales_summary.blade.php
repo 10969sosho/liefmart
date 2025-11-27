@@ -281,12 +281,12 @@
                             <div class="col-md-3">
                                 <label for="start_date" class="form-label">Tanggal Mulai</label>
                                 <input type="date" class="form-control" id="start_date" name="start_date" 
-                                    value="{{ $startDate }}">
+                                    value="{{ $startDate }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label for="end_date" class="form-label">Tanggal Akhir</label>
                                 <input type="date" class="form-control" id="end_date" name="end_date" 
-                                    value="{{ $endDate }}">
+                                    value="{{ $endDate }}" required>
                             </div>
 
                             <!-- Platform Filter -->
@@ -305,7 +305,7 @@
 
                             <!-- Submit and Reset Button -->
                             <div class="col-md-2">
-                                <button type="submit" class="btn btn-primary w-100">
+                                <button type="submit" class="btn btn-primary w-100" id="filter-submit-btn">
                                     <i class="bi bi-search"></i> Filter
                                 </button>
                             </div>
@@ -318,6 +318,16 @@
                                 <a href="{{ route('analytics.monthly-sales-summary.export', request()->query()) }}" class="btn btn-success w-100">
                                     <i class="bi bi-download"></i> Export Excel
                                 </a>
+                            </div>
+                        </div>
+                        
+                        <!-- Loading indicator -->
+                        <div class="row mt-3" id="loading-indicator" style="display: none;">
+                            <div class="col-12 text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Memproses data, mohon tunggu...</p>
                             </div>
                         </div>
                     </div>
@@ -417,7 +427,7 @@
                     <div class="col-md-4">
                         <div class="card bg-success summary-card">
                             <div class="card-body">
-                                <h5 class="card-title">Total Saldo Masuk</h5>
+                                <h5 class="card-title">Saldo Masuk</h5>
                                 <h2 class="display-5">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
                                 <p>Rata-rata: Rp {{ number_format($summary['avg_order_value'], 0, ',', '.') }} per order</p>
                             </div>
@@ -463,7 +473,9 @@
                             <tr>
                                 <th>Bulan</th>
                                 <th class="text-end">Jumlah Order</th>
-                                <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Nominal Penjualan (Rp)</th>
+                                <th class="text-end">Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">Avg Saldo/Order (Rp)</th>
                                 <th class="text-end">Avg Volume/Order</th>
@@ -480,11 +492,14 @@
                                     $avgVolume = $month['order_count'] > 0 ? $month['total_volume'] / $month['order_count'] : 0;
                                     $valueVolumeRatio = $month['total_volume'] > 0 ? $month['total_value'] / $month['total_volume'] : 0;
                                     $rowClass = $month['year_month'] == $currentYearMonth ? 'table-warning' : '';
+                                    $grossProfit = $month['total_gross_profit'] ?? ($month['total_value'] - ($month['total_hpp'] ?? 0));
                                 @endphp
                                 <tr class="{{ $rowClass }}">
                                     <td class="fw-bold">{{ $month['month_name'] }}</td>
                                     <td class="text-end">{{ number_format($month['order_count']) }}</td>
+                                    <td class="text-end">{{ number_format($month['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($month['total_value'], 0, ',', '.') }}</td>
+                                    <td class="text-end">{{ number_format($grossProfit, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($month['total_volume']) }}</td>
                                     <td class="text-end">{{ number_format($avgValue, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($avgVolume, 1) }}</td>
@@ -496,7 +511,9 @@
                             <tr>
                                 <th>TOTAL</th>
                                 <th class="text-end">{{ number_format($summary['total_orders']) }}</th>
+                                <th class="text-end">{{ number_format($summary['total_nominal'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_value'], 0, ',', '.') }}</th>
+                                <th class="text-end">{{ number_format($summary['total_gross_profit'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_volume']) }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_value'], 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_volume'], 1) }}</th>
@@ -515,7 +532,9 @@
                             <tr>
                                 <th>Platform</th>
                                 <th class="text-end">Jumlah Order</th>
-                                <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Nominal Penjualan (Rp)</th>
+                                <th class="text-end">Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">% dari Total</th>
                                 <th class="text-end">Saldo/Volume (Rp)</th>
@@ -530,7 +549,9 @@
                                     </div>
                                 </td>
                                 <td class="text-end">{{ number_format($platformData['order_count']) }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_value'], 0, ',', '.') }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_gross_profit'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_volume']) }}</td>
                                 <td class="text-end">
                                     @if(isset($platformData['total_volume']) && $summary['total_volume'] > 0)
@@ -549,7 +570,7 @@
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="6" class="text-center">Tidak ada data platform</td>
+                                <td colspan="8" class="text-center">Tidak ada data platform</td>
                             </tr>
                             @endforelse
                         </tbody>
@@ -593,6 +614,35 @@
     <!-- Chart Scripts -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Handle form submission with loading state
+            const filterForm = document.getElementById('filter-form');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const submitBtn = document.getElementById('filter-submit-btn');
+            
+            if (filterForm) {
+                filterForm.addEventListener('submit', function(e) {
+                    // Show loading indicator
+                    loadingIndicator.style.display = 'block';
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Memproses...';
+                    
+                    // Scroll to loading indicator
+                    loadingIndicator.scrollIntoView({ behavior: 'smooth' });
+                });
+            }
+            
+            // Set default date to today if not already set
+            const startDateInput = document.getElementById('start_date');
+            const endDateInput = document.getElementById('end_date');
+            
+            if (startDateInput && !startDateInput.value) {
+                startDateInput.value = new Date().toISOString().split('T')[0];
+            }
+            
+            if (endDateInput && !endDateInput.value) {
+                endDateInput.value = new Date().toISOString().split('T')[0];
+            }
+            
             var ctx = document.getElementById('monthlySalesChart').getContext('2d');
             
             // Prepare data for the chart
@@ -626,7 +676,8 @@
                             beginAtZero: true,
                             ticks: {
                                 callback: function(value, index, values) {
-                                    return value;
+                                    // Format angka dengan titik sebagai pemisah ribuan
+                                    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
                                 }
                             }
                         }
@@ -680,7 +731,8 @@
                             },
                             ticks: {
                                 callback: function(value, index, values) {
-                                    return value;
+                                    // Format angka dengan titik sebagai pemisah ribuan
+                                    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
                                 }
                             }
                         }

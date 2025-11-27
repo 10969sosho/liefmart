@@ -306,20 +306,6 @@
                                     @endforeach
                                 </select>
                             </div>
-                            
-                            <!-- Status Hari Filter -->
-                            <div class="col-md-3">
-                                <label for="status" class="form-label">Status Hari</label>
-                                <select class="form-select" id="status" name="status">
-                                    <option value="">Semua Status</option>
-                                    @foreach($allStatuses as $status)
-                                        <option value="{{ $status }}" 
-                                            {{ $selectedStatus == $status ? 'selected' : '' }}>
-                                            {{ $status }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
 
                             <!-- Submit and Reset Button -->
                             <div class="col-md-3">
@@ -365,18 +351,8 @@
                                 @endif
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <div class="mb-2">
-                                <span class="fw-semibold">Status Hari:</span> 
-                                @if($selectedStatus)
-                                    <span class="badge bg-dark">{{ $selectedStatus }}</span>
-                                @else
-                                    Semua Status
-                                @endif
-                            </div>
-                        </div>
                         <div class="col-md-12 text-end">
-                            @if(request()->hasAny(['start_date', 'end_date', 'platform_id', 'status']))
+                            @if(request()->hasAny(['start_date', 'end_date', 'platform_id']))
                                 <a href="{{ route('analytics.sales-by-status-day') }}" class="btn btn-sm btn-outline-secondary">
                                     <i class="bi bi-x-circle"></i> Reset Semua Filter
                                 </a>
@@ -446,7 +422,7 @@
                     <div class="col-md-4">
                         <div class="card bg-success summary-card">
                             <div class="card-body">
-                                <h5 class="card-title">Total Saldo Masuk</h5>
+                                <h5 class="card-title">Saldo Masuk</h5>
                                 <h2 class="display-5">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
                                 <p>Rata-rata: Rp {{ number_format($summary['avg_order_value'], 0, ',', '.') }} per order</p>
                             </div>
@@ -492,7 +468,9 @@
                             <tr>
                                 <th>Status Hari</th>
                                 <th class="text-end">Jumlah Order</th>
-                                <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Nominal Penjualan (Rp)</th>
+                                <th class="text-end">Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">Avg Saldo/Order (Rp)</th>
                                 <th class="text-end">Avg Volume/Order</th>
@@ -502,15 +480,18 @@
                         <tbody>
                             @foreach($allStatuses as $status)
                                 @php
-                                    $statusData = $statusSummary[$status] ?? ['total_orders' => 0, 'total_value' => 0, 'total_volume' => 0];
+                                    $statusData = $statusSummary[$status] ?? ['total_orders' => 0, 'total_value' => 0, 'total_nominal' => 0, 'total_hpp' => 0, 'total_volume' => 0];
                                     $avgValue = $statusData['total_orders'] > 0 ? $statusData['total_value'] / $statusData['total_orders'] : 0;
                                     $avgVolume = $statusData['total_orders'] > 0 ? $statusData['total_volume'] / $statusData['total_orders'] : 0;
                                     $valueVolumeRatio = $statusData['total_volume'] > 0 ? $statusData['total_value'] / $statusData['total_volume'] : 0;
+                                    $grossProfit = $statusData['total_value'] - ($statusData['total_hpp'] ?? 0);
                                 @endphp
                                 <tr class="{{ $statusData['total_orders'] > 0 ? '' : 'table-secondary' }}">
                                     <td class="fw-bold">{{ $status }}</td>
                                     <td class="text-end">{{ number_format($statusData['total_orders']) }}</td>
+                                    <td class="text-end">{{ number_format($statusData['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($statusData['total_value'], 0, ',', '.') }}</td>
+                                    <td class="text-end">{{ number_format($grossProfit, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($statusData['total_volume']) }}</td>
                                     <td class="text-end">{{ number_format($avgValue, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($avgVolume, 1) }}</td>
@@ -522,7 +503,9 @@
                             <tr>
                                 <th>TOTAL</th>
                                 <th class="text-end">{{ number_format($summary['total_orders']) }}</th>
+                                <th class="text-end">{{ number_format($summary['total_nominal'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_value'], 0, ',', '.') }}</th>
+                                <th class="text-end">{{ number_format($summary['total_gross_profit'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_volume']) }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_value'], 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_volume'], 1) }}</th>
@@ -541,7 +524,9 @@
                             <tr>
                                 <th>Platform</th>
                                 <th class="text-end">Jumlah Order</th>
-                                <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Nominal Penjualan (Rp)</th>
+                                <th class="text-end">Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">% dari Total</th>
                                 <th class="text-end">Saldo/Volume (Rp)</th>
@@ -556,7 +541,9 @@
                                     </div>
                                 </td>
                                 <td class="text-end">{{ number_format($platformData['order_count']) }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_value'], 0, ',', '.') }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_gross_profit'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_volume']) }}</td>
                                 <td class="text-end">
                                     @if(isset($platformData['total_volume']) && $summary['total_volume'] > 0)
@@ -575,7 +562,7 @@
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="6" class="text-center">Tidak ada data platform</td>
+                                <td colspan="8" class="text-center">Tidak ada data platform</td>
                             </tr>
                             @endforelse
                         </tbody>
@@ -682,7 +669,8 @@
                             beginAtZero: true,
                             ticks: {
                                 callback: function(value, index, values) {
-                                    return value;
+                                    // Format angka dengan titik sebagai pemisah ribuan
+                                    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
                                 }
                             }
                         }
@@ -736,7 +724,8 @@
                             },
                             ticks: {
                                 callback: function(value, index, values) {
-                                    return value;
+                                    // Format angka dengan titik sebagai pemisah ribuan
+                                    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
                                 }
                             }
                         }

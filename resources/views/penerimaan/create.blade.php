@@ -31,8 +31,7 @@
     </div>
     @endif
 
-    <form action="{{ route('penerimaan.store') }}" method="POST" id="formPenerimaan">
-        @csrf
+    <form onsubmit="return false;" id="formPenerimaan">
         <div class="row">
             <!-- Left Column - Main Information -->
             <div class="col-lg-12 mb-4">
@@ -776,16 +775,19 @@ document.addEventListener('DOMContentLoaded', function() {
             if (selectedOption) {
                 console.log('Selected product:', selectedOption);
                 
-                // Set unit based on selected product
-                if (selectedOption.default_satuan_id) {
-                    satuanTomSelect.setValue(selectedOption.default_satuan_id);
+                // Set unit based on selected product - handle null safely
+                const defaultSatuanId = selectedOption.default_satuan_id;
+                if (defaultSatuanId && defaultSatuanId !== 'null' && defaultSatuanId !== '') {
+                    satuanTomSelect.setValue(defaultSatuanId);
                 }
                 
-                // Set price based on selected product
-                if (selectedOption.harga_hpp) {
-                    hargaInput.value = selectedOption.harga_hpp;
-                } else if (selectedOption.$option && selectedOption.$option.dataset.hargaHpp) {
-                    hargaInput.value = selectedOption.$option.dataset.hargaHpp;
+                // Set price based on selected product - handle null safely
+                const hargaValue = selectedOption.harga_hpp || (selectedOption.$option && selectedOption.$option.dataset.hargaHpp);
+                if (hargaValue && hargaValue !== '0' && hargaValue !== 'null') {
+                    const hargaNum = parseFloat(hargaValue);
+                    if (!isNaN(hargaNum) && hargaNum > 0 && !isFreeCheckbox.checked) {
+                        hargaInput.value = hargaNum;
+                    }
                 }
                 
                 // Focus on quantity field for better UX flow
@@ -831,8 +833,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         barangTomSelect.addOption({
                             value: product.id,
                             text: product.text,
-                            harga_hpp: product.harga_hpp,
-                            default_satuan_id: product.default_satuan_id
+                            harga_hpp: product.harga_hpp || 0,
+                            default_satuan_id: product.default_satuan_id || null
                         });
                     });
                 } else if (data && Array.isArray(data.data)) {
@@ -961,7 +963,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            if (!qtyInput.value || parseFloat(qtyInput.value) <= 0) {
+            // Validation with safe parsing
+            const qtyVal = qtyInput.value ? parseFloat(qtyInput.value) : 0;
+            if (!qtyInput.value || isNaN(qtyVal) || qtyVal <= 0) {
                 qtyInput.classList.add('is-invalid');
                 isValid = false;
                 qtyInput.focus();
@@ -976,13 +980,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            if (!isFreeCheckbox.checked && (!hargaInput.value || parseFloat(hargaInput.value) <= 0)) {
-                hargaInput.classList.add('is-invalid');
-                isValid = false;
-                hargaInput.focus();
-                return;
-            } else {
-                hargaInput.classList.remove('is-invalid');
+            if (!isFreeCheckbox.checked) {
+                const hargaVal = hargaInput.value ? parseFloat(hargaInput.value) : 0;
+                if (!hargaInput.value || isNaN(hargaVal) || hargaVal <= 0) {
+                    hargaInput.classList.add('is-invalid');
+                    isValid = false;
+                    hargaInput.focus();
+                    return;
+                } else {
+                    hargaInput.classList.remove('is-invalid');
+                }
             }
             
             if (!isValid) {
@@ -1007,18 +1014,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 300);
             }
             
-            // Get selected values
+            // Get selected values - handle null/empty safely
             const barangId = barangTomSelect.getValue();
-            const barangText = barangTomSelect.getItem(barangId).textContent;
-            const qty = parseFloat(qtyInput.value);
+            const barangItem = barangTomSelect.getItem(barangId);
+            const barangText = barangItem ? barangItem.textContent : '';
+            
+            const qtyValue = qtyInput.value ? parseFloat(qtyInput.value) : 0;
+            const qty = isNaN(qtyValue) || qtyValue <= 0 ? 0 : qtyValue;
+            
             const satuanId = satuanTomSelect.getValue();
-            const satuanText = satuanTomSelect.getItem(satuanId).textContent;
-            const harga = parseFloat(hargaInput.value || 0);
+            const satuanItem = satuanTomSelect.getItem(satuanId);
+            const satuanText = satuanItem ? satuanItem.textContent : '';
+            
+            const hargaValue = hargaInput.value ? parseFloat(hargaInput.value) : 0;
+            const harga = isNaN(hargaValue) ? 0 : hargaValue;
+            
             const isFree = isFreeCheckbox.checked;
             
-            // Get all discount values
-            const diskonPersenValues = diskonPersenInputs.map(input => parseFloat(input.value || 0));
-            const diskonNominalValues = diskonNominalInputs.map(input => parseFloat(input.value || 0));
+            // Get all discount values - handle null/empty/NaN safely
+            const diskonPersenValues = diskonPersenInputs.map(input => {
+                const val = input && input.value ? parseFloat(input.value) : 0;
+                return isNaN(val) ? 0 : val;
+            });
+            const diskonNominalValues = diskonNominalInputs.map(input => {
+                const val = input && input.value ? parseFloat(input.value) : 0;
+                return isNaN(val) ? 0 : val;
+            });
             
             // Calculate subtotal considering all discount levels with 2 decimal precision
             let subtotal = Math.round((qty * harga) * 100) / 100;
@@ -1054,38 +1075,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 discountBadgesHTML = '-';
             }
             
-            // Add row content with improved styling
+            // Add row content with improved styling - NO HIDDEN INPUTS
             newRow.innerHTML = `
                 <td class="ps-4">
                     <p class="fw-medium mb-0">${barangText}</p>
-                    <input type="hidden" name="barang_id[]" value="${barangId}">
                 </td>
                 <td class="text-center">
                     <span class="badge bg-light text-dark rounded-pill px-3 py-2">${qty}</span>
-                    <input type="hidden" name="qty[]" value="${Math.round(qty * 100) / 100}">
                 </td>
                 <td class="text-center">
                     ${satuanText}
-                    <input type="hidden" name="satuan_id[]" value="${satuanId}">
                 </td>
                 <td class="text-end">
                     ${isFree ? '<span class="badge bg-secondary rounded-pill">Free</span>' : `Rp ${formatRupiah(harga)}`}
-                    <input type="hidden" name="harga_hpp[]" value="${Math.round(harga * 100) / 100}">
                 </td>
                 <td class="text-end">
                     ${isFree ? '<span class="badge bg-secondary rounded-pill">Free</span>' : discountBadgesHTML}
-                    <input type="hidden" name="diskon_persen_1[]" value="${diskonPersenValues[0]}">
-                    <input type="hidden" name="diskon_nominal_1[]" value="${diskonNominalValues[0]}">
-                    <input type="hidden" name="diskon_persen_2[]" value="${diskonPersenValues[1]}">
-                    <input type="hidden" name="diskon_nominal_2[]" value="${diskonNominalValues[1]}">
-                    <input type="hidden" name="diskon_persen_3[]" value="${diskonPersenValues[2]}">
-                    <input type="hidden" name="diskon_nominal_3[]" value="${diskonNominalValues[2]}">
-                    <input type="hidden" name="diskon_persen_4[]" value="${diskonPersenValues[3]}">
-                    <input type="hidden" name="diskon_nominal_4[]" value="${diskonNominalValues[3]}">
-                    <input type="hidden" name="diskon_persen_5[]" value="${diskonPersenValues[4]}">
-                    <input type="hidden" name="diskon_nominal_5[]" value="${diskonNominalValues[4]}">
-                    <input type="hidden" name="is_free[]" value="${isFree ? 1 : 0}">
-                    <input type="hidden" name="subtotal[]" value="${Math.round(subtotal * 100) / 100}">
                 </td>
                 <td class="text-end">
                     ${isFree ? '<span class="badge bg-secondary rounded-pill">Free</span>' : `Rp ${formatRupiah(subtotal)}`}
@@ -1104,17 +1109,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 newRow.style.opacity = '1';
             }, 10);
             
-            // Store item in array
+            // Store item in array with ALL data (no hidden inputs needed)
             detailItems.push({
                 id: counter,
-                barangId,
-                qty,
-                satuanId,
-                harga,
-                diskonPersen: diskonPersenValues[0],
-                diskonNominal: diskonNominalValues[0],
-                isFree,
-                subtotal
+                barang_id: barangId ? (isNaN(parseInt(barangId)) ? 0 : parseInt(barangId)) : 0,
+                barangText: barangText || '',
+                qty: qty || 0,
+                satuan_id: satuanId ? (isNaN(parseInt(satuanId)) ? 0 : parseInt(satuanId)) : 0,
+                satuanText: satuanText || '',
+                harga_hpp: harga || 0,
+                diskon_persen_1: diskonPersenValues[0] || 0,
+                diskon_persen_2: diskonPersenValues[1] || 0,
+                diskon_persen_3: diskonPersenValues[2] || 0,
+                diskon_persen_4: diskonPersenValues[3] || 0,
+                diskon_persen_5: diskonPersenValues[4] || 0,
+                diskon_nominal_1: diskonNominalValues[0] || 0,
+                diskon_nominal_2: diskonNominalValues[1] || 0,
+                diskon_nominal_3: diskonNominalValues[2] || 0,
+                diskon_nominal_4: diskonNominalValues[3] || 0,
+                diskon_nominal_5: diskonNominalValues[4] || 0,
+                is_free: isFree ? 1 : 0,
+                subtotal: subtotal || 0,
+                catatan: null
             });
             
             // Increment counter
@@ -1248,26 +1264,171 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Form submission validation
-    formPenerimaan.addEventListener('submit', function(e) {
-        if (detailItems.length === 0) {
+    // Find submit button - try multiple selectors
+    let submitButton = document.querySelector('#formPenerimaan button[type="submit"]');
+    if (!submitButton) {
+        submitButton = formPenerimaan.querySelector('button[type="submit"]');
+    }
+    if (!submitButton) {
+        submitButton = document.querySelector('form button[type="submit"]');
+    }
+    
+    console.log('Submit button found:', !!submitButton);
+    console.log('Form found:', !!formPenerimaan);
+    
+    // AJAX Form submission - Full JSON approach
+    async function handleSubmit(e) {
+        if (e) {
             e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        if (detailItems.length === 0) {
             alert('Mohon tambahkan minimal satu barang sebelum menyimpan.');
-            btnTambahBarang.classList.add('btn-danger');
-            setTimeout(() => {
-                btnTambahBarang.classList.remove('btn-danger');
-                btnTambahBarang.classList.add('btn-primary');
-            }, 1000);
+            if (btnTambahBarang) {
+                btnTambahBarang.classList.add('btn-danger');
+                setTimeout(() => {
+                    btnTambahBarang.classList.remove('btn-danger');
+                    btnTambahBarang.classList.add('btn-primary');
+                }, 1000);
+            }
             return false;
         }
         
-        // Add loading state to submit button
-        const submitButton = this.querySelector('button[type="submit"]');
+        if (!submitButton) {
+            console.error('Submit button not found!');
+            alert('Terjadi kesalahan: Tombol simpan tidak ditemukan.');
+            return false;
+        }
+        
+        const originalButtonText = submitButton.innerHTML;
         submitButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Memproses...';
         submitButton.disabled = true;
         
-        return true;
-    });
+        try {
+            // Step 1: POST /penerimaan/create-header
+            const tanggalJatuhTempoInput = document.getElementById('tanggal_jatuh_tempo');
+            const metodePembayaran = document.getElementById('metode_pembayaran').value;
+            
+            // Handle tanggal_jatuh_tempo - hanya kirim jika metode pembayaran adalah "Jatuh Tempo" dan value ada
+            let tanggalJatuhTempo = null;
+            if (metodePembayaran === 'Jatuh Tempo' && tanggalJatuhTempoInput && tanggalJatuhTempoInput.value) {
+                tanggalJatuhTempo = tanggalJatuhTempoInput.value;
+            }
+            
+            const headerData = {
+                main_category_id: document.getElementById('main_category_id').value,
+                tax_category_id: document.getElementById('tax_category_id').value,
+                kode_penerimaan: document.getElementById('kode_penerimaan').value,
+                nomor_po: document.getElementById('nomor_po').value,
+                tanggal_penerimaan: document.getElementById('tanggal_penerimaan').value,
+                metode_pembayaran: metodePembayaran,
+                tanggal_jatuh_tempo: tanggalJatuhTempo,
+                catatan: (document.getElementById('catatan').value || '').trim() || null
+            };
+            
+            const headerResponse = await fetch('{{ route("penerimaan.create-header") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(headerData)
+            });
+            
+            const headerResult = await headerResponse.json();
+            
+            if (!headerResult.success) {
+                throw new Error(headerResult.message || 'Gagal membuat header penerimaan');
+            }
+            
+            const penerimaanId = headerResult.penerimaan_id;
+            
+            // Step 2: POST /penerimaan/{id}/store-batch-details dengan body JSON { items: detailItems }
+            const detailsData = {
+                items: detailItems.map(item => ({
+                    barang_id: item.barang_id,
+                    qty: item.qty,
+                    satuan_id: item.satuan_id,
+                    harga_hpp: item.harga_hpp,
+                    diskon_persen_1: item.diskon_persen_1,
+                    diskon_persen_2: item.diskon_persen_2,
+                    diskon_persen_3: item.diskon_persen_3,
+                    diskon_persen_4: item.diskon_persen_4,
+                    diskon_persen_5: item.diskon_persen_5,
+                    diskon_nominal_1: item.diskon_nominal_1,
+                    diskon_nominal_2: item.diskon_nominal_2,
+                    diskon_nominal_3: item.diskon_nominal_3,
+                    diskon_nominal_4: item.diskon_nominal_4,
+                    diskon_nominal_5: item.diskon_nominal_5,
+                    is_free: item.is_free,
+                    catatan: item.catatan
+                }))
+            };
+            
+            const detailsResponse = await fetch(`/penerimaan/${penerimaanId}/store-batch-details`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(detailsData)
+            });
+            
+            const detailsResult = await detailsResponse.json();
+            
+            if (!detailsResult.success) {
+                throw new Error(detailsResult.message || 'Gagal menyimpan detail penerimaan');
+            }
+            
+            // Step 3: POST /penerimaan/{id}/finalize
+            const finalizeResponse = await fetch(`/penerimaan/${penerimaanId}/finalize`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({})
+            });
+            
+            const finalizeResult = await finalizeResponse.json();
+            
+            if (!finalizeResult.success) {
+                throw new Error(finalizeResult.message || 'Gagal finalisasi penerimaan');
+            }
+            
+            // Success - redirect
+            window.location.href = '{{ route("penerimaan.index") }}';
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Terjadi kesalahan: ' + error.message);
+            if (submitButton) {
+                submitButton.innerHTML = originalButtonText;
+                submitButton.disabled = false;
+            }
+        }
+    }
+    
+    // Attach event listeners - both submit and click
+    if (formPenerimaan) {
+        formPenerimaan.addEventListener('submit', handleSubmit);
+        console.log('Form submit listener attached');
+    } else {
+        console.error('Form not found!');
+    }
+    
+    if (submitButton) {
+        submitButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Submit button clicked');
+            handleSubmit(e);
+        });
+        console.log('Submit button click listener attached');
+    } else {
+        console.error('Submit button not found! Check selector or button exists in DOM');
+    }
 });
 </script>
 

@@ -11,7 +11,7 @@
                             ($order->platform->name == 'tokopedia' ? 'success' : 
                             ($order->platform->name == 'tiktok' ? 'dark' : 'primary')) 
                         }}">
-                            {{ ucfirst($order->platform->name) }}
+                            {{ $order->platform->name }}
                         </span>
                     @else
                         <span class="text-muted">-</span>

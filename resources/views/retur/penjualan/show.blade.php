@@ -117,21 +117,29 @@
                             <tbody>
                                 @forelse($returPenjualan->details as $index => $detail)
                                 @php
-                                    // Calculate correct price per individual product for paket
+                                    // Use correct retur logic based on mapping quantity
                                     if (!$detail->orderItem) {
                                         $pricePerIndividualProduct = 0;
                                     } else {
-                                        $platformProduct = $detail->orderItem->platformProduct;
+                                        $orderItem = $detail->orderItem;
+                                        $platformProduct = $orderItem->platformProduct;
+                                        
                                         if (!$platformProduct || !$platformProduct->mappingBarang) {
-                                            $pricePerIndividualProduct = $detail->orderItem->price_after_discount;
+                                            // If no mapping, use original price
+                                            $pricePerIndividualProduct = $orderItem->price_after_discount;
                                         } else {
-                                            // Calculate total quantity in the package
-                                            $totalPackageQty = $platformProduct->mappingBarang->sum('quantity');
+                                            // Calculate total quantity in the package from mapping
+                                            $totalPackageQty = $platformProduct->mappingBarang
+                                                ->where('is_active', true)
+                                                ->sum('quantity');
                                             
-                                            // Calculate price per individual product
-                                            $pricePerIndividualProduct = $totalPackageQty > 0 ? 
-                                                $detail->orderItem->price_after_discount / $totalPackageQty : 
-                                                $detail->orderItem->price_after_discount;
+                                            if ($totalPackageQty > 1) {
+                                                // If package contains more than 1 item, divide the price
+                                                $pricePerIndividualProduct = $orderItem->price_after_discount / $totalPackageQty;
+                                            } else {
+                                                // If package contains only 1 item, use original price
+                                                $pricePerIndividualProduct = $orderItem->price_after_discount;
+                                            }
                                         }
                                     }
                                     
@@ -140,12 +148,12 @@
                                 <tr>
                                     <td>{{ $index + 1 }}</td>
                                     <td>
-                                        <strong>{{ $detail->platformProduct->platform_product_name ?? $detail->product->name ?? 'Produk tidak ditemukan' }}</strong>
+                                        <strong>{{ $detail->product->name ?? 'Produk tidak ditemukan' }}</strong>
                                         @if($detail->product && $detail->product->sku)
                                         <br><small class="text-muted">SKU: {{ $detail->product->sku }}</small>
                                         @endif
                                     </td>
-                                    <td class="text-center">{{ number_format($detail->qty, 0) }}</td>
+                                    <td class="text-center">{{ number_format($detail->qty, 2) }}</td>
                                     <td class="text-right">Rp {{ number_format($pricePerIndividualProduct, 0, ',', '.') }}</td>
                                     <td class="text-right">Rp {{ number_format($totalHargaDetail, 0, ',', '.') }}</td>
                                     <td>

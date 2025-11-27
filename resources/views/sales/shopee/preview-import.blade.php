@@ -36,6 +36,16 @@
     </div>
 @endif
 
+@if(session('info'))
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <h5 class="alert-heading d-flex align-items-center">
+            <i class="fas fa-info-circle me-2"></i> Informasi
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <p class="mb-0">{{ session('info') }}</p>
+    </div>
+@endif
+
 
 <div class="container-fluid">
     <div class="row justify-content-center">
@@ -109,7 +119,7 @@
                                             </div>
                                             <div>
                                                 <p class="mb-0 small text-muted">Order Duplikat</p>
-                                                <h5 class="mb-0 fw-bold">{{ isset($duplicateOrdersInFile) ? count($duplicateOrdersInFile) : 0 }}</h5>
+                                                <h5 class="mb-0 fw-bold">{{ isset($duplicateOrdersInFile) && is_array($duplicateOrdersInFile) ? count($duplicateOrdersInFile) : 0 }}</h5>
                                             </div>
                                         </div>
                                     </div>
@@ -161,7 +171,7 @@
                     @endif
                     
                     {{-- Alert untuk informasi No Order duplikat dalam file --}}
-                    @if(isset($duplicateOrdersInFile) && count($duplicateOrdersInFile) > 0)
+                    @if(isset($duplicateOrdersInFile) && is_array($duplicateOrdersInFile) && count($duplicateOrdersInFile) > 0)
                         <div class="alert alert-warning alert-dismissible fade show" role="alert">
                             <h5 class="alert-heading d-flex align-items-center">
                                 <i class="fas fa-copy me-2"></i> Order Duplikat dalam File:
@@ -181,7 +191,7 @@
                     @endif
                     
                     {{-- Alert untuk informasi No Order duplikat di database --}}
-                    @if(isset($duplicateOrdersInDatabase) && count($duplicateOrdersInDatabase) > 0)
+                    @if(isset($duplicateOrdersInDatabase) && is_array($duplicateOrdersInDatabase) && count($duplicateOrdersInDatabase) > 0)
                         <div class="alert alert-warning alert-dismissible fade show" role="alert">
                             <h5 class="alert-heading d-flex align-items-center">
                                 <i class="fas fa-exclamation-triangle me-2"></i> Order Duplikat di Database:
@@ -293,22 +303,24 @@
                     @if(isset($insufficientStockProducts) && count($insufficientStockProducts) > 0)
                         <div class="alert alert-danger alert-dismissible fade show" role="alert">
                             <h5 class="alert-heading d-flex align-items-center">
-                                <i class="fas fa-exclamation-triangle me-2"></i> Stok Tidak Mencukupi!
+                                <i class="fas fa-times-circle me-2"></i> ❌ ERROR: Stok Tidak Mencukupi!
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            <p><strong>Beberapa produk memiliki stok yang tidak mencukupi dan tidak bisa dilanjutkan:</strong></p>
+                            <p><strong>Import tidak dapat dilanjutkan karena beberapa produk memiliki stok yang tidak mencukupi:</strong></p>
                             <p class="text-danger mb-3">
                                 <i class="fas fa-exclamation-circle me-1"></i>
-                                <strong>Contoh:</strong> Barang ini QTY 100, diperlukan 102, tidak bisa dilanjutkan
+                                <strong>Silakan tambahkan stok terlebih dahulu sebelum melanjutkan import.</strong>
                             </p>
-                            <div class="table-responsive">
+                            
+                            <div class="table-responsive mb-3">
                                 <table class="table table-sm table-bordered">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Nama Produk</th>
-                                            <th class="text-center">Dibutuhkan</th>
-                                            <th class="text-center">Tersedia</th>
+                                            <th class="text-center">Total Dibutuhkan</th>
+                                            <th class="text-center">Stok Tersedia</th>
                                             <th class="text-center">Kekurangan</th>
+                                            <th class="text-center">Pesanan Terpengaruh</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -316,25 +328,72 @@
                                             <tr>
                                                 <td>
                                                     <strong>{{ $product['product_name'] }}</strong>
-                                                    @if(isset($product['platform_product_name']))
-                                                        <br><small class="text-muted">Platform: {{ $product['platform_product_name'] }}</small>
-                                                    @endif
                                                 </td>
                                                 <td class="text-center">
-                                                    <span class="badge bg-danger">{{ $product['required_qty'] }}</span>
+                                                    <span class="badge bg-warning">{{ number_format($product['total_required'] ?? $product['required_qty'] ?? 0, 0) }}</span>
                                                 </td>
                                                 <td class="text-center">
-                                                    <span class="badge bg-warning text-dark">{{ $product['available_qty'] }}</span>
+                                                    <span class="badge bg-info">{{ number_format($product['available_qty'] ?? 0, 0) }}</span>
                                                 </td>
                                                 <td class="text-center">
-                                                    <span class="badge bg-danger">{{ $product['required_qty'] - $product['available_qty'] }}</span>
-                                                    <br><small class="text-danger">Kekurangan</small>
+                                                    <span class="badge bg-danger">{{ number_format(($product['total_required'] ?? $product['required_qty'] ?? 0) - ($product['available_qty'] ?? 0), 0) }}</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-secondary">{{ count($product['affected_orders'] ?? $product['orders_affected'] ?? []) }} pesanan</span>
                                                 </td>
                                             </tr>
                                         @endforeach
                                     </tbody>
                                 </table>
                             </div>
+
+                            @if(isset($ordersWithStockIssues) && count($ordersWithStockIssues) > 0)
+                                <div class="mt-3">
+                                    <h6 class="text-danger mb-2">
+                                        <i class="fas fa-list me-1"></i> Detail Pesanan yang Akan Gagal:
+                                    </h6>
+                                    <div class="accordion" id="stockIssuesAccordion">
+                                        @foreach($ordersWithStockIssues as $orderNumber => $issues)
+                                            <div class="accordion-item">
+                                                <h2 class="accordion-header" id="heading{{ $loop->index }}">
+                                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                                            data-bs-target="#collapse{{ $loop->index }}" aria-expanded="false" 
+                                                            aria-controls="collapse{{ $loop->index }}">
+                                                        <i class="fas fa-shopping-cart me-2"></i>
+                                                        <strong>Order: {{ $orderNumber }}</strong>
+                                                        <span class="badge bg-danger ms-2">{{ count($issues) }} produk bermasalah</span>
+                                                    </button>
+                                                </h2>
+                                                <div id="collapse{{ $loop->index }}" class="accordion-collapse collapse" 
+                                                     aria-labelledby="heading{{ $loop->index }}" data-bs-parent="#stockIssuesAccordion">
+                                                    <div class="accordion-body">
+                                                        <table class="table table-sm table-bordered mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Produk</th>
+                                                                    <th class="text-center">Dibutuhkan</th>
+                                                                    <th class="text-center">Tersedia</th>
+                                                                    <th class="text-center">Kekurangan</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach($issues as $issue)
+                                                                    <tr>
+                                                                        <td>{{ $issue['product_name'] }}</td>
+                                                                        <td class="text-center">{{ number_format($issue['required_qty'], 0) }}</td>
+                                                                        <td class="text-center">{{ number_format($issue['available_qty'], 0) }}</td>
+                                                                        <td class="text-center text-danger fw-bold">{{ number_format($issue['shortage'], 0) }}</td>
+                                                                    </tr>
+                                                                @endforeach
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
                         </div>
                     @endif
 
@@ -590,7 +649,7 @@
                                                 <li><strong>Data tidak valid:</strong> {{ count($invalidData) }} baris memiliki format yang salah</li>
                                             @endif
                                             @if(!empty($insufficientStockProducts))
-                                                <li><strong>Stok tidak mencukupi:</strong> {{ count($insufficientStockProducts) }} produk kekurangan stok (tidak bisa dilanjutkan)</li>
+                                                <li><strong>❌ Stok tidak mencukupi:</strong> {{ count($insufficientStockProducts) }} produk kekurangan stok (TIDAK BISA DILANJUTKAN)</li>
                                             @endif
                                             @if(!empty($unmappedProducts))
                                                 <li><strong>Mapping produk:</strong> {{ count($unmappedProducts) }} produk belum di-mapping</li>

@@ -89,41 +89,24 @@
                 <div class="card-body">
                     <h5 class="card-title">Status Breakdown</h5>
                     <div class="d-flex justify-content-between">
-                        @php
-                            $paidCount = 0;
-                            $partialCount = 0;
-                            $pendingCount = 0;
-                            $cancelledCount = 0;
-                            
-                            foreach ($offlineSales as $sale) {
-                                if ($sale->status == 'cancelled') {
-                                    $cancelledCount++;
-                                } else {
-                                    $paymentStatus = $sale->getPaymentStatus();
-                                    if ($paymentStatus == 'paid') {
-                                        $paidCount++;
-                                    } elseif ($paymentStatus == 'partial') {
-                                        $partialCount++;
-                                    } else {
-                                        $pendingCount++;
-                                    }
-                                }
-                            }
-                        @endphp
                         <div class="text-center">
-                            <div class="h6">{{ $paidCount }}</div>
+                            <div class="h6">{{ $summary['status_breakdown']['paid'] }}</div>
                             <small>Lunas</small>
                         </div>
                         <div class="text-center">
-                            <div class="h6">{{ $partialCount }}</div>
+                            <div class="h6">{{ $summary['status_breakdown']['partial'] }}</div>
                             <small>Sebagian</small>
                         </div>
                         <div class="text-center">
-                            <div class="h6">{{ $pendingCount }}</div>
+                            <div class="h6">{{ $summary['status_breakdown']['pending'] }}</div>
                             <small>Pending</small>
                         </div>
                         <div class="text-center">
-                            <div class="h6">{{ $cancelledCount }}</div>
+                            <div class="h6">{{ $summary['status_breakdown']['retur'] }}</div>
+                            <small>Retur</small>
+                        </div>
+                        <div class="text-center">
+                            <div class="h6">{{ $summary['status_breakdown']['cancelled'] }}</div>
                             <small>Batal</small>
                         </div>
                     </div>
@@ -156,13 +139,25 @@
                             <td>{{ $sale->surat_jalan_number }}</td>
                             <td>{{ $sale->No_PO ?? '-' }}</td>
                             <td>{{ $sale->customer_name }}</td>
-                            <td>{{ number_format(\App\Helpers\NumberFormatter::roundToTwoDecimals($sale->tax_amount > 0 ? $sale->total_amount : $sale->subtotal), 0, ',', '.') }}</td>
+                            <td>
+                                @php
+                                    $hasReturFull = $sale->hasReturFull();
+                                @endphp
+                                @if ($hasReturFull)
+                                    0
+                                @else
+                                    {{ number_format(\App\Helpers\NumberFormatter::roundToTwoDecimals($sale->tax_amount > 0 ? $sale->total_amount : $sale->subtotal), 0, ',', '.') }}
+                                @endif
+                            </td>
                             <td>
                                 @php
                                     $paymentStatus = $sale->getPaymentStatus();
+                                    $hasRetur = $sale->hasReturns();
                                 @endphp
                                 @if ($sale->status == 'cancelled')
                                     <span class="badge bg-danger">Dibatalkan</span>
+                                @elseif ($hasRetur)
+                                    <span class="badge bg-secondary">Retur</span>
                                 @elseif ($paymentStatus == 'paid')
                                     <span class="badge bg-success">Lunas</span>
                                 @elseif ($paymentStatus == 'partial')
@@ -190,11 +185,32 @@
                     </tbody>
                 </table>
             </div>
-            
-            <div class="d-flex justify-content-center mt-4">
-                {{ $offlineSales->links() }}
+        </div>
+        
+        @if($offlineSales->hasPages())
+        <div class="card-footer bg-white border-top">
+            <div class="row align-items-center">
+                <div class="col-md-6 mb-2 mb-md-0">
+                    <div class="small text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Menampilkan <strong>{{ $offlineSales->firstItem() }}</strong> - <strong>{{ $offlineSales->lastItem() }}</strong> dari <strong>{{ $offlineSales->total() }}</strong> data
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex justify-content-md-end justify-content-center">
+                        {{ $offlineSales->appends(request()->query())->links('pagination.clean') }}
+                    </div>
+                </div>
             </div>
         </div>
+        @else
+        <div class="card-footer bg-white border-top">
+            <div class="small text-muted text-center">
+                <i class="fas fa-info-circle me-1"></i>
+                Menampilkan <strong>{{ $offlineSales->count() }}</strong> dari <strong>{{ $offlineSales->total() }}</strong> data
+            </div>
+        </div>
+        @endif
     </div>
 </div>
 @endsection

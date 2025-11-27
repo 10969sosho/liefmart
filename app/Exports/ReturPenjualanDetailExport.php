@@ -80,6 +80,7 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
             'Nomor Order',
             'No. Resi',
             'Platform',
+            'Tanggal Penjualan',
             'Tanggal Retur',
             'Status',
             'User',
@@ -104,22 +105,29 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
             $returTotalHarga = 0;
             
             foreach ($retur->details as $detail) {
-                // Calculate correct price per individual product for paket
+                // Calculate correct price per individual product using mapping quantity
                 if (!$detail->orderItem) {
                     $harga = 0;
                 } else {
-                    $platformProduct = $detail->orderItem->platformProduct;
-                    if (!$platformProduct || !$platformProduct->mappingBarang || $platformProduct->mappingBarang->isEmpty()) {
-                        // Non-paket product: use original price
-                        $harga = $detail->orderItem->price_after_discount;
+                    $orderItem = $detail->orderItem;
+                    $platformProduct = $orderItem->platformProduct;
+                    
+                    if (!$platformProduct || !$platformProduct->mappingBarang) {
+                        // If no mapping, use original price
+                        $harga = $orderItem->price_after_discount;
                     } else {
-                        // Paket product: calculate total quantity in the package
-                        $totalPackageQty = $platformProduct->mappingBarang->sum('quantity');
+                        // Calculate total quantity in the package from mapping
+                        $totalPackageQty = $platformProduct->mappingBarang
+                            ->where('is_active', true)
+                            ->sum('quantity');
                         
-                        // Calculate price per individual product
-                        $harga = $totalPackageQty > 0 ? 
-                            $detail->orderItem->price_after_discount / $totalPackageQty : 
-                            $detail->orderItem->price_after_discount;
+                        if ($totalPackageQty > 1) {
+                            // If package contains more than 1 item, divide the price
+                            $harga = $orderItem->price_after_discount / $totalPackageQty;
+                        } else {
+                            // If package contains only 1 item, use original price
+                            $harga = $orderItem->price_after_discount;
+                        }
                     }
                 }
                 
@@ -130,9 +138,10 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
             return [
                 'RETUR PENJUALAN',
                 $retur->kode_retur,
-                (string)$retur->order->order_number,
-                (string)$resi,
+                $this->formatOrderNumber($retur->order->order_number),
+                $this->formatOrderNumber($resi),
                 $retur->order->platform->name ?? '-',
+                $retur->order->tanggal ? $retur->order->tanggal->format('d/m/Y') : '-',
                 $retur->tanggal_retur ? $retur->tanggal_retur->format('d/m/Y') : '-',
                 Str::ucfirst($retur->status),
                 $retur->user->name,
@@ -149,22 +158,29 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
             $detail = $row['detail'];
             $resi = $retur->order->resi ?? ($retur->order->no_resi ?? '-');
             
-            // Calculate correct price per individual product for paket
+            // Calculate correct price per individual product using mapping quantity
             if (!$detail->orderItem) {
                 $harga = 0;
             } else {
-                $platformProduct = $detail->orderItem->platformProduct;
-                if (!$platformProduct || !$platformProduct->mappingBarang || $platformProduct->mappingBarang->isEmpty()) {
-                    // Non-paket product: use original price
-                    $harga = $detail->orderItem->price_after_discount;
+                $orderItem = $detail->orderItem;
+                $platformProduct = $orderItem->platformProduct;
+                
+                if (!$platformProduct || !$platformProduct->mappingBarang) {
+                    // If no mapping, use original price
+                    $harga = $orderItem->price_after_discount;
                 } else {
-                    // Paket product: calculate total quantity in the package
-                    $totalPackageQty = $platformProduct->mappingBarang->sum('quantity');
+                    // Calculate total quantity in the package from mapping
+                    $totalPackageQty = $platformProduct->mappingBarang
+                        ->where('is_active', true)
+                        ->sum('quantity');
                     
-                    // Calculate price per individual product
-                    $harga = $totalPackageQty > 0 ? 
-                        $detail->orderItem->price_after_discount / $totalPackageQty : 
-                        $detail->orderItem->price_after_discount;
+                    if ($totalPackageQty > 1) {
+                        // If package contains more than 1 item, divide the price
+                        $harga = $orderItem->price_after_discount / $totalPackageQty;
+                    } else {
+                        // If package contains only 1 item, use original price
+                        $harga = $orderItem->price_after_discount;
+                    }
                 }
             }
             
@@ -176,9 +192,10 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
             return [
                 $this->getCounter(),
                 $retur->kode_retur,
-                (string)$retur->order->order_number,
-                (string)$resi,
+                $this->formatOrderNumber($retur->order->order_number),
+                $this->formatOrderNumber($resi),
                 $retur->order->platform->name ?? '-',
+                $retur->order->tanggal ? $retur->order->tanggal->format('d/m/Y') : '-',
                 $retur->tanggal_retur ? $retur->tanggal_retur->format('d/m/Y') : '-',
                 Str::ucfirst($retur->status),
                 $retur->user->name,
@@ -192,7 +209,7 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
             ];
         } else {
             // Spacer row
-            return array_fill(0, 15, '');
+            return array_fill(0, 16, '');
         }
     }
 
@@ -201,6 +218,26 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
     private function getCounter()
     {
         return $this->counter++;
+    }
+
+    /**
+     * Format order number to prevent scientific notation in Excel
+     */
+    private function formatOrderNumber($orderNumber)
+    {
+        if (empty($orderNumber)) {
+            return '-';
+        }
+        
+        // Convert to string and add prefix to force text format
+        $formatted = (string)$orderNumber;
+        
+        // For very long numbers (like TikTok), ensure they're treated as text
+        if (strlen($formatted) > 15) {
+            return "'" . $formatted;
+        }
+        
+        return $formatted;
     }
 
     public function styles(Worksheet $sheet)
@@ -218,7 +255,7 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
                 ]
             ],
             // Apply borders to all cells
-            'A1:O1000' => [
+            'A1:P1000' => [
                 'borders' => [
                     'allBorders' => [
                         'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
@@ -258,9 +295,10 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
     public function columnFormats(): array
     {
         return [
-            'B' => \PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, // Nomor Order as text
-            'C' => \PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, // No. Resi as text
-            'K:O' => '#,##0.00', // Format currency columns
+            'B' => \PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, // Kode Retur as text
+            'C' => \PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, // Nomor Order as text
+            'D' => \PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, // No. Resi as text
+            'M:Q' => '#,##0.00', // Format currency columns
         ];
     }
 
@@ -269,9 +307,17 @@ class ReturPenjualanDetailExport implements FromCollection, WithHeadings, WithMa
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 // Auto-adjust column widths
-                foreach (range('A', 'O') as $column) {
+                foreach (range('A', 'P') as $column) {
                     $event->sheet->getColumnDimension($column)->setAutoSize(true);
                 }
+                
+                // Force text format for order numbers and resi numbers
+                $event->sheet->getStyle('C:C')->getNumberFormat()->setFormatCode(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT);
+                $event->sheet->getStyle('D:D')->getNumberFormat()->setFormatCode(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT);
+                
+                // Set column width for order numbers to prevent truncation
+                $event->sheet->getColumnDimension('C')->setWidth(20);
+                $event->sheet->getColumnDimension('D')->setWidth(20);
             },
         ];
     }

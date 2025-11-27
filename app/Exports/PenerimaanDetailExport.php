@@ -260,30 +260,6 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
             ]
         ];
 
-        // Style header rows for each PO with green background
-        $row = 2;
-        foreach ($this->data as $item) {
-            if ($item['type'] === 'header') {
-                $styles[$row] = [
-                    'font' => [
-                        'bold' => true,
-                        'color' => ['rgb' => '000000']
-                    ],
-                    'fill' => [
-                        'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                        'startColor' => ['rgb' => '00FF00'] // Bright green
-                    ],
-                    'borders' => [
-                        'allBorders' => [
-                            'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
-                            'color' => ['rgb' => '000000']
-                        ]
-                    ]
-                ];
-            }
-            $row++;
-        }
-
         return $styles;
     }
 
@@ -311,14 +287,34 @@ class PenerimaanDetailExport implements FromCollection, WithHeadings, WithMappin
                     $sheet->getColumnDimension($column)->setAutoSize(true);
                 }
 
-                // Pastikan baris header per-PO menampilkan total tanpa desimal di kolom I
-                $row = 2;
-                foreach ($this->data as $item) {
-                    if ($item['type'] === 'header') {
+                // Find and apply green background to header rows (PENERIMAAN BARANG rows)
+                // Search through all rows to find rows containing "PENERIMAAN BARANG" in column A
+                $highestRow = $sheet->getHighestRow();
+                for ($row = 2; $row <= $highestRow; $row++) {
+                    $cellValue = $sheet->getCell('A' . $row)->getValue();
+                    if ($cellValue === 'PENERIMAAN BARANG') {
+                        // Apply green styling to entire header row (all columns A to O)
+                        $sheet->getStyle('A' . $row . ':O' . $row)->applyFromArray([
+                            'fill' => [
+                                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                'startColor' => ['rgb' => '00FF00'] // Bright green
+                            ],
+                            'font' => [
+                                'bold' => true,
+                                'color' => ['rgb' => '000000']
+                            ],
+                            'borders' => [
+                                'allBorders' => [
+                                    'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                                    'color' => ['rgb' => '000000']
+                                ]
+                            ]
+                        ]);
+                        
+                        // Pastikan baris header per-PO menampilkan total tanpa desimal di kolom I
                         $sheet->getDelegate()->getStyle('I' . $row)
                             ->getNumberFormat()->setFormatCode('"Rp" #,##0');
                     }
-                    $row++;
                 }
             },
         ];

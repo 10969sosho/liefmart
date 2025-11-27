@@ -452,7 +452,13 @@
                             display: true,
                             text: 'Total Value (Rp)'
                         },
-                        beginAtZero: true
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value, index, values) {
+                                // Format angka dengan titik sebagai pemisah ribuan
+                                return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                            }
+                        }
                     },
                     'y-quantity': {
                         type: 'linear',
@@ -464,6 +470,12 @@
                         beginAtZero: true,
                         grid: {
                             display: false
+                        },
+                        ticks: {
+                            callback: function(value, index, values) {
+                                // Format angka dengan titik sebagai pemisah ribuan
+                                return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                            }
                         }
                     }
                 },

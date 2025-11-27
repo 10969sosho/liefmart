@@ -58,21 +58,8 @@ class InvoiceSequence extends Model
         
         // Menggunakan transaksi database untuk memastikan counter tidak duplikat
         $counter = DB::transaction(function() use ($yearMonth, $category, $salesType, $taxStatus) {
-            // Dapatkan atau buat record counter untuk kombinasi spesifik
-            $sequenceCounter = self::lockForUpdate()->firstOrCreate(
-                [
-                    'year_month' => $yearMonth,
-                    'category_type' => $category,
-                    'sales_type' => $salesType,
-                    'tax_status' => $taxStatus
-                ],
-                [
-                    'counter' => 0,
-                    'last_updated' => now()
-                ]
-            );
-            
             // SMART INVOICE SEQUENCE - Ambil semua nomor invoice dari SEMUA tabel untuk bulan/kategori/tipe/status ini
+            // HARUS dilakukan SEBELUM lock untuk memastikan konsistensi
             $suffix = '';
             if ($category === self::CATEGORY_KOPI) {
                 if ($salesType === self::SALES_ONLINE) {
@@ -122,31 +109,88 @@ class InvoiceSequence extends Model
                 // Table might not exist
             }
             
+            // Finance Offline (OFFLINE sales) - PENTING: Cek invoice offline untuk mencegah duplikat
+            if ($salesType === self::SALES_OFFLINE) {
+                try {
+                    $offlineInvoices = \App\Models\FinanceOffline::withoutGlobalScopes()
+                        ->where('invoice_number', 'like', $pattern)
+                        ->pluck('invoice_number');
+                    $existingInvoices = $existingInvoices->concat($offlineInvoices);
+                } catch (\Exception $e) {
+                    // Table might not exist
+                    \Log::warning("Error querying finance_offline table: " . $e->getMessage());
+                }
+            }
+            
             // Extract nomor counter dari invoice numbers
+            // Untuk OFFLINE: format adalah 0001 (4 digit), untuk ONLINE: format adalah 000001 (6 digit)
+            $counterLength = ($salesType === self::SALES_OFFLINE) ? 4 : 6;
             $existing = $existingInvoices
-                ->map(fn($v) => intval(substr($v, 0, 6)))
+                ->map(function($v) use ($counterLength) {
+                    // Ambil bagian counter dari invoice number (sebelum slash pertama)
+                    $parts = explode('/', $v);
+                    if (isset($parts[0])) {
+                        return intval($parts[0]);
+                    }
+                    // Fallback: ambil dari substring jika format tidak sesuai
+                    return intval(substr($v, 0, $counterLength));
+                })
                 ->unique()
                 ->sort()
                 ->values();
             
+            // Sekarang LOCK tabel sequence untuk mencegah race condition
+            $sequenceCounter = self::lockForUpdate()
+                ->where('year_month', $yearMonth)
+                ->where('category_type', $category)
+                ->where('sales_type', $salesType)
+                ->where('tax_status', $taxStatus)
+                ->first();
+            
+            if (!$sequenceCounter) {
+                $sequenceCounter = new self([
+                    'year_month' => $yearMonth,
+                    'category_type' => $category,
+                    'sales_type' => $salesType,
+                    'tax_status' => $taxStatus,
+                    'counter' => 0,
+                    'last_updated' => now()
+                ]);
+                $sequenceCounter->save();
+            }
+            
+            // Ambil counter saat ini dari database (setelah lock untuk mencegah race condition)
+            $currentCounter = $sequenceCounter->counter ?? 0;
+            
+            // Hitung counter berikutnya
             if ($existing->isEmpty()) {
-                // Jika tidak ada data sama sekali → mulai dari 1
-                $nextCounter = 1;
+                // Jika tidak ada invoice yang ada → mulai dari 1 atau currentCounter + 1
+                $nextCounter = max(1, $currentCounter + 1);
             } else {
-                // Cari nomor terkecil yang hilang (untuk gap filling)
+                // Ambil nilai maksimum dari existing invoices
+                $maxFromExisting = $existing->max();
+                
+                // Gunakan nilai terbesar antara counter di DB atau max existing, lalu increment
+                // Ini memastikan tidak ada duplikat meskipun ada gap
+                $nextCounter = max($currentCounter, $maxFromExisting) + 1;
+                
+                // Optional: Cek gap untuk isi nomor yang hilang (tapi skip untuk sekarang karena bisa kompleks)
+                // Jika ingin mengisi gap, bisa diaktifkan kode di bawah:
+                /*
                 $expected = 1;
                 foreach ($existing as $num) {
-                    if ($num != $expected) break;
+                    if ($num != $expected) {
+                        // Ada gap, gunakan nomor gap
+                        $nextCounter = $expected;
+                        break;
+                    }
                     $expected++;
                 }
-                
-                // Kalau ada gap, isi gap dulu
-                if ($expected <= $existing->max()) {
-                    $nextCounter = $expected;
-                } else {
-                    // Kalau tidak ada gap, lanjut dari nomor terakhir
-                    $nextCounter = $existing->max() + 1;
+                if ($expected > $existing->max()) {
+                    // Tidak ada gap, increment dari max
+                    $nextCounter = $maxFromExisting + 1;
                 }
+                */
             }
             
             // Update counter di tabel sequence agar sinkron

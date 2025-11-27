@@ -7,8 +7,8 @@
     <!-- Page Header -->
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
-            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ ucfirst($platform) }}</h1>
-            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ ucfirst($platform) }}</p>
+            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platform }}</h1>
+            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platform }}</p>
         </div>
         <div class="col-md-6 text-end">
             <div class="btn-group shadow-sm" role="group">
@@ -29,6 +29,12 @@
                         <li><a class="dropdown-item" href="{{ route('finance.tiktok.export.excel', request()->all()) }}"><i class="far fa-file-excel me-2"></i>Excel</a></li>
                     </ul>
                 </div>
+                <form action="{{ route('finance.tiktok.sync-order-dates') }}" method="POST" class="d-inline-block">
+                    @csrf
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('Apakah Anda yakin ingin menyinkronkan tanggal order untuk semua transaksi TikTok?')">
+                        <i class="fas fa-sync me-1"></i> Sync Tanggal Order
+                    </button>
+                </form>
             </div>
         </div>
     </div>

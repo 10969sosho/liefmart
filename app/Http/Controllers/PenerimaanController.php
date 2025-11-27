@@ -9,6 +9,7 @@ use App\Models\PenerimaanDetail;
 use App\Models\Product;
 use App\Models\Satuan;
 use App\Models\TaxCategory;
+use App\Models\WarehouseStock;
 use App\Helpers\NumberFormatter;
 use App\Exports\PenerimaanExport;
 use App\Exports\PenerimaanDetailExport;
@@ -176,6 +177,16 @@ class PenerimaanController extends Controller
      */
     public function store(Request $request)
     {
+        // Log jumlah items yang diterima untuk debugging max_input_vars issue
+        \Log::info('Penerimaan Store - Items received:', [
+            'barang_id_count' => is_array($request->barang_id) ? count($request->barang_id) : 0,
+            'qty_count' => is_array($request->qty) ? count($request->qty) : 0,
+            'satuan_id_count' => is_array($request->satuan_id) ? count($request->satuan_id) : 0,
+            'harga_hpp_count' => is_array($request->harga_hpp) ? count($request->harga_hpp) : 0,
+            'max_input_vars' => ini_get('max_input_vars'),
+            'kode_penerimaan' => $request->kode_penerimaan,
+        ]);
+        
         // Validasi request
         $request->validate([
             'main_category_id' => 'required',
@@ -349,6 +360,16 @@ class PenerimaanController extends Controller
                 ->with('error', 'Anda tidak memiliki izin untuk mengedit data penerimaan.');
         }
 
+        // Log jumlah items yang diterima untuk debugging max_input_vars issue
+        \Log::info('Penerimaan Update - Items received:', [
+            'penerimaan_id' => $id,
+            'barang_id_count' => is_array($request->barang_id) ? count($request->barang_id) : 0,
+            'qty_count' => is_array($request->qty) ? count($request->qty) : 0,
+            'satuan_id_count' => is_array($request->satuan_id) ? count($request->satuan_id) : 0,
+            'harga_hpp_count' => is_array($request->harga_hpp) ? count($request->harga_hpp) : 0,
+            'max_input_vars' => ini_get('max_input_vars'),
+        ]);
+        
         // Validasi request
         $request->validate([
             'main_category_id' => 'required',
@@ -525,6 +546,366 @@ class PenerimaanController extends Controller
         ])->findOrFail($id);
 
         return view('penerimaan.print', compact('penerimaan'));
+    }
+
+    /**
+     * Create header penerimaan (AJAX)
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function createHeader(Request $request)
+    {
+        $request->validate([
+            'main_category_id' => 'required',
+            'tax_category_id' => 'required',
+            'kode_penerimaan' => 'required|unique:penerimaan,kode_penerimaan',
+            'nomor_po' => 'required',
+            'tanggal_penerimaan' => 'required|date',
+            'metode_pembayaran' => 'required|in:Cash,Jatuh Tempo',
+            'tanggal_jatuh_tempo' => 'required_if:metode_pembayaran,Jatuh Tempo|nullable|date',
+        ]);
+
+        try {
+            $penerimaan = Penerimaan::create([
+                'kode_penerimaan' => $request->kode_penerimaan,
+                'main_category_id' => $request->main_category_id,
+                'tax_category_id' => $request->tax_category_id,
+                'nomor_po' => $request->nomor_po,
+                'tanggal_penerimaan' => $request->tanggal_penerimaan,
+                'metode_pembayaran' => $request->metode_pembayaran,
+                'tanggal_jatuh_tempo' => $request->metode_pembayaran == 'Jatuh Tempo' ? $request->tanggal_jatuh_tempo : null,
+                'total_harga' => 0,
+                'status' => 'Unlocated',
+                'catatan' => $request->catatan,
+                'lokasi_id' => 1,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'penerimaan_id' => $penerimaan->id,
+                'message' => 'Header penerimaan berhasil dibuat'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Store batch details (AJAX)
+     * 
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function storeBatchDetails(Request $request, $id)
+    {
+        $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.barang_id' => 'required|exists:products,id',
+            'items.*.qty' => 'required|numeric|min:0.01',
+            'items.*.satuan_id' => 'required|exists:satuans,id',
+            'items.*.harga_hpp' => 'required|numeric|min:0',
+            'items.*.diskon_persen_1' => 'nullable|numeric|min:0|max:100',
+            'items.*.diskon_persen_2' => 'nullable|numeric|min:0|max:100',
+            'items.*.diskon_persen_3' => 'nullable|numeric|min:0|max:100',
+            'items.*.diskon_persen_4' => 'nullable|numeric|min:0|max:100',
+            'items.*.diskon_persen_5' => 'nullable|numeric|min:0|max:100',
+            'items.*.diskon_nominal_1' => 'nullable|numeric|min:0',
+            'items.*.diskon_nominal_2' => 'nullable|numeric|min:0',
+            'items.*.diskon_nominal_3' => 'nullable|numeric|min:0',
+            'items.*.diskon_nominal_4' => 'nullable|numeric|min:0',
+            'items.*.diskon_nominal_5' => 'nullable|numeric|min:0',
+            'items.*.is_free' => 'nullable|boolean',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $penerimaan = Penerimaan::findOrFail($id);
+
+            // Get all detail IDs that will be deleted
+            $detailIds = PenerimaanDetail::where('penerimaan_id', $penerimaan->id)
+                ->pluck('id')
+                ->toArray();
+
+            // Set penerimaan_detail_id to NULL in warehouse_stock before deleting details
+            // This prevents foreign key constraint violation
+            if (!empty($detailIds)) {
+                WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)
+                    ->update(['penerimaan_detail_id' => null]);
+            }
+
+            // Hapus detail lama jika ada (untuk create dan edit - clear-details sudah dipanggil sebelumnya untuk edit tapi untuk safety tetap hapus)
+            PenerimaanDetail::where('penerimaan_id', $penerimaan->id)->delete();
+
+            $savedCount = 0;
+            foreach ($request->items as $detail) {
+                $isFree = isset($detail['is_free']) && $detail['is_free'] == 1;
+                $harga = $isFree ? 0 : NumberFormatter::formatDecimal($detail['harga_hpp']);
+
+                $subtotal = 0;
+                if (!$isFree) {
+                    $qty = NumberFormatter::formatDecimal($detail['qty']);
+                    $subtotal = NumberFormatter::multiplyDecimal($qty, $harga);
+
+                    // Hitung diskon bertingkat (cascading discounts)
+                    for ($i = 1; $i <= 5; $i++) {
+                        $diskonPersen = isset($detail["diskon_persen_$i"]) ? NumberFormatter::formatDecimal($detail["diskon_persen_$i"]) : 0;
+                        $diskonNominal = isset($detail["diskon_nominal_$i"]) ? NumberFormatter::formatDecimal($detail["diskon_nominal_$i"]) : 0;
+
+                        if ($diskonPersen > 0) {
+                            $potongan = NumberFormatter::percentageOf($subtotal, $diskonPersen);
+                            $subtotal = NumberFormatter::subtractDecimal($subtotal, $potongan);
+                        } elseif ($diskonNominal > 0) {
+                            $subtotal = NumberFormatter::subtractDecimal($subtotal, $diskonNominal);
+                        }
+                    }
+                }
+
+                PenerimaanDetail::create([
+                    'penerimaan_id' => $penerimaan->id,
+                    'product_id' => $detail['barang_id'],
+                    'qty' => NumberFormatter::formatDecimal($detail['qty']),
+                    'satuan_id' => $detail['satuan_id'],
+                    'harga_hpp' => $harga,
+                    'diskon_persen_1' => NumberFormatter::formatDecimal($detail['diskon_persen_1'] ?? 0),
+                    'diskon_nominal_1' => NumberFormatter::formatDecimal($detail['diskon_nominal_1'] ?? 0),
+                    'diskon_persen_2' => NumberFormatter::formatDecimal($detail['diskon_persen_2'] ?? 0),
+                    'diskon_nominal_2' => NumberFormatter::formatDecimal($detail['diskon_nominal_2'] ?? 0),
+                    'diskon_persen_3' => NumberFormatter::formatDecimal($detail['diskon_persen_3'] ?? 0),
+                    'diskon_nominal_3' => NumberFormatter::formatDecimal($detail['diskon_nominal_3'] ?? 0),
+                    'diskon_persen_4' => NumberFormatter::formatDecimal($detail['diskon_persen_4'] ?? 0),
+                    'diskon_nominal_4' => NumberFormatter::formatDecimal($detail['diskon_nominal_4'] ?? 0),
+                    'diskon_persen_5' => NumberFormatter::formatDecimal($detail['diskon_persen_5'] ?? 0),
+                    'diskon_nominal_5' => NumberFormatter::formatDecimal($detail['diskon_nominal_5'] ?? 0),
+                    'is_free' => $isFree,
+                    'subtotal' => $subtotal,
+                    'catatan' => $detail['catatan'] ?? null,
+                ]);
+                $savedCount++;
+            }
+
+            // Recalculate total
+            $penerimaan->recalculateTotalHarga();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'saved_count' => $savedCount,
+                'total_harga' => $penerimaan->fresh()->total_harga,
+                'message' => "Berhasil menyimpan {$savedCount} item detail"
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Finalize penerimaan (AJAX)
+     * 
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function finalizePenerimaan(Request $request, $id)
+    {
+        try {
+            $penerimaan = Penerimaan::findOrFail($id);
+
+            // Log activity
+            $this->logActivity($penerimaan->id, 'create', 'Membuat penerimaan baru', [
+                'kode' => $penerimaan->kode_penerimaan,
+                'total_items' => $penerimaan->details()->count(),
+                'total_harga' => $penerimaan->total_harga,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'penerimaan_id' => $penerimaan->id,
+                'message' => 'Penerimaan berhasil disimpan'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Clear details penerimaan (AJAX)
+     * 
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function clearDetails(Request $request, $id)
+    {
+        try {
+            DB::beginTransaction();
+            
+            $penerimaan = Penerimaan::findOrFail($id);
+
+            // Hanya boleh clear jika statusnya masih Unlocated
+            if ($penerimaan->status !== 'Unlocated') {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Penerimaan yang sudah diproses (Located) tidak dapat diedit.'
+                ], 400);
+            }
+
+            // Get all detail IDs that will be deleted
+            $detailIds = PenerimaanDetail::where('penerimaan_id', $penerimaan->id)
+                ->pluck('id')
+                ->toArray();
+
+            // Set penerimaan_detail_id to NULL in warehouse_stock before deleting details
+            // This prevents foreign key constraint violation
+            if (!empty($detailIds)) {
+                WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)
+                    ->update(['penerimaan_detail_id' => null]);
+            }
+
+            // Hapus semua detail
+            PenerimaanDetail::where('penerimaan_id', $penerimaan->id)->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Detail penerimaan berhasil dibersihkan'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error clearing penerimaan details', [
+                'penerimaan_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update header penerimaan (AJAX)
+     * 
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateHeader(Request $request, $id)
+    {
+        $request->validate([
+            'main_category_id' => 'required',
+            'tax_category_id' => 'required',
+            'nomor_po' => 'required',
+            'tanggal_penerimaan' => 'required|date',
+            'metode_pembayaran' => 'required|in:Cash,Jatuh Tempo',
+            'tanggal_jatuh_tempo' => 'required_if:metode_pembayaran,Jatuh Tempo|nullable|date',
+        ]);
+
+        try {
+            $penerimaan = Penerimaan::findOrFail($id);
+
+            // Hanya boleh update jika statusnya masih Unlocated
+            if ($penerimaan->status !== 'Unlocated') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Penerimaan yang sudah diproses (Located) tidak dapat diedit.'
+                ], 400);
+            }
+
+            // Store old data for logging
+            $oldData = [
+                'nomor_po' => $penerimaan->nomor_po,
+                'tanggal_penerimaan' => $penerimaan->tanggal_penerimaan,
+                'metode_pembayaran' => $penerimaan->metode_pembayaran,
+                'tax_category_id' => $penerimaan->tax_category_id,
+                'total_harga' => $penerimaan->total_harga,
+                'item_count' => $penerimaan->details()->count()
+            ];
+
+            // Update data penerimaan
+            $penerimaan->update([
+                'main_category_id' => $request->main_category_id,
+                'tax_category_id' => $request->tax_category_id,
+                'nomor_po' => $request->nomor_po,
+                'tanggal_penerimaan' => $request->tanggal_penerimaan,
+                'metode_pembayaran' => $request->metode_pembayaran,
+                'tanggal_jatuh_tempo' => $request->metode_pembayaran == 'Jatuh Tempo' ? $request->tanggal_jatuh_tempo : null,
+                'catatan' => $request->catatan,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'penerimaan_id' => $penerimaan->id,
+                'old_data' => $oldData,
+                'message' => 'Header penerimaan berhasil diupdate'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Finalize penerimaan (untuk update - AJAX)
+     * Method ini dipanggil untuk finalize update
+     * 
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function finalizePenerimaanUpdate(Request $request, $id)
+    {
+        try {
+            $penerimaan = Penerimaan::findOrFail($id);
+
+            // Recalculate total
+            $newTotalHarga = $penerimaan->recalculateTotalHarga();
+
+            // Log activity
+            $oldData = $request->old_data ?? [];
+            $newData = [
+                'nomor_po' => $penerimaan->nomor_po,
+                'tanggal_penerimaan' => $penerimaan->tanggal_penerimaan,
+                'metode_pembayaran' => $penerimaan->metode_pembayaran,
+                'total_harga' => $newTotalHarga,
+                'item_count' => $penerimaan->details()->count()
+            ];
+
+            $this->logActivity($penerimaan->id, 'update', 'Mengubah data penerimaan', [
+                'old_data' => $oldData,
+                'new_data' => $newData
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'penerimaan_id' => $penerimaan->id,
+                'message' => 'Update penerimaan berhasil disimpan'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

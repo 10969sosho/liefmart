@@ -43,6 +43,14 @@ class OrderItem extends Model
     }
 
     /**
+     * Relasi ke barang keluar
+     */
+    public function barangKeluar()
+    {
+        return $this->hasMany(BarangKeluar::class);
+    }
+
+    /**
      * Customize the array representation
      * 
      * @return array

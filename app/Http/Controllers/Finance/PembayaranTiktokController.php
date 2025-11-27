@@ -93,26 +93,27 @@ class PembayaranTiktokController extends Controller
             }
         }
         
-        // Calculate totals for cards from ALL data (not filtered)
-        $totalCount = TiktokFinancialTransaction::count();
-        $totalNominalFix = TiktokFinancialTransaction::sum('nominal_fix');
-        $totalSaldoMasuk = TiktokFinancialTransaction::sum('saldo_masuk');
-        $totalOutstanding = TiktokFinancialTransaction::sum('outstanding');
+        // Exclude transactions with fully returned orders at query level
+        $query->whereHas('order', function($q) {
+            // Filter out orders that are fully returned
+            $q->where(function($subQ) {
+                $subQ->whereDoesntHave('returPenjualan', function($rq) {
+                    $rq->whereIn('status', ['draft', 'selesai']);
+                });
+            });
+        });
+        
+        // Calculate totals for cards from FILTERED data
+        $totalCount = $query->count();
+        $totalNominalFix = $query->sum('nominal_fix');
+        $totalSaldoMasuk = $query->sum('saldo_masuk');
+        $totalOutstanding = $query->sum('outstanding');
         
         // Clone query for pagination (this will be filtered)
         $transactions = clone $query;
         $transactions = $transactions->orderBy('tanggal_order', 'desc')
             ->paginate(15)
             ->withQueryString(); // Preserves query parameters in pagination links
-            
-        // Filter out fully returned orders from the results
-        $transactions->getCollection()->transform(function($transaction) {
-            // Skip transactions whose orders are fully returned
-            if ($transaction->order && $transaction->order->isFullyReturned()) {
-                return null;
-            }
-            return $transaction;
-        })->filter(); // Remove null values
             
         // Group transactions by order number for display
         $groupedTransactions = $transactions->groupBy('no_order');
@@ -902,14 +903,21 @@ class PembayaranTiktokController extends Controller
                     $totalQty = 0;
                     
                     foreach ($orderItems as $item) {
+                        // Get tax_id from warehouse_stock, or use a default tax_id if not available
+                        $taxId = null;
                         if ($item->warehouseStock && $item->warehouseStock->tax_id) {
                             $taxId = $item->warehouseStock->tax_id;
-                            if (!isset($itemsByTaxId[$taxId])) {
-                                $itemsByTaxId[$taxId] = [];
-                            }
-                            $itemsByTaxId[$taxId][] = $item;
-                            $totalQty += $item->quantity;
+                        } else {
+                            // Default to tax_id 4 (Non PKP - Skincare) for items without tax info
+                            // This ensures all order items are included in financial transactions
+                            $taxId = 4;
                         }
+                        
+                        if (!isset($itemsByTaxId[$taxId])) {
+                            $itemsByTaxId[$taxId] = [];
+                        }
+                        $itemsByTaxId[$taxId][] = $item;
+                        $totalQty += $item->quantity;
                     }
                     
                     // Order is valid, add to the list of valid orders
@@ -1010,6 +1018,9 @@ class PembayaranTiktokController extends Controller
                     $nominal_diskon11 = !empty($rowData['BIAYA11']) ? -abs((float) $rowData['BIAYA11']) : 0;
                     $nominal_diskon12 = !empty($rowData['BIAYA12']) ? -abs((float) $rowData['BIAYA12']) : 0;
                     
+                    // Sort tax groups to ensure consistent processing order: PKP first (1,3,5,7), then Non-PKP (2,4,6)
+                    ksort($itemsByTaxId);
+                    
                     // Process each tax group and create a transaction for each
                     foreach ($itemsByTaxId as $taxId => $items) {
                         // Get the next invoice number from the pre-generated batch
@@ -1020,7 +1031,8 @@ class PembayaranTiktokController extends Controller
                         
                         // Create transaction for this tax group
                         $transaction = new TiktokFinancialTransaction();
-                        $transaction->tanggal_order = $orderDate;
+                        // Use the actual order's tanggal directly, not the derived orderDate
+                        $transaction->tanggal_order = $order->tanggal;
                         $transaction->hari_order = $order->hari;
                         $transaction->no_order = $order->order_number;
                         $transaction->no_invoice = $invoiceData['invoice_number'];
@@ -1215,14 +1227,21 @@ class PembayaranTiktokController extends Controller
             $totalQty = 0;
             
             foreach ($orderItems as $item) {
+                // Get tax_id from warehouse_stock, or use a default tax_id if not available
+                $taxId = null;
                 if ($item->warehouseStock && $item->warehouseStock->tax_id) {
                     $taxId = $item->warehouseStock->tax_id;
-                    if (!isset($itemsByTaxId[$taxId])) {
-                        $itemsByTaxId[$taxId] = [];
-                    }
-                    $itemsByTaxId[$taxId][] = $item;
-                    $totalQty += $item->quantity;
+                } else {
+                    // Default to tax_id 4 (Non PKP - Skincare) for items without tax info
+                    // This ensures all order items are included in financial transactions
+                    $taxId = 4;
                 }
+                
+                if (!isset($itemsByTaxId[$taxId])) {
+                    $itemsByTaxId[$taxId] = [];
+                }
+                $itemsByTaxId[$taxId][] = $item;
+                $totalQty += $item->quantity;
             }
             
             // Calculate total order price
@@ -1262,9 +1281,11 @@ class PembayaranTiktokController extends Controller
                     : InvoiceSequence::TAX_NON_PKP;
                 
                 // Get invoice number with order date - WAJIB dari tabel orders
-                $orderDate = $order->tanggal 
-                    ?? Order::where('order_number', $order->order_number)->value('tanggal')
-                    ?? throw new \Exception("Tanggal order tidak ditemukan untuk Order {$order->order_number}");
+                // Ensure we have the order date from the loaded order object
+                if (!$order->tanggal) {
+                    throw new \Exception("Tanggal order tidak ditemukan untuk Order {$order->order_number}");
+                }
+                $orderDate = $order->tanggal;
                 
                 $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate);
                 $invoiceNumbersByTaxId[$taxId] = $invoiceData['invoice_number'];
@@ -1277,7 +1298,8 @@ class PembayaranTiktokController extends Controller
                 
                 // Create transaction for this tax group
                 $transaction = new TiktokFinancialTransaction();
-                $transaction->tanggal_order = $orderDate;
+                // Use the actual order's tanggal directly, ensuring consistency
+                $transaction->tanggal_order = $order->tanggal;
                 $transaction->hari_order = $order->hari;
                 $transaction->no_order = $order->order_number;
                 $transaction->no_invoice = $invoiceNumber;
@@ -1701,6 +1723,26 @@ class PembayaranTiktokController extends Controller
     }
 
     /**
+     * Synchronize order dates for all TikTok financial transactions
+     * This method ensures that tanggal_order matches the order's tanggal
+     */
+    public function syncOrderDates(Request $request)
+    {
+        try {
+            $updated = TiktokFinancialTransaction::syncAllOrderDates();
+            
+            return redirect()->route('finance.tiktok.index')
+                ->with('success', "Berhasil menyinkronkan {$updated} transaksi dengan tanggal order yang benar.");
+                
+        } catch (\Exception $e) {
+            Log::error("Error synchronizing TikTok order dates: " . $e->getMessage());
+            
+            return redirect()->route('finance.tiktok.index')
+                ->with('error', 'Error menyinkronkan tanggal order: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Export data to PDF
      *
      * @param Request $request
@@ -1714,10 +1756,6 @@ class PembayaranTiktokController extends Controller
         // Filter by payment date range
         if ($request->filled('from_date')) {
             $query->whereDate('tanggal_masuk_pembayaran', '>=', $request->from_date);
-        }
-        
-        if ($request->filled('to_date')) {
-            $query->whereDate('tanggal_masuk_pembayaran', '<=', $request->to_date);
         }
         
         // Filter by order date range
@@ -1774,6 +1812,16 @@ class PembayaranTiktokController extends Controller
                 });
             }
         }
+        
+        // Exclude transactions with fully returned orders at query level
+        $query->whereHas('order', function($q) {
+            // Filter out orders that are fully returned
+            $q->where(function($subQ) {
+                $subQ->whereDoesntHave('returPenjualan', function($rq) {
+                    $rq->whereIn('status', ['draft', 'selesai']);
+                });
+            });
+        });
         
         $transactions = $query->orderBy('tanggal_order', 'desc')->get();
         

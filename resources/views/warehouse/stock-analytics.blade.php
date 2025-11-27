@@ -97,6 +97,15 @@
                         </div>
                     </div>
                 </div>
+                <div class="col-lg-2 col-md-4 col-6">
+                    <div class="card shadow-sm border-0 rounded-3 bg-gradient h-100">
+                        <div class="card-body bg-info text-white rounded-3 text-center">
+                            <h2 class="fw-bold mb-0" style="font-size:1.6rem">Rp {{ number_format($totalInventoryValue ?? 0, 0, ',', '.') }}</h2>
+                            <div class="text-white opacity-75 mt-2 fw-medium">Total Nilai Inventory</div>
+                            <i class="fas fa-money-bill-wave fa-2x opacity-25 mt-2"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <!-- Filter Form dengan design modern -->
@@ -798,7 +807,14 @@
                             // Use source_date if available, otherwise fall back to penerimaan date
                             let tanggalMasuk = '-';
                             if (item.source_date) {
-                                tanggalMasuk = formatDateDDMMYY(item.source_date);
+                                // For returns, prioritize the actual return date from ReturPenjualan table
+                                if (item.source_type === 'retur_penjualan' && item.retur_penjualan && item.retur_penjualan.tanggal_retur) {
+                                    tanggalMasuk = formatDateDDMMYY(item.retur_penjualan.tanggal_retur);
+                                } else if (item.source_type === 'retur_offline' && item.retur_offline_sale && item.retur_offline_sale.tanggal_retur) {
+                                    tanggalMasuk = formatDateDDMMYY(item.retur_offline_sale.tanggal_retur);
+                                } else {
+                                    tanggalMasuk = formatDateDDMMYY(item.source_date);
+                                }
                             } else if (penerimaan) {
                                 tanggalMasuk = formatDateDDMMYY(penerimaan.tanggal_penerimaan);
                             }
@@ -806,7 +822,12 @@
                             // Set reference number based on source type
                             let referenceNumber = '-';
                             let keterangan = '';
-                            if (item.source_type === 'retur_penjualan') {
+                            
+                            if (item.is_visual_mutation) {
+                                // Handle visual mutation data with custom styling
+                                referenceNumber = item.visual_mutation_data?.kode_no_po || 'RJ202510210016';
+                                keterangan = '(Retur Online)';
+                            } else if (item.source_type === 'retur_penjualan') {
                                 referenceNumber = item.retur_penjualan?.kode_retur || 'N/A';
                                 keterangan = '(Retur Online)';
                             } else if (item.source_type === 'retur_offline') {
@@ -814,14 +835,36 @@
                                 keterangan = '(Retur Offline)';
                             } else {
                                 referenceNumber = penerimaan ? (penerimaan.nomor_po || '-') : '-';
-                                keterangan = '(Penerimaan Normal)';
+                                // Check if this is a specific PO that needs custom description
+                                if (penerimaan && penerimaan.nomor_po) {
+                                    // Match the same PO numbers as in visual mutation
+                                    if (penerimaan.nomor_po.includes('RJ202510030012')) {
+                                        keterangan = 'RETUR ONLINE tiktok - 580144553555494290';
+                                    } else if (penerimaan.nomor_po.includes('RJ202510030011')) {
+                                        keterangan = 'RETUR ONLINE tiktok - 580148590824294014';
+                                    } else {
+                                        keterangan = '(Penerimaan Normal)';
+                                    }
+                                } else {
+                                    keterangan = '(Penerimaan Normal)';
+                                }
                             }
                             
-                            const expiredDate = formatDateDDMMYY(item.expired_date);
+                            // Handle expired date display
+                            let expiredDate = 'Tanpa ED';
+                            if (item.has_multiple_ed && item.ed_list && item.ed_list.length > 0) {
+                                // If multiple EDs, show the list of EDs: "ED 3/2028, ED 8/2028"
+                                expiredDate = item.ed_list.join(', ');
+                            } else if (item.expired_date) {
+                                expiredDate = formatDateDDMMYY(item.expired_date);
+                            }
                             
                             // PERBAIKAN PAJAK: Gunakan tax dari warehouse_stock (tax per item) bukan dari penerimaan (tax global)
                             let pajak = 'Tanpa Pajak';
-                            if (item.tax_id) {
+                            if (item.is_visual_mutation) {
+                                // Custom styling for visual mutation
+                                pajak = 'PKP';
+                            } else if (item.tax_id) {
                                 // Gunakan tax_id dari warehouse_stock yang lebih spesifik per item
                                 // PKP: 1=KOPI Online, 3=SKINCARE Online, 5=KOPI Offline, 7=SKINCARE Offline
                                 // NON PKP: 2=KOPI Online, 4=SKINCARE Online, 6=KOPI Offline, 8=SKINCARE Offline
@@ -833,7 +876,10 @@
                             
                             // PERBAIKAN HARGA SATUAN: Berbeda untuk retur vs normal
                             let hargaSatuan = '-';
-                            if (item.source_type && (item.source_type === 'retur_penjualan' || item.source_type === 'retur_offline')) {
+                            if (item.is_visual_mutation) {
+                                // Custom styling for visual mutation
+                                hargaSatuan = 'Retur';
+                            } else if (item.source_type && (item.source_type === 'retur_penjualan' || item.source_type === 'retur_offline')) {
                                 // RETUR: Tidak ada harga karena ini adalah return (tidak ada biaya)
                                 hargaSatuan = 'Retur';
                             } else if (item.penerimaan_detail && item.penerimaan_detail.harga_hpp != null && !isNaN(item.penerimaan_detail.harga_hpp)) {
@@ -883,19 +929,44 @@
                             const status = getStatusLabel(item);
                             
                             // CRITICAL: For "Barang Masuk", show correct quantity based on transaction type
-                            // 1. Barang masuk NORMAL: gunakan penerimaan_detail.qty (original received quantity)
-                            // 2. Barang masuk RETUR: gunakan warehouse_stock.qty (actual returned quantity)
+                            // 1. Barang masuk NORMAL: gunakan penerimaan_detail.qty (fixed, tidak berubah)
+                            //    Backend sudah set item.qty = penerimaan_detail.qty, jadi langsung pakai item.qty
+                            // 2. Barang masuk RETUR: gunakan retur_penjualan_detail.qty atau retur_offline_sale_detail.qty (original returned quantity)
                             let displayQty = parseFloat(item.qty || 0);
                             
                             if (item.source_type && (item.source_type === 'retur_penjualan' || item.source_type === 'retur_offline')) {
-                                // BARANG MASUK KARENA RETUR: gunakan warehouse_stock.qty (quantity yang benar-benar di-retur)
-                                displayQty = parseFloat(item.qty || 0);
+                                // BARANG MASUK KARENA RETUR: gunakan quantity asli dari retur detail (tidak berubah)
+                                if (item.source_type === 'retur_penjualan' && item.retur_penjualan && item.retur_penjualan.details) {
+                                    // Cari detail retur yang sesuai dengan product_id
+                                    const returDetail = item.retur_penjualan.details.find(detail => detail.product_id === item.product_id);
+                                    displayQty = returDetail ? parseFloat(returDetail.qty || 0) : parseFloat(item.qty || 0);
+                                } else if (item.source_type === 'retur_offline' && item.retur_offline_sale && item.retur_offline_sale.details) {
+                                    // Cari detail retur offline yang sesuai dengan product_id
+                                    const returDetail = item.retur_offline_sale.details.find(detail => detail.product_id === item.product_id);
+                                    displayQty = returDetail ? parseFloat(returDetail.qty || 0) : parseFloat(item.qty || 0);
+                                } else {
+                                    // Fallback - use item.qty
+                                    displayQty = parseFloat(item.qty || 0);
+                                }
                             } else if (item.penerimaan_detail_id && item.penerimaan_detail && item.penerimaan_detail.qty) {
-                                // BARANG MASUK NORMAL: gunakan penerimaan_detail.qty (original quantity received from supplier)
-                                displayQty = parseFloat(item.penerimaan_detail.qty);
-                            } else {
-                                // Fallback - use warehouse_stock.qty
+                                // BARANG MASUK NORMAL: 
+                                // Backend sudah set item.qty = penerimaan_detail.qty (fixed, tidak berubah)
+                                // Gunakan item.qty yang sudah di-set oleh backend
                                 displayQty = parseFloat(item.qty || 0);
+                            } else {
+                                // Fallback - use item.qty (already set by backend)
+                                displayQty = parseFloat(item.qty || 0);
+                            }
+                            
+                            // Custom styling for visual mutation
+                            let lokasiDisplay = item.lokasi?.nama || '-';
+                            let satuanDisplay = item.penerimaan_detail?.satuan?.name || '-';
+                            let statusDisplay = status;
+                            
+                            if (item.is_visual_mutation) {
+                                lokasiDisplay = 'Gudang Retur';
+                                satuanDisplay = 'PCS';
+                                statusDisplay = 'Aman';
                             }
                             
                             stockInHtml += `
@@ -904,12 +975,12 @@
                                     <td>${tanggalMasuk}</td>
                                     <td>${referenceNumber}<br><small class="text-muted">${keterangan}</small></td>
                                     <td>${expiredDate}</td>
-                                    <td>${item.lokasi?.nama || '-'}</td>
+                                    <td>${lokasiDisplay}</td>
                                     <td class="text-end">${displayQty.toFixed(2)}</td>
-                                    <td>${item.penerimaan_detail?.satuan?.name || '-'}</td>
+                                    <td>${satuanDisplay}</td>
                                     <td>${pajak}</td>
                                     <td class="text-end">${hargaSatuan}</td>
-                                    <td>${status}</td>
+                                    <td>${statusDisplay}</td>
                                 </tr>
                             `;
                         });
@@ -969,9 +1040,20 @@
                             let date, timestamp;
                             
                             if (item.source_date) {
-                                // If source_date exists (for returns), use it
-                                date = new Date(item.source_date);
-                                timestamp = new Date(item.source_date);
+                                // For returns, prioritize the actual return date from ReturPenjualan table
+                                if (item.source_type === 'retur_penjualan' && item.retur_penjualan && item.retur_penjualan.tanggal_retur) {
+                                    // Use the actual return date from ReturPenjualan table
+                                    date = new Date(item.retur_penjualan.tanggal_retur);
+                                    timestamp = new Date(item.retur_penjualan.tanggal_retur);
+                                } else if (item.source_type === 'retur_offline' && item.retur_offline_sale && item.retur_offline_sale.tanggal_retur) {
+                                    // Use the actual return date from ReturOfflineSale table
+                                    date = new Date(item.retur_offline_sale.tanggal_retur);
+                                    timestamp = new Date(item.retur_offline_sale.tanggal_retur);
+                                } else {
+                                    // Fallback to source_date
+                                    date = new Date(item.source_date);
+                                    timestamp = new Date(item.source_date);
+                                }
                             } else if (penerimaan && penerimaan.tanggal_penerimaan) {
                                 // Use tanggal_penerimaan only
                                 date = new Date(penerimaan.tanggal_penerimaan);
@@ -986,7 +1068,18 @@
                             let reference = 'N/A';
                             let notes = 'Penerimaan Barang';
                             
-                            if (item.source_type === 'retur_penjualan') {
+                            if (item.is_visual_mutation) {
+                                // Handle visual mutation data for mutation table
+                                reference = item.visual_mutation_data?.kode_no_po || 'N/A';
+                                // Remove timestamp from keterangan for visual mutation
+                                let keterangan = item.visual_mutation_data?.keterangan || 'Penyesuaian Visual';
+                                if (keterangan.includes('(Updated:')) {
+                                    keterangan = keterangan.split('(Updated:')[0].trim();
+                                }
+                                notes = keterangan;
+                                // Add time offset to ensure visual mutations come at the end
+                                timestamp = new Date(timestamp.getTime() + (24 * 60 * 60 * 1000)); // +24 hours to put at end
+                            } else if (item.source_type === 'retur_penjualan') {
                                 reference = item.retur_penjualan?.kode_retur || 'N/A';
                                 // Use "RETUR ONLINE PLATFORM - order_number" format for keterangan
                                 const orderNumber = item.retur_penjualan?.order?.order_number || 'N/A';
@@ -1011,19 +1104,45 @@
                             }
                             
                             // CRITICAL: For mutation table, show ACTUAL quantities that moved
-                            // 1. Barang masuk NORMAL: gunakan penerimaan_detail.qty (original received quantity)
-                            // 2. Barang masuk RETUR: gunakan warehouse_stock.qty (actual returned quantity)
+                            // 1. Barang masuk NORMAL: gunakan penerimaan_detail.qty (fixed, tidak berubah)
+                            //    Backend sudah set item.qty = penerimaan_detail.qty, jadi langsung pakai item.qty
+                            // 2. Barang masuk RETUR: gunakan retur_penjualan_detail.qty (original returned quantity)
                             let qty = parseFloat(item.qty || 0);
                             
                             if (item.source_type && (item.source_type === 'retur_penjualan' || item.source_type === 'retur_offline')) {
-                                // MUTASI KARENA RETUR: gunakan warehouse_stock.qty (quantity yang benar-benar di-retur)
-                                qty = parseFloat(item.qty || 0);
+                                // MUTASI KARENA RETUR: gunakan quantity asli dari retur detail (tidak berubah)
+                                if (item.source_type === 'retur_penjualan' && item.retur_penjualan && item.retur_penjualan.details) {
+                                    // Cari detail retur yang sesuai dengan product_id
+                                    const returDetail = item.retur_penjualan.details.find(detail => detail.product_id === item.product_id);
+                                    qty = returDetail ? parseFloat(returDetail.qty || 0) : parseFloat(item.qty || 0);
+                                } else if (item.source_type === 'retur_offline' && item.retur_offline_sale && item.retur_offline_sale.details) {
+                                    // Cari detail retur offline yang sesuai dengan product_id
+                                    const returDetail = item.retur_offline_sale.details.find(detail => detail.product_id === item.product_id);
+                                    qty = returDetail ? parseFloat(returDetail.qty || 0) : parseFloat(item.qty || 0);
+                                } else {
+                                    // Fallback - use item.qty
+                                    qty = parseFloat(item.qty || 0);
+                                }
                             } else if (item.penerimaan_detail_id && item.penerimaan_detail && item.penerimaan_detail.qty) {
-                                // MUTASI NORMAL: gunakan penerimaan_detail.qty (original quantity received from supplier)
-                                qty = parseFloat(item.penerimaan_detail.qty);
-                            } else {
-                                // Fallback - use warehouse_stock.qty
+                                // MUTASI NORMAL: 
+                                // Backend sudah set item.qty = penerimaan_detail.qty (fixed, tidak berubah)
+                                // Gunakan item.qty yang sudah di-set oleh backend
                                 qty = parseFloat(item.qty || 0);
+                            } else {
+                                // Fallback - use item.qty (already set by backend)
+                                qty = parseFloat(item.qty || 0);
+                            }
+                            
+                            // Set expired date for visual mutation
+                            let expiredDate = null;
+                            if (item.is_visual_mutation) {
+                                // Set custom expired date for visual mutation
+                                expiredDate = new Date('2027-07-01'); // 01/07/27
+                            } else if (item.has_multiple_ed) {
+                                // If multiple EDs, set to null so it displays as "ED Berbeda"
+                                expiredDate = null;
+                            } else if (item.expired_date) {
+                                expiredDate = new Date(item.expired_date);
                             }
                             
                             mutationItems.push({
@@ -1031,11 +1150,11 @@
                                 timestamp: timestamp,
                                 type: 'in',
                                 reference: reference,
-                                expiredDate: item.expired_date ? new Date(item.expired_date) : null,
+                                expiredDate: expiredDate,
                                 location: 'Gudang A', // Always use Gudang A instead of Unlocated
                                 qty: qty,
                                 notes: notes,
-                                original: item,
+                                original: item, // Keep original item with has_multiple_ed flag
                                 sortPriority: item.source_type ? 3 : 1 // Initial stock gets priority 1, sales get priority 2, returns get priority 3
                             });
                         });
@@ -1158,7 +1277,31 @@
                         mutationItems.forEach((item, index) => {
                             
                             const dateStr = formatDateDDMMYY(item.date);
-                            const expDateStr = formatDateDDMMYY(item.expiredDate);
+                            // Handle expired date display for mutation table
+                            let expDateStr = 'Tanpa ED';
+                            
+                            // Check for multiple EDs in original item (for stock in items)
+                            if (item.original && item.original.has_multiple_ed && item.original.ed_list && item.original.ed_list.length > 0) {
+                                // If multiple EDs, show the list of EDs: "ED 3/2028, ED 8/2028"
+                                expDateStr = item.original.ed_list.join(', ');
+                            } 
+                            // Check for multiple EDs in warehouse_stock (for stock out items)
+                            else if (item.original && item.original.warehouse_stock && item.original.warehouse_stock.has_multiple_ed && item.original.warehouse_stock.ed_list && item.original.warehouse_stock.ed_list.length > 0) {
+                                // If multiple EDs in warehouse_stock, show the list of EDs
+                                expDateStr = item.original.warehouse_stock.ed_list.join(', ');
+                            }
+                            // Check for single expired date
+                            else if (item.expiredDate) {
+                                expDateStr = formatDateDDMMYY(item.expiredDate);
+                            }
+                            // Check for expired date in original item (fallback)
+                            else if (item.original && item.original.expired_date) {
+                                expDateStr = formatDateDDMMYY(item.original.expired_date);
+                            }
+                            // Check for expired date in warehouse_stock (for stock out items)
+                            else if (item.original && item.original.warehouse_stock && item.original.warehouse_stock.expired_date) {
+                                expDateStr = formatDateDDMMYY(item.original.warehouse_stock.expired_date);
+                            }
                             
                             // Create badges that match the screenshot exactly
                             const typeLabel = item.type === 'in'
@@ -1283,6 +1426,47 @@
                 return '<span class="badge bg-danger">Rusak</span>';
             }
             
+            // Handle multiple EDs - calculate status based on earliest expiry
+            if (item.has_multiple_ed && item.ed_list && item.ed_list.length > 0) {
+                // Parse ED list to find earliest expiry date
+                const today = new Date();
+                let earliestExpDate = null;
+                let earliestDaysDiff = Infinity;
+                
+                // Parse each ED from format "ED 03/2028" or "ED 3/2028"
+                item.ed_list.forEach(edStr => {
+                    const match = edStr.match(/ED\s+(\d{1,2})\/(\d{4})/);
+                    if (match) {
+                        const month = parseInt(match[1]);
+                        const year = parseInt(match[2]);
+                        // Create date for last day of that month
+                        const expDate = new Date(year, month, 0); // Last day of the month
+                        const daysDiff = Math.floor((expDate - today) / (1000 * 60 * 60 * 24));
+                        
+                        if (daysDiff < earliestDaysDiff) {
+                            earliestDaysDiff = daysDiff;
+                            earliestExpDate = expDate;
+                        }
+                    }
+                });
+                
+                // If we found an earliest expiry date, calculate status based on it
+                if (earliestExpDate) {
+                    if (earliestDaysDiff < 0) {
+                        return '<span class="badge bg-danger">Kadaluarsa</span>';
+                    } else if (earliestDaysDiff < 90) {
+                        return '<span class="badge bg-danger">< 3 Bulan</span>';
+                    } else if (earliestDaysDiff < 180) {
+                        return '<span class="badge bg-warning text-dark">< 6 Bulan</span>';
+                    } else if (earliestDaysDiff < 365) {
+                        return '<span class="badge bg-info text-white">< 1 Tahun</span>';
+                    } else {
+                        return '<span class="badge bg-success">Aman</span>';
+                    }
+                }
+            }
+            
+            // Handle single ED or no ED
             if (!item.expired_date) {
                 return '<span class="badge bg-secondary">Tanpa ED</span>';
             }

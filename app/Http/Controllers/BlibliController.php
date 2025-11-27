@@ -18,13 +18,43 @@ class BlibliController extends Controller
      */
     public function __construct()
     {
-        // Dapatkan platform Blibli dari database
-        $this->platform = Platform::where('name', 'blibli')->first();
-        
-        // Jika platform tidak ditemukan, buat baru
-        if (!$this->platform) {
-            $this->platform = Platform::create(['name' => 'blibli']);
+        $routeParam = 'blibli';
+        $this->platform = $this->getPlatformByRouteParam($routeParam);
+    }
+    
+    /**
+     * Helper method untuk mendapatkan platform berdasarkan route parameter
+     */
+    protected function getPlatformByRouteParam($routeParam)
+    {
+        // 1. Cari berdasarkan ID jika ada di request/session
+        $platformId = request()->route('platform_id') ?? session('platform_id');
+        if ($platformId) {
+            $platform = Platform::find($platformId);
+            if ($platform) {
+                return $platform;
+            }
         }
+        
+        // 2. Cari berdasarkan nama dengan case-insensitive
+        $platform = Platform::whereRaw('LOWER(name) = ?', [strtolower($routeParam)])->first();
+        
+        // 3. Jika tidak ditemukan, cari dengan LIKE (untuk menangani variasi nama)
+        if (!$platform) {
+            $platform = Platform::whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($routeParam) . '%'])->first();
+        }
+        
+        // 4. Jika masih tidak ditemukan, ambil platform pertama (fallback)
+        if (!$platform) {
+            $platform = Platform::first();
+        }
+        
+        // 5. Jika benar-benar tidak ada platform di database
+        if (!$platform) {
+            throw new \Exception('Platform tidak ditemukan di database. Pastikan ada platform yang terdaftar.');
+        }
+        
+        return $platform;
     }
 
     /**
@@ -49,7 +79,7 @@ class BlibliController extends Controller
             \Log::info("Blibli previewImport: Starting import with file: " . $request->file('excel_file')->getClientOriginalName());
 
             // Import data menggunakan BlibliImport
-            $import = new BlibliImport();
+            $import = new BlibliImport($this->platform->id);
             
             $file = $request->file('excel_file');
             $extension = strtolower($file->getClientOriginalExtension());
@@ -328,7 +358,7 @@ class BlibliController extends Controller
             }
 
             // Proses import data
-            $import = new BlibliImport;
+            $import = new BlibliImport($this->platform->id);
 
             // Format data untuk import - AMBIL SEMUA DATA DARI PREVIEW TANPA DIKURANGI
             $importData = [];

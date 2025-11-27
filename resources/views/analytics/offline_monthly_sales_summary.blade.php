@@ -439,7 +439,13 @@
                             display: true,
                             text: 'Jumlah Penjualan'
                         },
-                        beginAtZero: true
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value, index, values) {
+                                // Format angka dengan titik sebagai pemisah ribuan
+                                return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                            }
+                        }
                     },
                     'y-value': {
                         type: 'linear',
@@ -451,6 +457,12 @@
                         beginAtZero: true,
                         grid: {
                             display: false
+                        },
+                        ticks: {
+                            callback: function(value, index, values) {
+                                // Format angka dengan titik sebagai pemisah ribuan
+                                return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                            }
                         }
                     },
                     'y-volume': {
@@ -464,7 +476,13 @@
                         grid: {
                             display: false
                         },
-                        display: false // Hidden but data still available for tooltips
+                        display: false, // Hidden but data still available for tooltips
+                        ticks: {
+                            callback: function(value, index, values) {
+                                // Format angka dengan titik sebagai pemisah ribuan
+                                return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                            }
+                        }
                     }
                 },
                 plugins: {

@@ -49,15 +49,28 @@ class TokopediaImport implements ToCollection, WithMultipleSheets
 
     /**
      * Constructor
+     * 
+     * @param int|null $platformId ID platform (jika null, akan menggunakan platform_id dari session atau default)
      */
-    public function __construct()
+    public function __construct($platformId = null)
     {
-        // Dapatkan platform Tokopedia dari database
-        $this->platform = Platform::where('name', 'tokopedia')->first();
+        // Jika platform_id diberikan, gunakan itu
+        if ($platformId !== null) {
+            $this->platform = Platform::find($platformId);
+        } else {
+            // Coba ambil dari session jika ada
+            $platformId = session('platform_id');
+            if ($platformId) {
+                $this->platform = Platform::find($platformId);
+            } else {
+                // Fallback: cari berdasarkan nama (untuk backward compatibility)
+                $this->platform = Platform::where('name', 'tokopedia')->first();
+            }
+        }
 
         // Jika platform tidak ditemukan, throw exception
         if (! $this->platform) {
-            throw new \Exception('Platform Tokopedia tidak ditemukan di database.');
+            throw new \Exception('Platform tidak ditemukan di database.');
         }
     }
 
@@ -726,7 +739,14 @@ class TokopediaImport implements ToCollection, WithMultipleSheets
                     }
 
                     // Hitung quantity yang akan dikurangi dari stok ini
+                    // Pastikan qty minimal 1 (tidak ada desimal seperti 0.5)
                     $qtyToTake = min($remainingQty, $stock->qty);
+                    
+                    // Jika qtyToTake kurang dari 1, skip stock ini dan lanjut ke stock berikutnya
+                    if ($qtyToTake < 1) {
+                        continue;
+                    }
+                    
                     \Log::info("Reducing from stock ID: {$stock->id}, Available: {$stock->qty}, Taking: {$qtyToTake}");
 
                     // Set warehouse_stock_id pada order item jika ini adalah stok pertama yang digunakan
@@ -971,11 +991,15 @@ class TokopediaImport implements ToCollection, WithMultipleSheets
             return $rawValue;
         }
 
-        // For variasi field
+        // For variasi field - return as is from Excel, no trimming or normalization
         if ($fieldType === 'variasi') {
-            if (is_string($rawValue)) {
-                return trim($rawValue);
-            }
+            // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
+            return $rawValue;
+        }
+        
+        // For nama_barang field - return as is from Excel, no trimming or normalization
+        if ($fieldType === 'nama_barang') {
+            // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
             return $rawValue;
         }
         

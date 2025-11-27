@@ -139,7 +139,7 @@
                         <td style="border: none; padding: 2px;">:
                             @if($order->platform)
                                 <span class="badge badge-{{ $order->platform->name }}">
-                                    {{ ucfirst($order->platform->name) }}
+                                    {{ $order->platform->name }}
                                 </span>
                             @else
                                 -

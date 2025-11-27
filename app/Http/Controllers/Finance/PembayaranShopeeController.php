@@ -21,10 +21,10 @@ class PembayaranShopeeController extends Controller
     {
         $platform = 'shopee'; // Tetapkan platform
         
+        // Optimized eager loading - only load what's needed for display
         $query = ShopeeFinancialTransaction::with([
-            'order.orderItems.platformProduct.mappingBarang', 
-            'order.orderItems.warehouseStock.tax', 
-            'order.mainCategory'
+            'order:id,order_number,tanggal,hari',
+            'order.orderItems:id,order_id,price_after_discount,quantity'
         ]);
         
         // Filter by payment date range
@@ -91,40 +91,86 @@ class PembayaranShopeeController extends Controller
             }
         }
         
-        // Calculate totals for cards from ALL data (not filtered)
-        $totalCount = \App\Models\ShopeeFinancialTransaction::count();
-        $totalNominalFix = \App\Models\ShopeeFinancialTransaction::sum('nominal_fix');
-        $totalSaldoMasuk = \App\Models\ShopeeFinancialTransaction::sum('saldo_masuk');
-        $totalOutstanding = \App\Models\ShopeeFinancialTransaction::sum('outstanding');
-        
-        // Note: We'll filter out fully returned orders in the view/collection processing
-        // as it's more efficient to check this in PHP rather than complex SQL queries
-
-        // Get all transactions with orders to ensure no empty data (this will be filtered)
-        $transactions = clone $query;
-        $transactions = $transactions->orderBy('tanggal_order', 'desc')->paginate(15);
-        
-        // Filter out fully returned orders from the results
-        $transactions->getCollection()->transform(function($transaction) {
-            // Skip transactions whose orders are fully returned
-            if ($transaction->order && $transaction->order->isFullyReturned()) {
-                return null;
+        // Optimized: Calculate all totals in a single query with caching
+        $cacheKey = 'shopee_totals_' . md5(serialize($request->all()));
+        $totals = cache()->remember($cacheKey, 300, function() use ($request) { // Cache for 5 minutes
+            // Create a fresh query for totals calculation (without pagination)
+            $totalsQuery = ShopeeFinancialTransaction::with([
+                'order:id,order_number,tanggal,hari',
+                'order.orderItems:id,order_id,price_after_discount,quantity'
+            ]);
+            
+            // Apply the same filters as main query
+            if ($request->filled('from_date')) {
+                $totalsQuery->whereDate('tanggal_masuk_pembayaran', '>=', $request->from_date);
             }
-            return $transaction;
-        })->filter(); // Remove null values
+            if ($request->filled('to_date')) {
+                $totalsQuery->whereDate('tanggal_masuk_pembayaran', '<=', $request->to_date);
+            }
+            if ($request->filled('from_order_date')) {
+                $totalsQuery->whereDate('tanggal_order', '>=', $request->from_order_date);
+            }
+            if ($request->filled('to_order_date')) {
+                $totalsQuery->whereDate('tanggal_order', '<=', $request->to_order_date);
+            }
+            if ($request->filled('order_number')) {
+                $totalsQuery->where('no_order', 'like', '%' . $request->order_number . '%');
+            }
+            if ($request->filled('invoice_number')) {
+                $totalsQuery->where('no_invoice', 'like', '%' . $request->invoice_number . '%');
+            }
+            if ($request->filled('tax_id')) {
+                $taxIds = (array) $request->tax_id;
+                $totalsQuery->where(function($q) use ($taxIds) {
+                    foreach ($taxIds as $taxId) {
+                        $q->orWhere('no_invoice', 'like', '%/' . str_pad($taxId, 2, '0', STR_PAD_LEFT));
+                    }
+                });
+            }
+            if ($request->filled('payment_date')) {
+                $totalsQuery->whereDate('tanggal_masuk_pembayaran', $request->payment_date);
+            }
+            if ($request->filled('outstanding_status')) {
+                if ($request->outstanding_status === '0') {
+                    $totalsQuery->where('outstanding', 0);
+                } elseif ($request->outstanding_status === '1') {
+                    $totalsQuery->where(function($q) {
+                        $q->where('outstanding', '>', 0)
+                          ->orWhere('outstanding', '<', 0);
+                    });
+                }
+            }
+            
+            return $totalsQuery->selectRaw('
+                COUNT(*) as total_count,
+                SUM(nominal_fix) as total_nominal_fix,
+                SUM(saldo_masuk) as total_saldo_masuk,
+                SUM(outstanding) as total_outstanding
+            ')->first();
+        });
         
-        // Get all orders that don't have financial transactions
-        $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
-            ->whereDoesntHave('shopeeFinancialTransactions')
-            ->whereHas('platform', function($query) {
-                $query->where('name', 'shopee');
-            })
-            ->orderBy('tanggal', 'desc') // Use tanggal instead of order_date
-            ->get()
-            ->filter(function($order) {
-                // Filter out fully returned orders
-                return !$order->isFullyReturned();
-            });
+        $totalCount = $totals->total_count ?? 0;
+        $totalNominalFix = $totals->total_nominal_fix ?? 0;
+        $totalSaldoMasuk = $totals->total_saldo_masuk ?? 0;
+        $totalOutstanding = $totals->total_outstanding ?? 0;
+        
+        // Note: Removed is_fully_returned filter as column doesn't exist in database
+
+        // Get paginated transactions
+        $transactions = $query->orderBy('tanggal_order', 'desc')->paginate(15);
+        
+        // Optimized: Get missing orders with caching and minimal data
+        $missingOrdersCacheKey = 'shopee_missing_orders_' . date('Y-m-d-H'); // Cache for 1 hour
+        $missingOrders = cache()->remember($missingOrdersCacheKey, 3600, function() {
+            return Order::select('id', 'order_number', 'tanggal', 'hari')
+                ->with(['orderItems:id,order_id,price_after_discount,quantity'])
+                ->whereDoesntHave('shopeeFinancialTransactions')
+                ->whereHas('platform', function($query) {
+                    $query->where('name', 'shopee');
+                })
+                ->orderBy('tanggal', 'desc')
+                ->get(); // Show all missing orders
+        });
             
         // Group transactions by order number for display
         $groupedTransactions = $transactions->groupBy('no_order');
@@ -199,6 +245,10 @@ class PembayaranShopeeController extends Controller
         $issues = [];
         
         try {
+            // Increase execution time and memory for large files
+            set_time_limit(1200); // 20 minutes for better performance
+            ini_set('memory_limit', '2048M'); // Increased memory limit to 2GB
+            
             // Log file processing start
             Log::info('Starting Shopee financial import preview', [
                 'file_name' => $file->getClientOriginalName(),
@@ -321,6 +371,9 @@ class PembayaranShopeeController extends Controller
             // Free up memory from spreadsheet
             $spreadsheet->disconnectWorksheets();
             unset($spreadsheet, $worksheet);
+            
+            // Force garbage collection to free memory
+            gc_collect_cycles();
             
             // Read data
             $rowNumber = 1;
@@ -500,6 +553,7 @@ class PembayaranShopeeController extends Controller
                     'nominal_diskon4' => !empty($rowData['BIAYA_LAYANAN']) ? -abs((float) $rowData['BIAYA_LAYANAN']) : 0,
                     'nominal_diskon5' => !empty($rowData['DISKON_5']) ? -abs((float) $rowData['DISKON_5']) : 0,
                     'nominal_diskon6' => !empty($rowData['DISKON_6']) ? -abs((float) $rowData['DISKON_6']) : 0,
+                    'adjustment' => 0,
                     'saldo_masuk' => !empty($rowData['PAYMENT_AMOUNT']) ? (float) $rowData['PAYMENT_AMOUNT'] : 0,
                     'tanggal_masuk_pembayaran' => $rowData['PAYMENT_DATE'],
                     'hari_masuk_pembayaran' => \Carbon\Carbon::parse($rowData['PAYMENT_DATE'])->format('l'),
@@ -509,7 +563,8 @@ class PembayaranShopeeController extends Controller
                         (!empty($rowData['BIAYA_ADMIN']) ? -abs((float) $rowData['BIAYA_ADMIN']) : 0) +
                         (!empty($rowData['BIAYA_LAYANAN']) ? -abs((float) $rowData['BIAYA_LAYANAN']) : 0) +
                         (!empty($rowData['DISKON_5']) ? -abs((float) $rowData['DISKON_5']) : 0) +
-                        (!empty($rowData['DISKON_6']) ? -abs((float) $rowData['DISKON_6']) : 0),
+                        (!empty($rowData['DISKON_6']) ? -abs((float) $rowData['DISKON_6']) : 0) +
+                        0,
                     'outstanding' => 0,
                     'status' => 'preview'
                 ];
@@ -618,6 +673,10 @@ class PembayaranShopeeController extends Controller
         $issues = [];
         
         try {
+            // Increase execution time and memory for large files
+            set_time_limit(1200); // 20 minutes for better performance
+            ini_set('memory_limit', '2048M'); // Increased memory limit to 2GB
+            
             // Log file processing start
             Log::info('Starting Shopee financial import preview', [
                 'file_name' => $file->getClientOriginalName(),
@@ -1062,8 +1121,8 @@ class PembayaranShopeeController extends Controller
     {
         try {
             // Increase execution time limit for large imports
-            set_time_limit(300); // 5 minutes
-            ini_set('memory_limit', '512M');
+            set_time_limit(1200); // 20 minutes for better performance
+            ini_set('memory_limit', '2048M'); // Increased memory limit to 2GB
             
             Log::info('Starting Shopee financial import process');
             
@@ -1096,200 +1155,216 @@ class PembayaranShopeeController extends Controller
             $skippedCount = 0;
             $skippedReasons = [];
             
-            // Process in batches for better performance
-            $batchSize = 100; // Increased batch size for faster processing
+                // Process in smaller batches to avoid memory issues
+                $batchSize = 10; // Much smaller batch size to avoid SQL statement length issues
             $batches = array_chunk($validData, $batchSize);
             
             Log::info('Processing ' . count($validData) . ' valid records in ' . count($batches) . ' batches');
             
-            // Pertama, pra-proses semua data untuk mengetahui berapa banyak transaksi valid yang akan diimpor
-            $validOrders = [];
+            // Collect all order numbers first for batch queries
+            $allOrderNumbers = [];
+            $processedRows = [];
             
             foreach ($batches as $batchIndex => $batch) {
                 Log::info('Processing batch ' . ($batchIndex + 1) . ' of ' . count($batches));
                 
                 foreach ($batch as $index => $rowData) {
-                    try {
-                        // Skip if no order number provided
-                        if (!isset($rowData['NOMOR PESANAN']) || empty($rowData['NOMOR PESANAN'])) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Baris #" . ($index + 1) . ": Nomor order kosong";
-                            Log::warning("Skipping row - missing order number");
-                            continue;
-                        }
-                        
-                        // Find order by the order number from the imported data
-                        $order = Order::where('order_number', $rowData['NOMOR PESANAN'])->first();
-                        
-                        if (!$order) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$rowData['NOMOR PESANAN']} tidak ditemukan di database";
-                            Log::warning("Skipping order {$rowData['NOMOR PESANAN']} - order not found in database");
-                            continue;
-                        }
-                        
-                        // Check if a transaction with this order number already exists
-                        $existingTransaction = ShopeeFinancialTransaction::where('no_order', $order->order_number)->first();
-                        
-                        if ($existingTransaction) {
-                            // Skip this order since a transaction already exists
-                            $skippedCount++;
-                            $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$order->order_number} sudah memiliki transaksi";
-                            Log::warning("Skipping order {$order->order_number} - transaction already exists");
-                            continue;
-                        }
-                        
-                        // Check for required data
-                        if (!isset($rowData['TANGGAL MASUK PEMBAYARAN']) || empty($rowData['TANGGAL MASUK PEMBAYARAN'])) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$order->order_number} - tanggal masuk pembayaran kosong";
-                            Log::warning("Skipping order {$order->order_number} - missing payment date");
-                            continue;
-                        }
-                        
-                        if (!isset($rowData['HARI MASUK PEMBAYARAN']) || empty($rowData['HARI MASUK PEMBAYARAN'])) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$order->order_number} - hari masuk pembayaran kosong";
-                            Log::warning("Skipping order {$order->order_number} - missing payment day");
-                            continue;
-                        }
-                        
-                        // Get order items with their warehouse stocks
-                        $orderItems = $order->orderItems()->with('warehouseStock')->get();
-                        
-                        if ($orderItems->isEmpty()) {
-                            $skippedCount++;
-                            $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$order->order_number} tidak memiliki item";
-                            Log::warning("Skipping order {$order->order_number} - no order items found");
-                            continue;
-                        }
-                        
-                        // Get BarangKeluar items for this order for proportional calculations
-                        $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($query) use ($order) {
-                            $query->where('order_id', $order->id);
-                        })->with('warehouseStock', 'orderItem')->get();
-                        
-                        // Group BarangKeluar by tax_id
-                        $itemsByTaxId = [];
-                        $totalQty = 0;
-                        
-                        foreach ($barangKeluarItems as $item) {
-                            if ($item->warehouseStock && $item->warehouseStock->tax_id) {
-                                $taxId = $item->warehouseStock->tax_id;
-                                if (!isset($itemsByTaxId[$taxId])) {
-                                    $itemsByTaxId[$taxId] = [];
-                                }
-                                $itemsByTaxId[$taxId][] = $item;
-                                $totalQty += $item->qty;
-                            }
-                        }
-                        
-                        // If no BarangKeluar records found, fall back to using order items
-                        if (empty($itemsByTaxId) || $totalQty == 0) {
-                            // For testing purposes, create two tax groups
-                            // This ensures we have multiple invoices for each order
-                            $halfwayPoint = intdiv(count($orderItems), 2);
-                            $taxId1 = 3; // PKP Online
-                            $taxId2 = 4; // Non-PKP Online
-                            
-                            // Reset the total quantity counter
-                            $totalQty = 0;
-                            
-                            // Distribute items between two tax groups for testing
-                            for ($i = 0; $i < count($orderItems); $i++) {
-                                $taxId = $i < $halfwayPoint ? $taxId1 : $taxId2;
-                                if (!isset($itemsByTaxId[$taxId])) {
-                                    $itemsByTaxId[$taxId] = [];
-                                }
-                                $itemsByTaxId[$taxId][] = $orderItems[$i];
-                                $totalQty += $orderItems[$i]->quantity;
-                            }
-                            
-                            // If no items or only one item, use default
-                            if (count($itemsByTaxId) <= 1 && count($orderItems) > 0) {
-                                // Force creating two tax groups for testing
-                                $itemsByTaxId = [
-                                    $taxId1 => array_slice($orderItems->toArray(), 0, $halfwayPoint),
-                                    $taxId2 => array_slice($orderItems->toArray(), $halfwayPoint)
-                                ];
-                            }
-                        }
-                        
-                        // Order is valid, add to the list of valid orders
-                        $validOrders[$order->id] = [
-                            'order' => $order,
-                            'rowData' => $rowData,
-                        ];
-                        
-                    } catch (\Exception $e) {
+                    // Skip if no order number provided
+                    if (!isset($rowData['NOMOR PESANAN']) || empty($rowData['NOMOR PESANAN'])) {
                         $skippedCount++;
-                        $skippedReasons[] = "Baris #" . ($index + 1) . ": Error - " . $e->getMessage();
-                        Log::error("Error processing row " . ($index + 1) . ": " . $e->getMessage());
-                        Log::error($e->getTraceAsString());
+                        $skippedReasons[] = "Baris #" . ($index + 1) . ": Nomor order kosong";
+                        Log::warning("Skipping row - missing order number");
                         continue;
                     }
+                    
+                    $allOrderNumbers[] = $rowData['NOMOR PESANAN'];
+                    $processedRows[] = [
+                        'index' => $index,
+                        'rowData' => $rowData
+                    ];
                 }
             }
             
-            // Selanjutnya, proses setiap order yang valid
+            // Batch query: Get all orders and existing transactions
+            $orders = [];
+            $existingTransactions = [];
+            
+            if (!empty($allOrderNumbers)) {
+                // Remove duplicates
+                $allOrderNumbers = array_unique($allOrderNumbers);
+                
+                // Get all orders with their items in one query
+                $orders = Order::whereIn('order_number', $allOrderNumbers)
+                    ->with(['orderItems.warehouseStock'])
+                    ->get()
+                    ->keyBy('order_number');
+                
+                // Get all existing transactions in one query
+                $existingTransactions = ShopeeFinancialTransaction::whereIn('no_order', $allOrderNumbers)
+                    ->pluck('no_order')
+                    ->toArray();
+                
+                Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
+            }
+            
+            // Process rows with pre-loaded data
+            $validOrders = [];
+            
+            foreach ($processedRows as $rowInfo) {
+                $index = $rowInfo['index'];
+                $rowData = $rowInfo['rowData'];
+                
+                try {
+                    $orderNumber = $rowData['NOMOR PESANAN'];
+                    
+                    // Check if order exists in pre-loaded data
+                    if (!isset($orders[$orderNumber])) {
+                        $skippedCount++;
+                        $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$orderNumber} tidak ditemukan di database";
+                        Log::warning("Skipping order {$orderNumber} - order not found in database");
+                        continue;
+                    }
+                    
+                    $order = $orders[$orderNumber];
+                    
+                    // Check if a transaction with this order number already exists
+                    if (in_array($orderNumber, $existingTransactions)) {
+                        // Skip this order since a transaction already exists
+                        $skippedCount++;
+                        $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$orderNumber} sudah memiliki transaksi";
+                        Log::warning("Skipping order {$orderNumber} - transaction already exists");
+                        continue;
+                    }
+                    
+                    // Check for required data
+                    if (!isset($rowData['TANGGAL MASUK PEMBAYARAN']) || empty($rowData['TANGGAL MASUK PEMBAYARAN'])) {
+                        $skippedCount++;
+                        $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$orderNumber} - tanggal masuk pembayaran kosong";
+                        Log::warning("Skipping order {$orderNumber} - missing payment date");
+                        continue;
+                    }
+                    
+                    if (!isset($rowData['HARI MASUK PEMBAYARAN']) || empty($rowData['HARI MASUK PEMBAYARAN'])) {
+                        $skippedCount++;
+                        $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$orderNumber} - hari masuk pembayaran kosong";
+                        Log::warning("Skipping order {$orderNumber} - missing payment day");
+                        continue;
+                    }
+                    
+                    // Get order items (already loaded with warehouse stocks)
+                    $orderItems = $order->orderItems;
+                    
+                    if ($orderItems->isEmpty()) {
+                        $skippedCount++;
+                        $skippedReasons[] = "Baris #" . ($index + 1) . ": Order {$orderNumber} tidak memiliki item";
+                        Log::warning("Skipping order {$orderNumber} - no order items found");
+                        continue;
+                    }
+                    
+                    // Order is valid, add to the list of valid orders
+                    $validOrders[$order->id] = [
+                        'order' => $order,
+                        'rowData' => $rowData,
+                    ];
+                    
+                } catch (\Exception $e) {
+                    $skippedCount++;
+                    $skippedReasons[] = "Baris #" . ($index + 1) . ": Error - " . $e->getMessage();
+                    Log::error("Error processing row " . ($index + 1) . ": " . $e->getMessage());
+                    Log::error($e->getTraceAsString());
+                    continue;
+                }
+            }
+            
+            // Process valid orders with bulk operations
+            $totalValidOrders = count($validOrders);
+            $processedCount = 0;
+            $transactionsToInsert = [];
+            
+            Log::info("Processing $totalValidOrders valid orders");
+            
             foreach ($validOrders as $orderId => $orderData) {
+                $processedCount++;
+                if ($processedCount % 50 == 0) {
+                    Log::info("Processed $processedCount of $totalValidOrders orders");
+                    // Force garbage collection every 50 orders to free memory
+                    gc_collect_cycles();
+                }
+                
                 $order = $orderData['order'];
                 $rowData = $orderData['rowData'];
                 
                 try {
-                    // Create transaction for this order
-                    $transaction = new ShopeeFinancialTransaction();
-                    $transaction->tanggal_order = $order->tanggal;
-                    $transaction->hari_order = $order->hari;
-                    $transaction->no_order = $order->order_number;
-                    $transaction->no_invoice = $this->generateInvoiceForOrder($order);
-                    $transaction->order_id = $order->id;
-                    
                     // Calculate total quantity across all order items
                     $totalQty = $order->orderItems->sum('quantity');
-                    $transaction->qty = $totalQty;
                     
                     // Calculate total invoice value (price_after_discount × quantity)
                     $totalInvoiceValue = 0;
                     foreach ($order->orderItems as $item) {
                         $totalInvoiceValue += $item->price_after_discount * $item->quantity;
                     }
-                    $transaction->nominal_harga = $totalInvoiceValue;
                     
                     // Process discount values from the import data
-                    $transaction->nominal_diskon1 = !empty($rowData['Voucher Ditanggung Penjual']) ? -abs((float)$rowData['Voucher Ditanggung Penjual']) : 0;
-                    $transaction->nominal_diskon2 = !empty($rowData['KOMISI AMS/AFFILIATE']) ? -abs((float)$rowData['KOMISI AMS/AFFILIATE']) : 0;
-                    $transaction->nominal_diskon3 = !empty($rowData['BIAYA ADMIN']) ? -abs((float)$rowData['BIAYA ADMIN']) : 0;
-                    $transaction->nominal_diskon4 = !empty($rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) ? -abs((float)$rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) : 0;
-                    $transaction->nominal_diskon5 = !empty($rowData['DISKON 5']) ? -abs((float)$rowData['DISKON 5']) : 0;
-                    $transaction->nominal_diskon6 = !empty($rowData['DISKON 6']) ? -abs((float)$rowData['DISKON 6']) : 0;
-                    $transaction->nominal_diskon7 = !empty($rowData['DISKON 7']) ? -abs((float)$rowData['DISKON 7']) : 0;
-                    $transaction->nominal_diskon8 = !empty($rowData['DISKON 8']) ? -abs((float)$rowData['DISKON 8']) : 0;
-                    $transaction->nominal_diskon9 = !empty($rowData['DISKON 9']) ? -abs((float)$rowData['DISKON 9']) : 0;
-                    $transaction->nominal_diskon10 = !empty($rowData['DISKON 10']) ? -abs((float)$rowData['DISKON 10']) : 0;
-                    $transaction->nominal_diskon11 = !empty($rowData['DISKON 11']) ? -abs((float)$rowData['DISKON 11']) : 0;
-                    $transaction->nominal_diskon12 = !empty($rowData['DISKON 12']) ? -abs((float)$rowData['DISKON 12']) : 0;
+                    $nominal_diskon1 = !empty($rowData['Voucher Ditanggung Penjual']) ? -abs((float)$rowData['Voucher Ditanggung Penjual']) : 0;
+                    $nominal_diskon2 = !empty($rowData['KOMISI AMS/AFFILIATE']) ? -abs((float)$rowData['KOMISI AMS/AFFILIATE']) : 0;
+                    $nominal_diskon3 = !empty($rowData['BIAYA ADMIN']) ? -abs((float)$rowData['BIAYA ADMIN']) : 0;
+                    $nominal_diskon4 = !empty($rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) ? -abs((float)$rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) : 0;
+                    $nominal_diskon5 = !empty($rowData['DISKON 5']) ? -abs((float)$rowData['DISKON 5']) : 0;
+                    $nominal_diskon6 = !empty($rowData['DISKON 6']) ? -abs((float)$rowData['DISKON 6']) : 0;
+                    $nominal_diskon7 = !empty($rowData['DISKON 7']) ? -abs((float)$rowData['DISKON 7']) : 0;
+                    $nominal_diskon8 = !empty($rowData['DISKON 8']) ? -abs((float)$rowData['DISKON 8']) : 0;
+                    $nominal_diskon9 = !empty($rowData['DISKON 9']) ? -abs((float)$rowData['DISKON 9']) : 0;
+                    $nominal_diskon10 = !empty($rowData['DISKON 10']) ? -abs((float)$rowData['DISKON 10']) : 0;
+                    $nominal_diskon11 = !empty($rowData['DISKON 11']) ? -abs((float)$rowData['DISKON 11']) : 0;
+                    $nominal_diskon12 = !empty($rowData['DISKON 12']) ? -abs((float)$rowData['DISKON 12']) : 0;
                     
-                    // Set payment info
-                    $transaction->tanggal_masuk_pembayaran = $rowData['TANGGAL MASUK PEMBAYARAN'];
-                    $transaction->hari_masuk_pembayaran = $rowData['HARI MASUK PEMBAYARAN'];
-                    $transaction->saldo_masuk = (float)$rowData['JUMLAH MASUK PEMBAYARAN'];
+                    $saldo_masuk = (float)$rowData['JUMLAH MASUK PEMBAYARAN'];
                     
                     // Calculate nominal_fix and outstanding
-                    $transaction->calculateNominalFix()
-                              ->calculateOutstanding()
-                              ->calculatePercentages();
+                    $nominal_fix = $totalInvoiceValue + $nominal_diskon1 + $nominal_diskon2 + $nominal_diskon3 + 
+                                  $nominal_diskon4 + $nominal_diskon5 + $nominal_diskon6 + $nominal_diskon7 + 
+                                  $nominal_diskon8 + $nominal_diskon9 + $nominal_diskon10 + $nominal_diskon11 + $nominal_diskon12;
+                    
+                    $outstanding = $nominal_fix - $saldo_masuk;
                     
                     // Add validation for potential overpayment scenarios
-                    if ($transaction->saldo_masuk > 0 && $transaction->nominal_fix > 0) {
-                        $ratio = $transaction->saldo_masuk / $transaction->nominal_fix;
+                    if ($saldo_masuk > 0 && $nominal_fix > 0) {
+                        $ratio = $saldo_masuk / $nominal_fix;
                         if ($ratio > 3.0) { // If payment is more than 3x the expected amount
-                            \Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$transaction->saldo_masuk}, nominal_fix={$transaction->nominal_fix}");
+                            \Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$saldo_masuk}, nominal_fix={$nominal_fix}");
                         }
                     }
                     
-                    $transaction->save();
-                    $importCount++;
+                    // Prepare transaction data for bulk insert
+                    $transactionsToInsert[] = [
+                        'tanggal_order' => $order->tanggal,
+                        'hari_order' => $order->hari,
+                        'no_order' => $order->order_number,
+                        'no_invoice' => $this->generateInvoiceForOrder($order),
+                        'order_id' => $order->id,
+                        'qty' => $totalQty,
+                        'nominal_harga' => $totalInvoiceValue,
+                        'nominal_diskon1' => $nominal_diskon1,
+                        'nominal_diskon2' => $nominal_diskon2,
+                        'nominal_diskon3' => $nominal_diskon3,
+                        'nominal_diskon4' => $nominal_diskon4,
+                        'nominal_diskon5' => $nominal_diskon5,
+                        'nominal_diskon6' => $nominal_diskon6,
+                        'nominal_diskon7' => $nominal_diskon7,
+                        'nominal_diskon8' => $nominal_diskon8,
+                        'nominal_diskon9' => $nominal_diskon9,
+                        'nominal_diskon10' => $nominal_diskon10,
+                        'nominal_diskon11' => $nominal_diskon11,
+                        'nominal_diskon12' => $nominal_diskon12,
+                        'tanggal_masuk_pembayaran' => $rowData['TANGGAL MASUK PEMBAYARAN'],
+                        'hari_masuk_pembayaran' => $rowData['HARI MASUK PEMBAYARAN'],
+                        'saldo_masuk' => $saldo_masuk,
+                        'nominal_fix' => $nominal_fix,
+                        'outstanding' => $outstanding,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                    
                 } catch (\Exception $e) {
                     $skippedCount++;
                     $skippedReasons[] = "Order {$order->order_number}: Error - " . $e->getMessage();
@@ -1299,7 +1374,41 @@ class PembayaranShopeeController extends Controller
                 }
             }
             
+            // Bulk insert all transactions with error handling
+            if (!empty($transactionsToInsert)) {
+                Log::info("Bulk inserting " . count($transactionsToInsert) . " transactions");
+                try {
+                    ShopeeFinancialTransaction::insert($transactionsToInsert);
+                    $importCount = count($transactionsToInsert);
+                    Log::info("Successfully bulk inserted $importCount transactions");
+                } catch (\Exception $e) {
+                    Log::error('Bulk insert failed, trying individual inserts', [
+                        'error' => $e->getMessage(),
+                        'count' => count($transactionsToInsert)
+                    ]);
+                    
+                    // Fallback to individual inserts if bulk insert fails
+                    $importCount = 0;
+                    foreach ($transactionsToInsert as $transaction) {
+                        try {
+                            ShopeeFinancialTransaction::create($transaction);
+                            $importCount++;
+                        } catch (\Exception $individualError) {
+                            Log::error('Individual insert failed', [
+                                'error' => $individualError->getMessage(),
+                                'transaction' => $transaction
+                            ]);
+                            $skippedCount++;
+                            $skippedReasons[] = "Failed to insert transaction for order: " . $transaction['no_order'];
+                        }
+                    }
+                }
+            }
+            
             DB::commit();
+            
+            // Force garbage collection to free memory after processing
+            gc_collect_cycles();
             
             // Clean up session data after successful processing
             session()->forget([
@@ -1313,6 +1422,9 @@ class PembayaranShopeeController extends Controller
                 'shopee_invalid_rows',
                 'shopee_process_token'
             ]);
+            
+            // Clear cache to ensure fresh data on next load
+            $this->clearShopeeCache();
             
             // Store skipped reasons in session if any
             if (!empty($skippedReasons)) {
@@ -1330,6 +1442,29 @@ class PembayaranShopeeController extends Controller
             return redirect()->back()
                 ->with('error', 'Error memproses data: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Clear Shopee-related cache
+     */
+    private function clearShopeeCache()
+    {
+        // Clear totals cache patterns
+        $cacheKeys = [
+            'shopee_totals_*',
+            'shopee_missing_orders_*'
+        ];
+        
+        foreach ($cacheKeys as $pattern) {
+            if (str_contains($pattern, '*')) {
+                // For wildcard patterns, we'd need to implement cache tag clearing
+                // For now, we'll clear specific cache keys
+                cache()->forget('shopee_totals_' . md5(serialize(request()->all())));
+                cache()->forget('shopee_missing_orders_' . date('Y-m-d-H'));
+            }
+        }
+        
+        Log::info('Shopee cache cleared after data update');
     }
 
     /**
@@ -1483,6 +1618,9 @@ class PembayaranShopeeController extends Controller
             
             DB::commit();
             
+            // Clear cache to ensure fresh data on next load
+            $this->clearShopeeCache();
+            
             return redirect()->route('finance.shopee.index')->with('success', 'Transaksi keuangan berhasil ditambahkan.');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1542,6 +1680,9 @@ class PembayaranShopeeController extends Controller
             
             DB::commit();
             
+            // Clear cache to ensure fresh data on next load
+            $this->clearShopeeCache();
+            
             return redirect()->route('finance.shopee.index')
                 ->with('success', 'Adjustment berhasil disimpan.');
         } catch (\Exception $e) {
@@ -1559,6 +1700,9 @@ class PembayaranShopeeController extends Controller
         try {
             $transaction = ShopeeFinancialTransaction::findOrFail($id);
             $transaction->delete();
+            
+            // Clear cache to ensure fresh data on next load
+            $this->clearShopeeCache();
             
             return redirect()->route('finance.shopee.index')
                 ->with('success', 'Transaksi berhasil dihapus.');
@@ -1684,6 +1828,9 @@ class PembayaranShopeeController extends Controller
             }
             
             $transaction->unlock();
+            
+            // Clear cache to ensure fresh data on next load
+            $this->clearShopeeCache();
             
             return redirect()->back()->with('success', 'Kunci transaksi berhasil dibuka.');
         } catch (\Exception $e) {

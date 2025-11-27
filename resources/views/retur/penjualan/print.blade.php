@@ -169,21 +169,29 @@
                 <tbody>
                     @foreach($returPenjualan->details as $index => $detail)
                     @php
-                        // Calculate correct price per individual product for paket (remove hardcoded value)
+                        // Use correct retur logic based on mapping quantity
                         if (!$detail->orderItem) {
                             $pricePerProduct = 0;
                         } else {
-                            $platformProduct = $detail->orderItem->platformProduct;
+                            $orderItem = $detail->orderItem;
+                            $platformProduct = $orderItem->platformProduct;
+                            
                             if (!$platformProduct || !$platformProduct->mappingBarang) {
-                                $pricePerProduct = $detail->orderItem->price_after_discount;
+                                // If no mapping, use original price
+                                $pricePerProduct = $orderItem->price_after_discount;
                             } else {
-                                // Calculate total quantity in the package
-                                $totalPackageQty = $platformProduct->mappingBarang->sum('quantity');
+                                // Calculate total quantity in the package from mapping
+                                $totalPackageQty = $platformProduct->mappingBarang
+                                    ->where('is_active', true)
+                                    ->sum('quantity');
                                 
-                                // Calculate price per individual product
-                                $pricePerProduct = $totalPackageQty > 0 ? 
-                                    $detail->orderItem->price_after_discount / $totalPackageQty : 
-                                    $detail->orderItem->price_after_discount;
+                                if ($totalPackageQty > 1) {
+                                    // If package contains more than 1 item, divide the price
+                                    $pricePerProduct = $orderItem->price_after_discount / $totalPackageQty;
+                                } else {
+                                    // If package contains only 1 item, use original price
+                                    $pricePerProduct = $orderItem->price_after_discount;
+                                }
                             }
                         }
                         
@@ -200,7 +208,7 @@
                         <td class="text-center">{{ $index + 1 }}</td>
                         <td>{{ $productName }}</td>
                         <td class="text-center">0</td>
-                        <td class="text-center">{{ number_format($detail->qty, 0) }}</td>
+                        <td class="text-center">{{ number_format($detail->qty, 2) }}</td>
                         <td class="text-right">{{ number_format($pricePerProduct, 0, ',', '.') }}</td>
                         <td class="text-right">{{ number_format($totalPriceDetail, 0, ',', '.') }}</td>
                         <td>RETUR {{ $kondisi }} - {{ $alasan }}</td>

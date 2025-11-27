@@ -292,6 +292,16 @@ class FinanceAnalyticsController extends Controller
                 });
             }
         }
+        
+        // Exclude transactions with fully returned orders
+        $query->whereHas('order', function($q) {
+            // Filter out orders that are fully returned
+            $q->where(function($subQ) {
+                $subQ->whereDoesntHave('returPenjualan', function($rq) {
+                    $rq->whereIn('status', ['draft', 'selesai']);
+                });
+            });
+        });
 
         // Calculate totals for cards from filtered data
         $totalCount = $query->count();

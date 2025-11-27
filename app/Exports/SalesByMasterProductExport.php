@@ -63,43 +63,29 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
 
     public function map($row): array
     {
-        $qty = $row['quantity'] ?? 0; // QTY (master barang)
-        $capital = $row['capital'] ?? 0; // total modal untuk baris ini
-        $proportionPercent = $row['proportion_percent'] ?? 0;
-        $revenue = $row['revenue'] ?? 0; // total saldo masuk (revenue) untuk baris
-        $unitCost = $qty > 0 ? $capital / $qty : 0; // harga modal per unit
+        // ALL CALCULATIONS ARE NOW DONE IN SQL - JUST USE THE VALUES
+        // No more PHP calculations needed!
+        // Data comes as array from Query class
         
-        // Perhitungan sesuai permintaan yang benar
+        $qty = $row['quantity'] ?? 0; // QTY (master barang)
+        $proportionPercent = $row['proportion_percent'] ?? 0;
+        
+        // All values below are already calculated in SQL
         $paymentAmount = $row['order_total_payment'] ?? 0; // jumlah masuk pembayaran dari order
         $paymentAmountWithoutPPN = $paymentAmount / 1.11; // tanpa PPN
-        $paymentPerProduct = $qty > 0 ? ($paymentAmount * ($proportionPercent / 100)) / $qty : 0; // per produk
-        $paymentPerProductWithoutPPN = $paymentPerProduct / 1.11; // per produk tanpa PPN
-        $profitPerPCS = $paymentPerProductWithoutPPN - $unitCost; // profit per pcs
-        
-        // RUMUS YANG DIPERBAIKI:
-        // 1. Gross Profit Total = profit per pcs * QTY
-        $grossProfitTotalCorrected = $profitPerPCS * $qty;
-        
-        // 2. Margin per PCS = (profit per pcs / masuk pembayaran produk-PPN) x 100%
-        // Untuk Excel, konversi ke desimal (1.00) bukan persentase (100.00)
-        $marginPerPCS = $paymentPerProductWithoutPPN > 0 ? ($profitPerPCS / $paymentPerProductWithoutPPN) : 0;
-        
-        // 3. Margin per Item = (gross profit total / (masuk pembayaran produk-PPN X QTY master produk)) x 100%
-        // Untuk Excel, konversi ke desimal (1.00) bukan persentase (100.00)
-        $marginPerItem = ($paymentPerProductWithoutPPN * $qty) > 0 ? ($grossProfitTotalCorrected / ($paymentPerProductWithoutPPN * $qty)) : 0;
-        
-        // Data untuk pricelist - PERHITUNGAN YANG BENAR
-        $pricelistPerItem = $row['price'] ?? 0; // harga pricelist per item (selling price dari products table)
-        $pricelistTotal = $pricelistPerItem * $qty; // harga pricelist per item X QTY
-        
-        // Total harga pricelist dalam 1 no order = total nilai order dari products table
-        $totalPricelistOrder = $row['total_order_value_from_products'] ?? 0; // total nilai order dari products table
-        
-        // Persen dalam order = menggunakan proportion_percent yang sudah dihitung di controller
-        // Controller sudah menghitung: ($masterValue / $totalOrderValueFromProducts) * 100
-        // di mana $masterValue = $sellingPrice * $masterQty
-        // Untuk Excel, kita perlu mengirim nilai dalam format desimal (1.00) bukan persentase (100.00)
+        $pricelistPerItem = $row['price'] ?? 0; // harga pricelist per item
+        $pricelistTotal = $row['pricelist_total'] ?? 0; // harga pricelist per item X QTY (from SQL)
+        $totalPricelistOrder = $row['total_order_value_from_products'] ?? 0; // total nilai order
         $persenDalamOrder = $proportionPercent / 100; // Konversi dari persentase ke desimal untuk Excel
+        
+        // These are all calculated in SQL - just use them directly
+        $paymentPerProduct = $row['payment_per_product_per_pcs'] ?? 0; // from SQL
+        $paymentPerProductWithoutPPN = $row['payment_per_product_without_ppn'] ?? 0; // from SQL
+        $unitCost = $row['modal_per_pcs'] ?? 0; // from SQL (cogs_per_unit)
+        $profitPerPCS = $row['profit_per_pcs'] ?? 0; // from SQL
+        $grossProfitTotal = $row['gross_profit_total'] ?? 0; // from SQL
+        $marginPerPCS = ($row['margin_per_pcs'] ?? 0) / 100; // from SQL, convert to decimal for Excel
+        $marginPerItem = ($row['margin_per_item'] ?? 0) / 100; // from SQL, convert to decimal for Excel
 
         return [
             isset($row['order_date']) ? Carbon::parse($row['order_date'])->format('d M Y') : '-', // Tanggal (Pembayaran Masuk)
@@ -111,17 +97,17 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
             isset($row['sku']) ? (string)$row['sku'] : '-', // SKU as text
             $row['product_name'] ?? '-', // Master Barang
             $qty, // QTY
-            round($paymentAmount, 2), // Jumlah masuk pembayaran (Rp) - rounded to 2 decimal places
-            round($paymentAmountWithoutPPN, 2), // Jumlah masuk pembayaran - PPN (Rp) - rounded to 2 decimal places
-            round($pricelistPerItem, 2), // Harga pricelist per item (Rp) - rounded to 2 decimal places
-            round($pricelistTotal, 2), // Harga pricelist per item X QTY (Rp) - rounded to 2 decimal places
-            round($totalPricelistOrder, 2), // Total harga pricelist (Rp) - rounded to 2 decimal places
+            round($paymentAmount, 2), // Jumlah masuk pembayaran (Rp)
+            round($paymentAmountWithoutPPN, 2), // Jumlah masuk pembayaran - PPN (Rp)
+            round($pricelistPerItem, 2), // Harga pricelist per item (Rp)
+            round($pricelistTotal, 2), // Harga pricelist per item X QTY (Rp)
+            round($totalPricelistOrder, 2), // Total harga pricelist (Rp)
             $persenDalamOrder, // Persen dalam order (%)
-            round($paymentPerProduct, 2), // Masuk pembayaran per produk (Rp) - rounded to 2 decimal places
-            round($paymentPerProductWithoutPPN, 2), // Masuk pembayaran per produk - PPN (Rp) - rounded to 2 decimal places
-            round($unitCost, 2), // Harga Modal (COGS) (Rp) - rounded to 2 decimal places
-            round($profitPerPCS, 2), // Profit per PCS (Rp) - rounded to 2 decimal places
-            round($grossProfitTotalCorrected, 2), // Gross Profit total (Rp) - rounded to 2 decimal places
+            round($paymentPerProduct, 2), // Masuk pembayaran per produk (Rp)
+            round($paymentPerProductWithoutPPN, 2), // Masuk pembayaran per produk - PPN (Rp)
+            round($unitCost, 2), // Harga Modal (COGS) (Rp)
+            round($profitPerPCS, 2), // Profit per PCS (Rp)
+            round($grossProfitTotal, 2), // Gross Profit total (Rp)
             $marginPerPCS, // Margin per pcs (%)
             $marginPerItem // Margin per item (%)
         ];
@@ -261,13 +247,13 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
         $sheet->setCellValue('B6', 'Rp ' . number_format($this->summary['total_revenue'], 0, ',', '.'));
         
         $sheet->setCellValue('A7', 'Total Saldo Masuk - PPN:');
-        $sheet->setCellValue('B7', 'Rp ' . number_format($this->summary['total_revenue'] / 1.11, 0, ',', '.'));
+        $sheet->setCellValue('B7', 'Rp ' . number_format($this->summary['total_revenue_without_ppn'], 0, ',', '.'));
         
         $sheet->setCellValue('A8', 'Total Modal:');
         $sheet->setCellValue('B8', 'Rp ' . number_format($this->summary['total_capital'], 0, ',', '.'));
         
         $sheet->setCellValue('A9', 'Gross Profit:');
-        $sheet->setCellValue('B9', 'Rp ' . number_format(($this->summary['total_revenue'] / 1.11) - $this->summary['total_capital'], 0, ',', '.'));
+        $sheet->setCellValue('B9', 'Rp ' . number_format($this->summary['total_gross_profit'], 0, ',', '.'));
         
         // Apply consistent styling to summary labels and values
         foreach ($summaryLabels as $cell) {

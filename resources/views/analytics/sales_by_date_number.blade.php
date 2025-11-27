@@ -309,7 +309,7 @@
 
                             <!-- Submit and Reset Button -->
                             <div class="col-md-3">
-                                <button type="submit" class="btn btn-primary w-100">
+                                <button type="submit" class="btn btn-primary w-100" id="filter-submit-btn">
                                     <i class="bi bi-search"></i> Filter
                                 </button>
                             </div>
@@ -318,7 +318,16 @@
                                     <i class="bi bi-arrow-counterclockwise"></i> Reset
                                 </a>
                             </div>
-
+                        </div>
+                        
+                        <!-- Loading indicator -->
+                        <div class="row mt-3" id="loading-indicator" style="display: none;">
+                            <div class="col-12 text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Memproses data, mohon tunggu...</p>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -441,7 +450,7 @@
                             <div class="card-header bg-dark text-white">
                                 <h5 class="mb-0">
                                     Ringkasan Saldo Masuk per Tanggal (1-31)
-                                    @if($selectedPlatform || $startDate != now()->format('Y-m-d') || $endDate != now()->format('Y-m-d'))
+                                    @if($selectedPlatform || request('quick_range') || ($startDate != now()->format('Y-m-d') || $endDate != now()->format('Y-m-d')))
                                     <span class="badge bg-warning text-dark ms-2">Data Terfilter</span>
                                     @endif
                                 </h5>
@@ -457,12 +466,61 @@
                 
                 <!-- Date Number Detail Table -->
                 <h5 class="mb-3">Detail Saldo Masuk per Tanggal (1-31)</h5>
+                
+                @if(isset($debugInfo) && !empty($debugInfo))
+                <div class="alert alert-warning mb-3">
+                    <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Peringatan: Orders Tanpa Financial Transactions</h6>
+                    <p class="mb-2">Tanggal berikut memiliki orders tapi tidak memiliki financial transactions:</p>
+                    <ul class="mb-0">
+                        @foreach($debugInfo as $dateKey => $debug)
+                            @if($dateKey != '31_details')
+                            <li>
+                                <strong>Tanggal {{ $dateKey }}:</strong> 
+                                {{ number_format($debug['order_count']) }} orders tanpa financial transactions
+                            </li>
+                            @endif
+                        @endforeach
+                    </ul>
+                    
+                    @if(isset($debugInfo['31_details']) && !empty($debugInfo['31_details']))
+                    <hr>
+                    <div class="mt-2">
+                        <strong>Khusus Tanggal 31:</strong>
+                        <ul class="mb-0">
+                            @foreach($debugInfo['31_details'] as $date31Detail)
+                            <li>
+                                <strong>{{ \Carbon\Carbon::parse($date31Detail['full_date'])->format('d M Y') }}:</strong>
+                                {{ number_format($date31Detail['order_count']) }} orders
+                            </li>
+                            @endforeach
+                        </ul>
+                        <p class="mb-0 mt-2"><small class="text-info">
+                            <i class="bi bi-info-circle"></i> 
+                            Tanggal 31 hanya ada di bulan: Januari, Maret, Mei, Juli, Agustus, Oktober, Desember. 
+                            Bulan lain (Februari, April, Juni, September, November) tidak punya tanggal 31.
+                        </small></p>
+                    </div>
+                    @else
+                    <p class="mb-0 mt-2"><small class="text-info">
+                        <i class="bi bi-info-circle"></i> 
+                        Tidak ada orders ditemukan di tanggal 31 dalam periode ini. 
+                        Tanggal 31 hanya ada di bulan: Januari, Maret, Mei, Juli, Agustus, Oktober, Desember.
+                    </small></p>
+                    @endif
+                    
+                    <p class="mb-0 mt-2"><small>Note: Data di tabel hanya menampilkan orders yang memiliki financial transactions dengan saldo_masuk > 0.</small></p>
+                </div>
+                @endif
+                
                 <div class="table-responsive mb-4">
                     <table class="table table-striped table-bordered">
                         <thead class="table-dark">
                             <tr>
                                 <th>Tanggal</th>
-                                <th class="text-end">Jumlah Order</th>
+                                <th class="text-end">Jumlah Order<br><small class="fw-normal">(dengan transaksi)</small></th>
+                                @if(isset($allOrdersByDate))
+                                <th class="text-end">Total All Orders<br><small class="fw-normal">(semua orders)</small></th>
+                                @endif
                                 <th class="text-end">Total Saldo Masuk (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">Avg Saldo/Order (Rp)</th>
@@ -480,13 +538,28 @@
                                         'total_value' => 0,
                                         'total_volume' => 0
                                     ];
+                                    $allOrdersCount = $allOrdersByDate[$dateKey] ?? 0;
+                                    $hasOrdersWithoutFT = isset($debugInfo[$dateKey]);
                                     $avgValue = $data['order_count'] > 0 ? $data['total_value'] / $data['order_count'] : 0;
                                     $avgVolume = $data['order_count'] > 0 ? $data['total_volume'] / $data['order_count'] : 0;
                                     $valueVolumeRatio = $data['total_volume'] > 0 ? $data['total_value'] / $data['total_volume'] : 0;
                                 @endphp
-                                <tr class="{{ $data['order_count'] > 0 ? '' : 'table-secondary' }}">
-                                    <td class="fw-bold">{{ $dateKey }}</td>
+                                <tr class="{{ $data['order_count'] > 0 ? '' : ($allOrdersCount > 0 ? 'table-warning' : 'table-secondary') }}">
+                                    <td class="fw-bold">
+                                        {{ $dateKey }}
+                                        @if($hasOrdersWithoutFT)
+                                            <i class="bi bi-exclamation-triangle text-warning" title="{{ $debugInfo[$dateKey]['order_count'] }} orders tanpa financial transactions"></i>
+                                        @endif
+                                    </td>
                                     <td class="text-end">{{ number_format($data['order_count']) }}</td>
+                                    @if(isset($allOrdersByDate))
+                                    <td class="text-end">
+                                        {{ number_format($allOrdersCount) }}
+                                        @if($allOrdersCount > $data['order_count'])
+                                            <br><small class="text-danger">(-{{ number_format($allOrdersCount - $data['order_count']) }})</small>
+                                        @endif
+                                    </td>
+                                    @endif
                                     <td class="text-end">{{ number_format($data['total_value'], 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($data['total_volume']) }}</td>
                                     <td class="text-end">{{ number_format($avgValue, 0, ',', '.') }}</td>
@@ -499,6 +572,9 @@
                             <tr>
                                 <th>TOTAL</th>
                                 <th class="text-end">{{ number_format($summary['total_orders']) }}</th>
+                                @if(isset($allOrdersByDate))
+                                <th class="text-end">{{ number_format($summary['total_all_orders']) }}</th>
+                                @endif
                                 <th class="text-end">{{ number_format($summary['total_value'], 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_volume']) }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_value'], 0, ',', '.') }}</th>
@@ -569,8 +645,8 @@
         <div class="card mt-4">
             <div class="card-header bg-dark text-white">
                 <h5 class="mb-0">
-                    Trend Linear Saldo Masuk per Hari dalam Seminggu
-                    @if($selectedPlatform || $startDate != now()->format('Y-m-d') || $endDate != now()->format('Y-m-d'))
+                    Trend Linear Saldo Masuk per Tanggal (1-31)
+                    @if($selectedPlatform || request('quick_range') || ($startDate != now()->format('Y-m-d') || $endDate != now()->format('Y-m-d')))
                     <span class="badge bg-warning text-dark ms-2">Data Terfilter</span>
                     @endif
                 </h5>
@@ -581,8 +657,8 @@
                 </div>
                 <div class="mt-3 text-center text-muted">
                     <small>
-                        Grafik menunjukkan trend saldo masuk berdasarkan hari dalam seminggu.
-                        X-axis: Hari, Y-axis: Jumlah Order
+                        Grafik menunjukkan trend saldo masuk berdasarkan tanggal dalam bulan (1-31).
+                        X-axis: Tanggal (1-31), Y-axis: Saldo Masuk (Rp)
                     </small>
                 </div>
             </div>
@@ -596,125 +672,177 @@
     <!-- Chart Scripts -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            var ctx = document.getElementById('dateNumberChart').getContext('2d');
+            // Handle form submission with loading state
+            const filterForm = document.getElementById('filter-form');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const submitBtn = document.getElementById('filter-submit-btn');
+            
+            if (filterForm) {
+                filterForm.addEventListener('submit', function(e) {
+                    // Show loading indicator
+                    loadingIndicator.style.display = 'block';
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Memproses...';
+                    
+                    // Scroll to loading indicator
+                    loadingIndicator.scrollIntoView({ behavior: 'smooth' });
+                });
+            }
+            
+            // Set default date to today if not already set
+            const startDateInput = document.getElementById('start_date');
+            const endDateInput = document.getElementById('end_date');
+            
+            // Get today's date in YYYY-MM-DD format
+            const today = new Date();
+            const todayFormatted = today.toISOString().split('T')[0];
+            
+            // Set default values if empty
+            if (startDateInput && !startDateInput.value) {
+                startDateInput.value = todayFormatted;
+            }
+            
+            if (endDateInput && !endDateInput.value) {
+                endDateInput.value = todayFormatted;
+            }
+            
+            // If URL doesn't have date parameters, submit the form with today's date
+            const urlParams = new URLSearchParams(window.location.search);
+            if (!urlParams.has('start_date') && !urlParams.has('end_date') && !urlParams.has('quick_range') && !document.referrer.includes('sales-by-date-number')) {
+                const filterForm = document.getElementById('filter-form');
+                if (filterForm) {
+                    filterForm.submit();
+                }
+            }
+            
+            // Initialize charts only if data exists
+            const dateNumberChartEl = document.getElementById('dateNumberChart');
             
             // Prepare data for the chart - show all dates 1-31
             var chartLabels = [];
             var chartData = [];
             
             // Generate labels and data for all dates 1-31
+            @php
+                $chartData = [];
+                for ($i = 1; $i <= 31; $i++) {
+                    $dateKey = sprintf('%02d', $i);
+                    $data = $dateNumberSummary[$dateKey] ?? [
+                        'total_value' => 0
+                    ];
+                    $chartData[] = $data['total_value'];
+                }
+            @endphp
+            
             for (var i = 1; i <= 31; i++) {
                 var dateKey = i.toString().padStart(2, '0');
                 chartLabels.push(dateKey);
-                
-                // Get data for this date or use 0 if no data
-                @php
-                    $chartData = [];
-                    for ($i = 1; $i <= 31; $i++) {
-                        $dateKey = sprintf('%02d', $i);
-                        $data = $dateNumberSummary[$dateKey] ?? [
-                            'total_value' => 0
-                        ];
-                        $chartData[] = $data['total_value'];
-                    }
-                @endphp
                 chartData.push({{ implode(',', $chartData) }}[i-1]);
             }
             
-            // Create the chart
-            var dateNumberChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: chartLabels,
-                    datasets: [{
-                        label: 'Saldo Masuk (Rp)',
-                        data: chartData,
-                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value, index, values) {
-                                    return value;
+            // Create the main date number chart
+            if (dateNumberChartEl) {
+                var ctx = dateNumberChartEl.getContext('2d');
+                
+                var dateNumberChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartLabels,
+                        datasets: [{
+                            label: 'Saldo Masuk (Rp)',
+                            data: chartData,
+                            backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value, index, values) {
+                                        // Format angka dengan titik sebagai pemisah ribuan
+                                        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                                    }
                                 }
                             }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return 'Rp ' + context.raw.toLocaleString('id-ID');
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Rp ' + context.raw.toLocaleString('id-ID');
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
             
-            // Create the linear trend chart
-            var ctxLinear = document.getElementById('dayOfWeekLinearChart').getContext('2d');
-            
-            var linearChart = new Chart(ctxLinear, {
-                type: 'line',
-                data: {
-                    labels: chartLabels,
-                    datasets: [{
-                        label: 'Trend Saldo Masuk',
-                        data: chartData,
-                        borderColor: 'rgba(255, 99, 132, 1)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                        borderWidth: 2,
-                        pointBackgroundColor: 'rgba(255, 99, 132, 1)',
-                        pointRadius: 4,
-                        tension: 0.3,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Tanggal (1-31)'
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Saldo Masuk (Rp)'
+            // Create the linear trend chart (only if element exists and data is available)
+            const dayOfWeekLinearChartEl = document.getElementById('dayOfWeekLinearChart');
+            if (dayOfWeekLinearChartEl) {
+                var ctxLinear = dayOfWeekLinearChartEl.getContext('2d');
+                
+                var linearChart = new Chart(ctxLinear, {
+                    type: 'line',
+                    data: {
+                        labels: chartLabels,
+                        datasets: [{
+                            label: 'Trend Saldo Masuk',
+                            data: chartData,
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderWidth: 2,
+                            pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+                            pointRadius: 4,
+                            tension: 0.3,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Tanggal (1-31)'
+                                }
                             },
-                            ticks: {
-                                callback: function(value, index, values) {
-                                    return value;
-                                }
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return 'Rp ' + context.raw.toLocaleString('id-ID');
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Saldo Masuk (Rp)'
+                                },
+                                ticks: {
+                                    callback: function(value, index, values) {
+                                        // Format angka dengan titik sebagai pemisah ribuan
+                                        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                                    }
                                 }
                             }
                         },
-                        legend: {
-                            position: 'top',
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Rp ' + context.raw.toLocaleString('id-ID');
+                                    }
+                                }
+                            },
+                            legend: {
+                                position: 'top',
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
         });
     </script>
 </body>

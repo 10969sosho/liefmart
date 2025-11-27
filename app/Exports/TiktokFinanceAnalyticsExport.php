@@ -5,6 +5,7 @@ namespace App\Exports;
 use App\Models\TiktokFinancialTransaction;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromQuery;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
@@ -17,7 +18,7 @@ use PhpOffice\PhpSpreadsheet\Cell\Cell;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
 
-class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQuery, WithHeadings, WithMapping, WithStyles, ShouldAutoSize, WithCustomValueBinder
+class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, ShouldAutoSize, WithCustomValueBinder
 {
     protected $request;
 
@@ -81,8 +82,9 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
 
     public function query()
     {
-        $query = TiktokFinancialTransaction::select([
-            'id', 'tanggal_order', 'hari_order', 'no_order', 'no_invoice',
+        $query = TiktokFinancialTransaction::with(['order'])
+        ->select([
+            'id', 'tanggal_order', 'hari_order', 'no_order', 'no_invoice', 'order_id',
             'nominal_harga', 'nominal_diskon1', 'nominal_diskon2', 'nominal_diskon3', 'nominal_diskon4', 'nominal_diskon5',
             'nominal_diskon6', 'nominal_diskon7', 'nominal_diskon8', 'nominal_diskon9', 'nominal_diskon10', 'nominal_diskon11', 'nominal_diskon12',
             'persentase_diskon1', 'persentase_diskon2', 'persentase_diskon3', 'persentase_diskon4', 'persentase_diskon5',
@@ -90,7 +92,8 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             'adjustment', 'adjustment_description', 'total_persentase', 'nominal_fix', 'saldo_masuk',
             'tanggal_masuk_pembayaran', 'hari_masuk_pembayaran', 'outstanding'
         ])
-        ->orderBy('tanggal_order', 'desc');
+        ->orderBy('tanggal_order', 'desc')
+        ->limit(100); // Limit to 100 records to avoid memory issues
 
         // Apply filters - same as in controller
         // Filter by payment date range
@@ -145,8 +148,23 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
                 });
             }
         }
+        
+        // Exclude transactions with fully returned orders
+        $query->whereHas('order', function($q) {
+            // Filter out orders that are fully returned
+            $q->where(function($subQ) {
+                $subQ->whereDoesntHave('returPenjualan', function($rq) {
+                    $rq->whereIn('status', ['draft', 'selesai']);
+                });
+            });
+        });
 
         return $query;
+    }
+
+    public function chunkSize(): int
+    {
+        return 100;
     }
 
     public function headings(): array

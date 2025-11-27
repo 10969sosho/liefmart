@@ -85,9 +85,17 @@ class Order extends Model
     /**
      * Relation to Shopee financial transactions
      */
-    public function shopeeFinancialTransactions()
+public function shopeeFinancialTransactions()
     {
         return $this->hasMany(ShopeeFinancialTransaction::class);
+    }
+    
+    /**
+     * Relation to Shopee2 financial transactions
+     */
+    public function shopee2FinancialTransactions()
+    {
+        return $this->hasMany(Shopee2FinancialTransaction::class);
     }
     
     /**
@@ -96,6 +104,14 @@ class Order extends Model
     public function tiktokFinancialTransactions()
     {
         return $this->hasMany('App\Models\TiktokFinancialTransaction');
+    }
+    
+    /**
+     * Relation to TikTok2 financial transactions
+     */
+    public function tiktok2FinancialTransactions()
+    {
+        return $this->hasMany(Tiktok2FinancialTransaction::class);
     }
     
     /**
@@ -112,6 +128,14 @@ class Order extends Model
     public function blibliFinancialTransactions()
     {
         return $this->hasMany('App\Models\BlibliFinancialTransaction');
+    }
+    
+    /**
+     * Relation to Lazada financial transactions
+     */
+    public function lazadaFinancialTransactions()
+    {
+        return $this->hasMany(LazadaFinancialTransaction::class);
     }
 
     /**
@@ -157,7 +181,10 @@ class Order extends Model
             // Convert individual retur quantity back to package quantity
             $packageQuantity = 1; // Default for non-package products
             if ($item->platformProduct && $item->platformProduct->mappingBarang && $item->platformProduct->mappingBarang->count() > 0) {
-                $packageQuantity = $item->platformProduct->mappingBarang->sum('quantity');
+                // Use only active mappings when determining package quantity
+                $packageQuantity = $item->platformProduct->mappingBarang
+                    ->where('is_active', true)
+                    ->sum('quantity');
             }
             
             $returnedQuantity = $packageQuantity > 0 ? $returnedQuantityIndividual / $packageQuantity : $returnedQuantityIndividual;

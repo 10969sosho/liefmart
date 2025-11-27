@@ -209,7 +209,7 @@
                                         <option value="">Semua Platform</option>
                                         @foreach($platforms as $platform)
                                             <option value="{{ $platform->name }}" {{ request('platform') == $platform->name ? 'selected' : '' }}>
-                                                {{ ucfirst($platform->name) }}
+                                                {{ $platform->name }}
                                             </option>
                                         @endforeach
                                     </select>
@@ -266,7 +266,7 @@
                                         <td>{{ $platformProducts->firstItem() + $index }}</td>
                                         <td>
                                             @if($product->platform)
-                                                <span class="badge badge-info text-white">{{ ucfirst($product->platform->name) }}</span>
+                                                <span class="badge badge-info text-white">{{ $product->platform->name }}</span>
                                             @else
                                                 <span class="badge badge-danger text-white">Platform tidak ditemukan</span>
                                             @endif

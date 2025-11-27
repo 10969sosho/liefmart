@@ -69,7 +69,7 @@ class Kernel extends HttpKernel
         'check.print.permission' => \App\Http\Middleware\CheckPrintPermission::class,
         'superadmin' => \App\Http\Middleware\CheckSuperAdmin::class,
         'main.category' => \App\Http\Middleware\CheckMainCategory::class,
-        // 'increase.upload.limits' => \App\Http\Middleware\IncreaseUploadLimits::class, // Disabled
+        'increase.upload.limits' => \App\Http\Middleware\IncreaseUploadLimits::class,
         'under.construction' => \App\Http\Middleware\CheckUnderConstruction::class,
         'permission' => \App\Http\Middleware\CheckPermission::class,
         'dynamic.paths' => \App\Http\Middleware\EnsureDynamicPaths::class,

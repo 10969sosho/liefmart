@@ -51,15 +51,28 @@ class BlibliImport extends DefaultValueBinder implements ToCollection, WithMulti
 
     /**
      * Constructor
+     * 
+     * @param int|null $platformId ID platform (jika null, akan menggunakan platform_id dari session atau default)
      */
-    public function __construct()
+    public function __construct($platformId = null)
     {
-        // Dapatkan platform Blibli dari database
-        $this->platform = Platform::where('name', 'blibli')->first();
+        // Jika platform_id diberikan, gunakan itu
+        if ($platformId !== null) {
+            $this->platform = Platform::find($platformId);
+        } else {
+            // Coba ambil dari session jika ada
+            $platformId = session('platform_id');
+            if ($platformId) {
+                $this->platform = Platform::find($platformId);
+            } else {
+                // Fallback: cari berdasarkan nama (untuk backward compatibility)
+                $this->platform = Platform::where('name', 'blibli')->first();
+            }
+        }
 
-        // Jika platform tidak ditemukan, buat baru
+        // Jika platform tidak ditemukan, throw exception
         if (! $this->platform) {
-            $this->platform = Platform::create(['name' => 'blibli']);
+            throw new \Exception('Platform tidak ditemukan di database.');
         }
     }
 
@@ -219,21 +232,28 @@ class BlibliImport extends DefaultValueBinder implements ToCollection, WithMulti
 
         // Ambil data berdasarkan mapping kolom
         foreach ($this->columnMapping as $key => $index) {
-            $value = isset($row[$index]) ? trim($row[$index]) : null;
-            
-            // Special handling for status_hari to support multiple values
-            if ($key === 'status_hari' && !empty($value)) {
-                // If value contains comma, it's already in the correct format for multiple values
-                // If not, it's a single value
-                if (strpos($value, ',') === false) {
-                    // Single value, keep as is
-                    $rowData[$key] = $value;
+            // For nama_barang and variasi, preserve exactly as in Excel (no trim, no normalization)
+            if ($key === 'nama_barang' || $key === 'variasi') {
+                $value = isset($row[$index]) ? $row[$index] : null;
+                $rowData[$key] = $value;
+            } else {
+                // For other fields, apply trim
+                $value = isset($row[$index]) ? trim($row[$index]) : null;
+                
+                // Special handling for status_hari to support multiple values
+                if ($key === 'status_hari' && !empty($value)) {
+                    // If value contains comma, it's already in the correct format for multiple values
+                    // If not, it's a single value
+                    if (strpos($value, ',') === false) {
+                        // Single value, keep as is
+                        $rowData[$key] = $value;
+                    } else {
+                        // Multiple values separated by comma, keep as is
+                        $rowData[$key] = $value;
+                    }
                 } else {
-                    // Multiple values separated by comma, keep as is
                     $rowData[$key] = $value;
                 }
-            } else {
-                $rowData[$key] = $value;
             }
         }
 
@@ -640,7 +660,14 @@ class BlibliImport extends DefaultValueBinder implements ToCollection, WithMulti
             foreach ($stocks as $stock) {
                 if ($remainingQty <= 0) break;
 
+                // Hitung quantity yang akan dikurangi dari stok ini
+                // Pastikan qty minimal 1 (tidak ada desimal seperti 0.5)
                 $qtyToTake = min($remainingQty, $stock->qty);
+                
+                // Jika qtyToTake kurang dari 1, skip stock ini dan lanjut ke stock berikutnya
+                if ($qtyToTake < 1) {
+                    continue;
+                }
 
                 // Catat barang keluar
                 $this->recordBarangKeluar($orderItem, $stock, $qtyToTake, $order);

@@ -209,7 +209,7 @@
                     <ul class="nav flex-column">
                         <!-- General Analytics -->
                         <li class="nav-item mb-1">
-                            <a class="nav-link py-2 px-3 rounded" href="{{ route('warehouse.stock.analytics') }}">
+                            <a class="nav-link py-2 px-3 rounded" href="{{ route('warehouse.stock.analytics') }}" target="_blank">
                                 <i class="fas fa-chart-bar me-2"></i> Stock Analytics
                             </a>
                         </li>
@@ -226,22 +226,22 @@
                             <div class="collapse" id="collapseFinanceAnalytics">
                                 <ul class="nav flex-column ms-3 mt-1">
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.shopee') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.shopee') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Analytic Shopee
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.tokopedia') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.tokopedia') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Analytic Tokopedia
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.tiktok') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.tiktok') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Analytic Tiktok
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.blibli') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.blibli') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Analytic Blibli
                                         </a>
                                     </li>
@@ -261,43 +261,63 @@
                             <div class="collapse" id="collapseOnlineAnalytics">
                                 <ul class="nav flex-column ms-3 mt-1">
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-platform') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-platform') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales Report
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-detail-report') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-detail-report') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales Detail Report
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-day-of-week') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.internal-product-sales') }}" target="_blank">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Sales Internal
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-day-of-week') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales by Day of Week
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-date-number') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-date-number') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales by Date 
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-status-day') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-status-day') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales by Status & Day
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.monthly-sales-summary') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.monthly-sales-summary') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Monthly Sales Summary
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-master-product') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-master-product') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Gross Profit Master
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-platform-product') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-master-product-special') }}" target="_blank">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Gross Profit Master AVR
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-platform-product') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Gross Profit Platform
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.produk-platform-terlaris') }}" target="_blank">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Produk Platform Terlaris
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.produk-internal-terlaris') }}" target="_blank">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Produk Internal Terlaris
                                         </a>
                                     </li>
                                 </ul>
@@ -316,27 +336,27 @@
                             <div class="collapse" id="collapseOfflineAnalytics">
                                 <ul class="nav flex-column ms-3 mt-1">
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.monthly-sales-summary') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.monthly-sales-summary') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Monthly Sales Summary
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.sales-by-customer') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.sales-by-customer') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales by Customer
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.sales-detail-report') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.sales-detail-report') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales Detail Report
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.sales-by-product') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.sales-by-product') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Sales by Product
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.gross-profit') }}">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.offline.gross-profit') }}" target="_blank">
                                             <i class="fas fa-circle fa-xs me-2"></i> Gross Profit
                                         </a>
                                     </li>

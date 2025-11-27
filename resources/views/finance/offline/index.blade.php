@@ -133,10 +133,14 @@
                                                 $offlineSale = $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale ? 
                                                     $firstItem->offlineSaleItem->offlineSale : null;
                                                 
-                                                // Get unique invoice numbers for this PO
-                                                $invoiceNumbers = $items->map(function($item) {
-                                                    return $item->financeOffline ? $item->financeOffline->invoice_number : null;
-                                                })->filter()->unique()->values()->all();
+                                                // Get unique invoice IDs and numbers for this PO
+                                                $invoiceData = collect($items->map(function($item) {
+                                                    return $item->financeOffline ? [
+                                                        'id' => $item->financeOffline->id,
+                                                        'number' => $item->financeOffline->invoice_number
+                                                    ] : null;
+                                                })->filter()->all())->unique('id')->values()->all();
+                                                $invoiceNumbers = collect($invoiceData)->pluck('number')->all();
                                                 
                                                 // Check if all items have invoices
                                                 $allHaveInvoices = $items->every(function($item) {
@@ -155,18 +159,34 @@
                                                 }
                                             @endphp
                                             
-                                            @foreach($items as $index => $item)
+                                            @php
+                                                // Group items by product_id (same as print_invoice.blade.php)
+                                                $groupedByProduct = $items->groupBy(function($item) {
+                                                    $offlineSaleItem = $item->offlineSaleItem;
+                                                    if (!$offlineSaleItem || !$offlineSaleItem->product) {
+                                                        return 'unknown_' . $item->id;
+                                                    }
+                                                    return $offlineSaleItem->product->id;
+                                                });
+                                            @endphp
+                                            
+                                            @foreach($groupedByProduct as $productId => $productItems)
                                                 @php 
                                                     $counter++;
-                                                    $rowClass = $index === 0 ? 'border-top border-primary' : '';
+                                                    $isFirstProduct = $loop->first;
+                                                    $rowClass = $isFirstProduct ? 'border-top border-primary' : '';
                                                     
-                                                    // Tax ID badge
+                                                    // Get first item for product info
+                                                    $firstItem = $productItems->first();
+                                                    $offlineSaleItem = $firstItem->offlineSaleItem;
+                                                    
+                                                    // Tax ID badge (use first item's tax_id)
                                                     $taxId = '-';
                                                     $taxBadgeClass = 'bg-secondary';
                                                     $taxLabel = '-';
                                                     
-                                                    if($item->warehouseStock && $item->warehouseStock->tax_id) {
-                                                        $taxId = $item->warehouseStock->tax_id;
+                                                    if($firstItem->warehouseStock && $firstItem->warehouseStock->tax_id) {
+                                                        $taxId = $firstItem->warehouseStock->tax_id;
                                                         if($taxId == 3) {
                                                             $taxBadgeClass = 'bg-primary';
                                                             $taxLabel = 'PKP';
@@ -179,31 +199,36 @@
                                                     // Product data
                                                     $productName = '-';
                                                     $productCode = '';
-                                                    if($item->warehouseStock && $item->warehouseStock->product) {
-                                                        $productName = $item->warehouseStock->product->name;
-                                                        $productCode = $item->warehouseStock->product->code ? ' ('.$item->warehouseStock->product->code.')' : '';
+                                                    $product = $offlineSaleItem && $offlineSaleItem->product ? $offlineSaleItem->product : null;
+                                                    if($product) {
+                                                        $productName = $product->name;
+                                                        $productCode = $product->code ? ' ('.$product->code.')' : '';
+                                                    } elseif($firstItem->warehouseStock && $firstItem->warehouseStock->product) {
+                                                        $productName = $firstItem->warehouseStock->product->name;
+                                                        $productCode = $firstItem->warehouseStock->product->code ? ' ('.$firstItem->warehouseStock->product->code.')' : '';
                                                     }
                                                     
-                                                    // Price data
-                                                    // Hitung Sub Total dengan semua diskon
-                                                    $subTotal = 0;
-                                                    if($item->offlineSaleItem) {
-                                                        // Ambil harga dasar dan qty
-                                                        $basePrice = $item->offlineSaleItem->unit_price;
-                                                        $qty = $item->qty;
-                                                        
-                                                        // Hitung total sebelum diskon
-                                                        $totalBeforeDiscount = $basePrice * $qty;
+                                                    // Calculate total qty for this product (sum all qty from all items)
+                                                    $totalQty = 0;
+                                                    foreach($productItems as $item) {
+                                                        $totalQty += $item->qty ?? 0;
+                                                    }
+                                                    
+                                                    // Calculate total subtotal for this product
+                                                    // Always calculate from scratch based on total qty (same logic as print_invoice)
+                                                    $totalSubTotal = 0;
+                                                    if($offlineSaleItem) {
+                                                        $basePrice = $offlineSaleItem->unit_price ?? 0;
+                                                        $totalBeforeDiscount = $basePrice * $totalQty;
                                                         $currentTotal = $totalBeforeDiscount;
                                                         
                                                         // Hitung semua diskon persen (1-5)
                                                         for($i = 1; $i <= 5; $i++) {
                                                             $percentField = "discount_percent_" . $i;
-                                                            $discountPercent = $item->offlineSaleItem->$percentField ?? 0;
+                                                            $discountPercent = $offlineSaleItem->$percentField ?? 0;
                                                             if($discountPercent > 0) {
                                                                 $discountAmount = $currentTotal * ($discountPercent / 100);
                                                                 $currentTotal -= $discountAmount;
-                                                                // Apply cascading rounding after each discount
                                                                 $currentTotal = \App\Helpers\NumberFormatter::roundToTwoDecimals($currentTotal);
                                                             }
                                                         }
@@ -211,37 +236,39 @@
                                                         // Hitung semua diskon nominal (1-5)
                                                         for($i = 1; $i <= 5; $i++) {
                                                             $amountField = "discount_amount_" . $i;
-                                                            $discountAmount = $item->offlineSaleItem->$amountField ?? 0;
+                                                            $discountAmount = $offlineSaleItem->$amountField ?? 0;
                                                             if($discountAmount > 0) {
-                                                                $currentTotal -= ($discountAmount * $qty);
-                                                                // Apply cascading rounding after each discount
+                                                                $currentTotal -= ($discountAmount * $totalQty);
                                                                 $currentTotal = \App\Helpers\NumberFormatter::roundToTwoDecimals($currentTotal);
                                                             }
                                                         }
                                                         
-                                                        $subTotal = \App\Helpers\NumberFormatter::roundToTwoDecimals($currentTotal);
+                                                        $totalSubTotal = \App\Helpers\NumberFormatter::roundToTwoDecimals($currentTotal);
                                                     }
                                                     
-                                                    // Jika sudah ada di financeOffline, tetap gunakan perhitungan yang sama
-                                                    if($item->financeOffline) {
-                                                        // Gunakan subtotal yang sudah dihitung di offlineSaleItem
-                                                        $subTotal = $item->offlineSaleItem->subtotal ?? 0;
+                                                    // Get invoice info (use first item's invoice found)
+                                                    $invoiceInfo = null;
+                                                    foreach($productItems as $item) {
+                                                        if($item->financeOffline) {
+                                                            $invoiceInfo = $item->financeOffline;
+                                                            break;
+                                                        }
                                                     }
                                                 @endphp
                                                 
                                                 <tr class="{{ $rowClass }}">
                                                     <td class="text-center">{{ $counter }}</td>
-                                                    @if($index === 0)
-                                                        <td rowspan="{{ count($items) }}">{{ $poNumber }}</td>
-                                                        <td rowspan="{{ count($items) }}">{{ $customer }}</td>
-                                                        <td rowspan="{{ count($items) }}">{{ $saleDate }}</td>
-                                                        <td rowspan="{{ count($items) }}" class="text-wrap" style="min-width: 120px;">{{ $sjNumber }}</td>
+                                                    @if($isFirstProduct)
+                                                        <td rowspan="{{ count($groupedByProduct) }}">{{ $poNumber }}</td>
+                                                        <td rowspan="{{ count($groupedByProduct) }}">{{ $customer }}</td>
+                                                        <td rowspan="{{ count($groupedByProduct) }}">{{ $saleDate }}</td>
+                                                        <td rowspan="{{ count($groupedByProduct) }}" class="text-wrap" style="min-width: 120px;">{{ $sjNumber }}</td>
                                                     @endif
                                                     <td class="text-center">
                                                         <span class="badge {{ $taxBadgeClass }}">{{ $taxLabel }}</span>
                                                     </td>
-                                                    @if($index === 0)
-                                                        <td rowspan="{{ count($items) }}">{{ $mainCategoryName }}</td>
+                                                    @if($isFirstProduct)
+                                                        <td rowspan="{{ count($groupedByProduct) }}">{{ $mainCategoryName }}</td>
                                                     @endif
                                                     <td>
                                                         <div class="d-flex flex-column">
@@ -251,21 +278,21 @@
                                                             @endif
                                                         </div>
                                                     </td>
-                                                    <td class="text-center">{{ number_format($item->qty, 0, ',', '.') }}</td>
-                                                    <td class="text-end">{{ number_format(round($subTotal), 0, ',', '.') }}</td>
+                                                    <td class="text-center">{{ number_format($totalQty, 0, ',', '.') }}</td>
+                                                    <td class="text-end">{{ number_format(round($totalSubTotal), 0, ',', '.') }}</td>
                                                     <td>
-                                                        @if($item->financeOffline)
-                                                            <a href="{{ route('finance.offline.print-invoice', $item->financeOffline->invoice_number) }}" 
+                                                        @if($invoiceInfo)
+                                                            <a href="{{ route('finance.offline.print-invoice', $invoiceInfo->id) }}" 
                                                                class="badge bg-success text-decoration-none" 
                                                                target="_blank">
-                                                                {{ $item->financeOffline->invoice_number }}
+                                                                {{ $invoiceInfo->invoice_number }}
                                                             </a>
                                                         @else
                                                             <span class="badge bg-secondary">Belum Ada</span>
                                                         @endif
                                                     </td>
-                                                    @if($index === 0)
-                                                        <td rowspan="{{ count($items) }}" class="text-center align-middle">
+                                                    @if($isFirstProduct)
+                                                        <td rowspan="{{ count($groupedByProduct) }}" class="text-center align-middle">
                                                             @if(!$allHaveInvoices)
                                                                 <a href="{{ route('finance.offline.generate-invoice', $offlineSaleId) }}" 
                                                                    class="btn btn-sm btn-primary" 
@@ -278,13 +305,13 @@
                                                         <i class="fas fa-print"></i>
                                                     </button>
                                                     <ul class="dropdown-menu dropdown-menu-end">
-                                                        @foreach($invoiceNumbers as $invoiceNumber)
+                                                        @foreach($invoiceData as $invoice)
                                                             <li>
-                                                                <a href="{{ route('finance.offline.print-invoice', $invoiceNumber) }}" 
+                                                                <a href="{{ route('finance.offline.print-invoice', $invoice['id']) }}" 
                                                                    class="dropdown-item" 
                                                                    target="_blank">
                                                                     <i class="fas fa-file-invoice text-success me-2"></i>
-                                                                    {{ $invoiceNumber }}
+                                                                    {{ $invoice['number'] }}
                                                                 </a>
                                                             </li>
                                                         @endforeach
@@ -324,12 +351,26 @@
                             </div>
                             
                             @if($groupedItems->hasPages())
-                                <div class="card-footer bg-white">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="small text-muted">
-                                            Menampilkan data dari {{ $counter }} item
+                                <div class="card-footer bg-white border-top">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-6 mb-2 mb-md-0">
+                                            <div class="small text-muted">
+                                                <i class="fas fa-info-circle me-1"></i>
+                                                Menampilkan <strong>{{ $groupedItems->firstItem() }}</strong> - <strong>{{ $groupedItems->lastItem() }}</strong> dari <strong>{{ $groupedItems->total() }}</strong> data
+                                            </div>
                                         </div>
-                                        {{ $groupedItems->withQueryString()->links() }}
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-md-end justify-content-center">
+                                                {{ $groupedItems->appends(request()->query())->links('pagination.clean') }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @else
+                                <div class="card-footer bg-white border-top">
+                                    <div class="small text-muted text-center">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        Menampilkan <strong>{{ $groupedItems->count() }}</strong> dari <strong>{{ $groupedItems->total() }}</strong> data
                                     </div>
                                 </div>
                             @endif
@@ -419,6 +460,69 @@
         display: block;
     }
     
+    /* Pagination styling */
+    .pagination {
+        margin-bottom: 0;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .pagination .page-link {
+        color: #495057;
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+        min-width: 38px;
+        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .pagination .page-link:hover:not(.disabled):not(.active) {
+        color: #0056b3;
+        background-color: #e9ecef;
+        border-color: #dee2e6;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .pagination .page-item.active .page-link {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+        z-index: 1;
+    }
+    
+    .pagination .page-item.active .page-link:hover {
+        background-color: #0b5ed7;
+        border-color: #0a58ca;
+    }
+    
+    .pagination .page-item.disabled .page-link {
+        color: #6c757d;
+        background-color: #fff;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+    
+    .pagination .page-item.disabled .page-link:hover {
+        transform: none;
+        box-shadow: none;
+    }
+    
+    .pagination .page-link i {
+        font-size: 0.75rem;
+    }
+    
+    .card-footer {
+        padding: 1rem 1.5rem;
+    }
+    
     /* Media queries for responsive design */
     @media (max-width: 992px) {
         .table {
@@ -432,6 +536,11 @@
         
         .product-name {
             max-width: 250px;
+        }
+        
+        .pagination .page-link {
+            padding: 0.375rem 0.5rem;
+            font-size: 0.8125rem;
         }
     }
     
@@ -447,6 +556,23 @@
         
         .product-name {
             max-width: 150px;
+        }
+        
+        .pagination {
+            flex-wrap: wrap;
+        }
+        
+        .pagination .page-link {
+            padding: 0.25rem 0.4rem;
+            font-size: 0.75rem;
+        }
+        
+        .card-footer {
+            padding: 0.75rem 1rem;
+        }
+        
+        .card-footer .row > div {
+            text-align: center !important;
         }
     }
 </style>

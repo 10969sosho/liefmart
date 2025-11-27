@@ -186,7 +186,7 @@ class SalesController extends Controller
         
         // Filter by platform
         if ($request->filled('platform')) {
-            $platform = Platform::where('name', $request->platform)->first();
+            $platform = $this->resolvePlatform($request->platform);
             if ($platform) {
                 $query->where('platform_id', $platform->id);
             }
@@ -224,7 +224,7 @@ class SalesController extends Controller
     public function platform($platform)
     {
         // Validasi platform yang diminta
-        if (!in_array($platform, ['shopee', 'tokopedia', 'tiktok', 'blibli', 'lazada'])) {
+        if (!in_array($platform, ['shopee', 'shopee2', 'tokopedia', 'tiktok', 'tiktok2', 'blibli', 'lazada'])) {
             return redirect()->route('sales.online')->with('error', 'Platform tidak valid.');
         }
 
@@ -238,9 +238,19 @@ class SalesController extends Controller
             return view('sales.shopee.platform');
         }
 
+        // Untuk Shopee2, gunakan view khusus
+        if ($platform === 'shopee2') {
+            return view('sales.shopee2.platform');
+        }
+
         // Untuk Tiktok, gunakan view khusus
         if ($platform === 'tiktok') {
             return view('sales.tiktok.platform');
+        }
+
+        // Untuk Tiktok2, gunakan view khusus
+        if ($platform === 'tiktok2') {
+            return view('sales.tiktok2.platform');
         }
 
         // Untuk Blibli, gunakan view khusus
@@ -348,12 +358,12 @@ class SalesController extends Controller
     public function onlineInput($platform)
     {
         // Validasi platform yang diminta
-        if (!in_array($platform, ['shopee', 'tokopedia', 'tiktok', 'blibli', 'lazada'])) {
+        if (!in_array($platform, ['shopee', 'shopee2', 'tokopedia', 'tiktok', 'tiktok2', 'blibli', 'lazada'])) {
             return redirect()->route('sales.online')->with('error', 'Platform tidak valid.');
         }
 
-        // Dapatkan objek platform dari database
-        $platformObj = Platform::where('name', $platform)->first();
+        // Dapatkan objek platform dari database dengan dukungan alias
+        $platformObj = $this->resolvePlatform($platform);
         if (!$platformObj) {
             return redirect()->route('sales.online')->with('error', "Platform $platform tidak ditemukan.");
         }
@@ -417,7 +427,8 @@ class SalesController extends Controller
         }
 
         return view('sales.online-input', [
-            'platform' => $platform,
+            'platform' => strtolower($platform),
+            'platformDisplayName' => $platformObj->name ?? ucfirst($platform),
             'mappedProducts' => $mappedProducts,
         ]);
     }
@@ -429,7 +440,7 @@ class SalesController extends Controller
     {
         // Validasi data input
         $validated = $request->validate([
-            'platform' => 'required|string|in:shopee,tokopedia,tiktok,blibli,lazada',
+            'platform' => 'required|string|in:shopee,shopee2,tokopedia,tiktok,tiktok2,blibli,lazada',
             'no_order' => 'required|string|max:100',
             'order_date' => 'required|date',
             'day_status' => 'nullable|string|max:255', // Support multiple values separated by comma
@@ -440,8 +451,11 @@ class SalesController extends Controller
             'items.*.price' => 'required|numeric|min:0',
         ]);
 
-        // Dapatkan objek platform
-        $platform = Platform::where('name', $request->platform)->firstOrFail();
+        // Dapatkan objek platform dengan dukungan alias
+        $platform = $this->resolvePlatform($request->platform);
+        if (!$platform) {
+            return back()->with('error', "Platform {$request->platform} tidak ditemukan.")->withInput();
+        }
 
         // Cek apakah nomor order sudah ada
         $existingOrder = Order::where('platform_id', $platform->id)
@@ -705,12 +719,12 @@ class SalesController extends Controller
     {
         // Validasi input
         $request->validate([
-            'platform' => 'required|string|in:shopee,tokopedia,tiktok,blibli',
+            'platform' => 'required|string|in:shopee,shopee2,tokopedia,tiktok,tiktok2,blibli,lazada',
             'order_number' => 'required|string',
         ]);
         
-        // Dapatkan platform ID
-        $platform = Platform::where('name', $request->platform)->first();
+        // Dapatkan platform ID dengan dukungan alias
+        $platform = $this->resolvePlatform($request->platform);
         
         if (!$platform) {
             return response()->json([
@@ -728,6 +742,47 @@ class SalesController extends Controller
             'exists' => $orderExists,
             'message' => $orderExists ? 'Nomor order sudah ada' : 'Nomor order tersedia'
         ]);
+    }
+
+    /**
+     * Resolve platform by slug/name/alias (supports Shopee2/Tiktok2 naming variants)
+     */
+    protected function resolvePlatform(string $identifier): ?Platform
+    {
+        $slug = strtolower(trim($identifier));
+
+        if ($slug === '') {
+            return null;
+        }
+
+        // Exact match (case insensitive)
+        $platform = Platform::whereRaw('LOWER(name) = ?', [$slug])->first();
+
+        // Partial match (handles names like "Shopee Troublue")
+        if (!$platform) {
+            $platform = Platform::whereRaw('LOWER(name) LIKE ?', ['%' . $slug . '%'])->first();
+        }
+
+        if ($platform) {
+            return $platform;
+        }
+
+        // Fallback mapping for known aliases/IDs
+        $aliasMap = [
+            'shopee2' => 6,
+            'shopee troublue' => 6,
+            'shopee trubleu' => 6,
+            'shopee trouble' => 6,
+            'tiktok2' => 7,
+            'tiktok troublue' => 7,
+            'tiktok trouble' => 7,
+        ];
+
+        if (isset($aliasMap[$slug])) {
+            return Platform::find($aliasMap[$slug]);
+        }
+
+        return null;
     }
 
     /**
@@ -840,6 +895,8 @@ class SalesController extends Controller
             'items.warehouseStock',
         ]);
         
+        // Ensure items are loaded for hasReturFull() check
+        
         // Filter by date range
         if ($request->filled('date_start')) {
             $query->whereDate('sale_date', '>=', $request->date_start);
@@ -867,19 +924,56 @@ class SalesController extends Controller
                    ->orWhereNull('main_category_id');
             });
         }
-            
+        
+        // Clone query for summary calculation (before pagination)
+        $summaryQuery = clone $query;
+        
+        // Calculate summary data for all sales (not just paginated) - only affected by filters
+        $allSales = $summaryQuery->with([
+            'items',
+            'items.product',
+            'items.warehouseStock',
+        ])->get();
+        
         // Fetch paginated sales
         $offlineSales = $query->orderBy('created_at', 'desc')->paginate(20);
-        
-        // Calculate summary data for all sales (not just paginated)
-        $allSales = $query->get();
         
         // Calculate total value based on tax status
         // If sale has PPN (tax_amount > 0), use total_amount (DPP + PPN)
         // If sale has no PPN (tax_amount = 0), use subtotal (DPP only)
+        // If sale has retur full, total value = 0
         $totalValue = $allSales->sum(function($sale) {
+            // If retur full, total value = 0
+            if ($sale->hasReturFull()) {
+                return 0;
+            }
             return $sale->tax_amount > 0 ? $sale->total_amount : $sale->subtotal;
         });
+        
+        // Calculate status breakdown from all filtered sales (not just paginated)
+        $paidCount = 0;
+        $partialCount = 0;
+        $pendingCount = 0;
+        $cancelledCount = 0;
+        $returCount = 0;
+        
+        foreach ($allSales as $sale) {
+            if ($sale->status == 'cancelled') {
+                $cancelledCount++;
+            } elseif ($sale->hasReturns()) {
+                // Check retur first (before payment status)
+                $returCount++;
+            } else {
+                $paymentStatus = $sale->getPaymentStatus();
+                if ($paymentStatus == 'paid') {
+                    $paidCount++;
+                } elseif ($paymentStatus == 'partial') {
+                    $partialCount++;
+                } else {
+                    $pendingCount++;
+                }
+            }
+        }
         
         $summary = [
             'total_sales' => $allSales->count(),
@@ -888,6 +982,13 @@ class SalesController extends Controller
                 return $sale->items->sum('quantity');
             }),
             'avg_order_value' => $allSales->count() > 0 ? $totalValue / $allSales->count() : 0,
+            'status_breakdown' => [
+                'paid' => $paidCount,
+                'partial' => $partialCount,
+                'pending' => $pendingCount,
+                'cancelled' => $cancelledCount,
+                'retur' => $returCount,
+            ],
         ];
         
         return view('sales.offline.list', [

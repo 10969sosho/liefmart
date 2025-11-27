@@ -95,6 +95,14 @@ class OfflineSale extends Model
     }
 
     /**
+     * Get all retur offline sales for this sale
+     */
+    public function returOfflineSales()
+    {
+        return $this->hasMany(ReturOfflineSale::class);
+    }
+
+    /**
      * Get all finance offline records related to this sale
      */
     public function getFinanceOfflineAttribute()
@@ -258,5 +266,37 @@ class OfflineSale extends Model
             ->where('status', 'selesai')
             ->with('details')
             ->get();
+    }
+
+    /**
+     * Check if this offline sale has full return (all items returned)
+     * Retur full means all items have quantity = 0 after returns
+     */
+    public function hasReturFull()
+    {
+        // Check if there are any completed returns first
+        $hasReturns = $this->hasReturns();
+        
+        if (!$hasReturns) {
+            return false;
+        }
+        
+        // Load items if not already loaded
+        if (!$this->relationLoaded('items')) {
+            $this->load('items');
+        }
+        
+        // Check if all items have quantity = 0 (all items returned)
+        // Retur full = has returns AND all items quantity = 0 AND has at least one item
+        $items = $this->items;
+        if ($items->isEmpty()) {
+            return false;
+        }
+        
+        $allItemsReturned = $items->every(function($item) {
+            return $item->quantity == 0;
+        });
+        
+        return $allItemsReturned;
     }
 } 

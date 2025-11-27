@@ -429,9 +429,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse($orders as $index => $order)
+                        @forelse($orders as $order)
                         <tr class="table-row-hover">
-                            <td class="text-center">{{ $index + 1 }}</td>
+                            <td class="text-center">{{ ($orders->currentPage() - 1) * $orders->perPage() + $loop->iteration }}</td>
                             <td>{{ $order->tanggal ? $order->tanggal->format('d-m-Y') : 'N/A' }}</td>
                             <td><span class="fw-medium">{{ $order->order_number }}</span></td>
                             <td class="text-center">
@@ -452,6 +452,18 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Pagination -->
+            @if(method_exists($orders, 'links'))
+            <div class="d-flex justify-content-between align-items-center mt-4">
+                <div class="text-muted small">
+                    Menampilkan {{ $orders->firstItem() ?? 0 }} - {{ $orders->lastItem() ?? 0 }} dari {{ $orders->total() }} data
+                </div>
+                <div>
+                    {{ $orders->appends(request()->query())->links('pagination::bootstrap-5') }}
+                </div>
+            </div>
+            @endif
             @endif
         </div>
     </div>

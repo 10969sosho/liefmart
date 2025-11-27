@@ -204,7 +204,11 @@
                                                 <small class="text-muted">Variant: {{ $variant }}</small>
                                             @endif
                                         </div>
-                                        <a href="{{ route('master.mapping.auto-create', ['platform' => 'tokopedia', 'productName' => urlencode($product)]) }}" 
+                                        <a href="{{ route('master.mapping.auto-create', [
+                                            'platform' => 'tokopedia', 
+                                            'productName' => rawurlencode($productName),
+                                            'variant' => $variant ? rawurlencode($variant) : null
+                                        ]) }}" 
                                             class="btn btn-sm btn-warning">
                                             <i class="fas fa-link me-1"></i> Mapping
                                         </a>

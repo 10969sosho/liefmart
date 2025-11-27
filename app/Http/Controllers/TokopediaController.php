@@ -4,11 +4,57 @@ namespace App\Http\Controllers;
 
 use App\Imports\TokopediaImport;
 use App\Models\Order;
+use App\Models\Platform;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 
 class TokopediaController extends Controller
 {
+    protected $platform;
+    
+    /**
+     * Constructor
+     */
+    public function __construct()
+    {
+        $routeParam = 'tokopedia';
+        $this->platform = $this->getPlatformByRouteParam($routeParam);
+    }
+    
+    /**
+     * Helper method untuk mendapatkan platform berdasarkan route parameter
+     */
+    protected function getPlatformByRouteParam($routeParam)
+    {
+        // 1. Cari berdasarkan ID jika ada di request/session
+        $platformId = request()->route('platform_id') ?? session('platform_id');
+        if ($platformId) {
+            $platform = Platform::find($platformId);
+            if ($platform) {
+                return $platform;
+            }
+        }
+        
+        // 2. Cari berdasarkan nama dengan case-insensitive
+        $platform = Platform::whereRaw('LOWER(name) = ?', [strtolower($routeParam)])->first();
+        
+        // 3. Jika tidak ditemukan, cari dengan LIKE (untuk menangani variasi nama)
+        if (!$platform) {
+            $platform = Platform::whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($routeParam) . '%'])->first();
+        }
+        
+        // 4. Jika masih tidak ditemukan, ambil platform pertama (fallback)
+        if (!$platform) {
+            $platform = Platform::first();
+        }
+        
+        // 5. Jika benar-benar tidak ada platform di database
+        if (!$platform) {
+            throw new \Exception('Platform tidak ditemukan di database. Pastikan ada platform yang terdaftar.');
+        }
+        
+        return $platform;
+    }
     /**
      * Tampilkan halaman import Excel Tokopedia
      */
@@ -29,7 +75,7 @@ class TokopediaController extends Controller
 
         try {
             // Proses file Excel
-            $import = new TokopediaImport;
+            $import = new TokopediaImport($this->platform->id);
             Excel::import($import, $request->file('excel_file'));
 
             // Dapatkan data untuk preview
@@ -117,7 +163,7 @@ class TokopediaController extends Controller
         // Jika masih ada produk yang belum di-mapping, tampilkan error
         if (! empty($unmappedProducts)) {
             // Dapatkan info baris yang di-skip dan duplikat dari import
-            $import = new TokopediaImport;
+            $import = new TokopediaImport($this->platform->id);
             $totalRows = $import->getTotalRows();
             $skippedRows = [
                 'Tanggal kosong' => $import->getSkippedForMissingDate(),
@@ -152,7 +198,7 @@ class TokopediaController extends Controller
 
         try {
             // Proses import data
-            $import = new TokopediaImport;
+            $import = new TokopediaImport($this->platform->id);
 
             // Set data yang akan diproses
             $import->setData($data);
@@ -230,7 +276,7 @@ class TokopediaController extends Controller
             \Log::info('Exception message set in session: '.$errorMessage);
 
             // Dapatkan info baris yang di-skip dan duplikat
-            $import = new TokopediaImport;
+            $import = new TokopediaImport($this->platform->id);
             $totalRows = $import->getTotalRows();
             $skippedRows = [
                 'Tanggal kosong' => $import->getSkippedForMissingDate(),
@@ -303,7 +349,7 @@ class TokopediaController extends Controller
                 ]);
             }
 
-            $import = new TokopediaImport();
+            $import = new TokopediaImport($this->platform->id);
             Excel::import($import, $file);
 
             // Check for header issues first

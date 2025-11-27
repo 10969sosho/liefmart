@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            font-size: 10px;
+            font-size: 12px;
             line-height: 1.2;
             color: #333;
             margin: 0;
@@ -15,18 +15,18 @@
         }
         
         .invoice-container {
-            max-width: 800px;
+            max-width: 210mm; /* F4 width */
+            min-height: 297mm; /* F4 height */
             margin: 10px auto;
-            padding: 10px;
+            padding: 10mm;
             border: 1px solid #ddd;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            min-height: 100vh;
             display: flex;
             flex-direction: column;
         }
         
         .logo {
-            width: 600px;
+            width: 180mm;
             height: auto;
             margin-bottom: 5px;
         }
@@ -82,6 +82,7 @@
             border-collapse: collapse;
             margin: 10px 0;
             table-layout: fixed;
+            page-break-inside: auto;
         }
         
         th, td {
@@ -90,7 +91,8 @@
             border-bottom: 1px solid #ddd;
             overflow: hidden;
             text-overflow: ellipsis;
-            font-size: 9px;
+            font-size: 10px;
+            page-break-inside: auto;
         }
         
         td.product-description {
@@ -121,6 +123,7 @@
         thead th {
             background-color: #f2f2f2;
             font-weight: bold;
+            page-break-after: avoid;
         }
         
         .text-right {
@@ -141,6 +144,7 @@
             width: 300px;
             margin-left: auto;
             margin-top: 20px;
+            page-break-inside: avoid;
         }
         
         .total-row {
@@ -159,104 +163,102 @@
             display: flex;
             justify-content: space-between;
             margin-top: auto;
-            padding-top: 10px;
+            padding-top: 20px;
+            page-break-inside: avoid;
         }
         
         .signature {
             width: 30%;
             text-align: center;
+            padding: 10px 0;
         }
         
         .signature-line {
             border-top: 1px solid #000;
-            margin-top: 20px;
-            margin-bottom: 5px;
+            margin-top: 100px;
+            margin-bottom: 10px;
         }
         
         .payment-info {
             margin-top: 15px;
             font-style: italic;
+            page-break-inside: avoid;
         }
         
-        /* Print styles */
+        /* Print styles - keep same as preview */
         @media print {
+            @page {
+                size: F4;
+                margin: 8mm 10mm; /* Margin lebih kecil untuk area lebih luas */
+            }
+            
             body {
                 padding: 0;
                 margin: 0;
-                font-size: 9px;
+                font-size: 12px;
             }
             
             .invoice-container {
                 max-width: 100%;
                 margin: 0;
-                padding: 10px;
+                padding: 0;
                 border: none;
                 box-shadow: none;
                 min-height: auto;
-            }
-            
-            .signatures {
-                margin-top: 5px;
-                padding-top: 5px;
-            }
-            
-            .signature-line {
-                margin-top: 15px;
-            }
-            
-            .payment-info {
-                margin-top: 8px;
-                font-size: 8px;
-                page-break-inside: avoid;
             }
             
             .no-print {
                 display: none;
             }
             
-            /* Force content to stay on one page */
-            .invoice-container > * {
+            /* Improved page break rules */
+            .invoice-container {
+                page-break-inside: auto;
+            }
+            
+            /* Table page break rules - more flexible */
+            table {
+                page-break-inside: auto;
+                page-break-before: auto;
+                page-break-after: auto;
+            }
+            
+            thead {
+                display: table-header-group;
+                page-break-after: avoid;
                 page-break-inside: avoid;
             }
             
-            /* Reduce spacing for print */
-            table {
-                margin: 5px 0;
+            tbody {
+                display: table-row-group;
+                page-break-inside: auto;
             }
             
+            tr {
+                page-break-inside: auto;
+                page-break-after: auto;
+                page-break-before: auto;
+            }
+            
+            /* Allow natural page breaks in table rows */
+            tbody tr {
+                page-break-inside: auto;
+            }
+            
+            /* Keep totals and signatures together */
             .totals {
-                margin-top: 10px;
+                page-break-before: avoid;
+                page-break-inside: avoid;
             }
             
-            .total-row {
-                padding: 3px 0;
+            .signatures {
+                page-break-before: avoid;
+                page-break-inside: avoid;
             }
             
-            .horizontal-line {
-                margin: 3px 0;
-            }
-            
-            .invoice-details {
-                margin: 5px 0;
-            }
-            
-            /* Reduce font sizes for print */
-            th, td {
-                font-size: 8px;
-                padding: 2px 3px;
-            }
-            
-            .company-info {
-                margin-bottom: 5px;
-            }
-            
-            .header {
-                margin-bottom: 5px;
-            }
-            
-            /* Ensure payment info stays with signatures */
-            .signatures + .payment-info {
-                margin-top: 5px;
+            .payment-info {
+                page-break-before: avoid;
+                page-break-inside: avoid;
             }
         }
     </style>
@@ -338,7 +340,7 @@
         
         <div class="header">
             <div class="company-info">
-                <img src="{{ asset('images/INV/' . $logoFile) }}" alt="Logo" class="logo" style="width: 500px; height: auto;">
+                <img src="{{ asset('images/INV/' . $logoFile) }}" alt="Logo" class="logo">
             </div>
         </div>
         
@@ -381,12 +383,12 @@
         <table>
             <thead>
                 <tr>
-                    <th width="40" class="text-center">No</th>
-                    <th width="200">Deskripsi</th>
-                    <th width="100">Barcode</th>
-                    <th width="60" class="text-center">Qty</th>
-                    <th width="100" class="text-right">Harga</th>
-                    <th width="70" class="text-right">Diskon</th>
+                    <th width="35" class="text-center">No</th>
+                    <th width="220">Deskripsi</th>
+                    <th width="90">Barcode</th>
+                    <th width="55" class="text-center">Qty</th>
+                    <th width="90" class="text-right">Harga</th>
+                    <th width="80" class="text-right">Diskon</th>
                     <th width="100" class="text-right">Subtotal</th>
                 </tr>
             </thead>
@@ -404,24 +406,48 @@
                     $totalQty = 0;
                     $subTotal = 0;
                     
-                    // First, calculate total amount before discount
-                    foreach ($invoiceItems as $item) {
-                        // Ambil data offline sale item
+                    // First, calculate total amount before discount and after discount
+                    // Use subtotal from database to ensure accuracy
+                    // Group by product first to handle returns correctly
+                    $groupedForCalculation = $invoiceItems->groupBy(function($item) {
                         $offlineSaleItem = $item->offlineSaleItem;
+                        if (!$offlineSaleItem || !$offlineSaleItem->product) {
+                            return 'unknown_' . $item->id;
+                        }
+                        return $offlineSaleItem->product->id;
+                    });
+                    
+                    foreach ($groupedForCalculation as $productId => $items) {
+                        $firstItem = $items->first();
+                        $offlineSaleItem = $firstItem->offlineSaleItem;
                         if (!$offlineSaleItem) continue;
                         
-                        // Ambil harga dasar dan qty
-                        $price = $offlineSaleItem->unit_price;
-                        $qty = $item->qty;
+                        // Calculate total qty for this product
+                        $sumBarangKeluarQty = 0;
+                        foreach ($items as $item) {
+                            $sumBarangKeluarQty += $item->qty ?? 0;
+                        }
                         
-                        // Count total pieces
+                        // After return, use updated quantity from offlineSaleItem
+                        $qty = $offlineSaleItem->quantity < $sumBarangKeluarQty 
+                            ? $offlineSaleItem->quantity 
+                            : $sumBarangKeluarQty;
+                        
+                        // Ambil harga dasar
+                        $price = $offlineSaleItem->unit_price;
+                        $offlineSaleQty = $offlineSaleItem->quantity; // Qty dari offline sale item
+                        
+                        // Count total pieces (use updated qty after return)
                         $totalQty += $qty;
                         
-                        // Tambahkan ke total before discount (harga × qty)
+                        // Tambahkan ke total before discount (harga × qty yang sudah di-update setelah retur)
                         $itemTotal = $price * $qty;
                         $totalBeforeDiscount += $itemTotal;
                         
-                        // Check for discounts
+                        // Calculate discount untuk qty ini (proportional)
+                        // Use original quantity for proportion calculation if available
+                        $originalQty = $sumBarangKeluarQty; // Original qty before return
+                        $proportion = $originalQty > 0 ? $qty / $originalQty : 1;
                         $currentTotal = $itemTotal;
                         
                         // Hitung semua diskon persen (1-5)
@@ -439,10 +465,10 @@
                                 $currentTotal = \App\Helpers\NumberFormatter::roundToTwoDecimals($currentTotal);
                             }
                             
-                            // Diskon nominal
+                            // Diskon nominal (proportional berdasarkan qty)
                             $discountNominal = $offlineSaleItem->$amountField ?? 0;
                             if($discountNominal > 0) {
-                                $discountAmount = $discountNominal;
+                                $discountAmount = $discountNominal * $proportion;
                                 $totalDiscount += ($discountAmount * $qty);
                                 $currentTotal -= ($discountAmount * $qty);
                                 // Apply cascading rounding after each discount
@@ -454,31 +480,63 @@
                         $totalAfterDiscount += $currentTotal;
                     }
                     
-                    // Based on tax calculation
+                    // Use invoice->nominal which is the sum of all offlineSaleItem->subtotal
+                    // This ensures consistency with database
                     $isPKP = $taxId == 3;
-                    $dpp = \App\Helpers\NumberFormatter::calculateDPP($totalAfterDiscount);
-                    $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
-                    $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
-                    
-                    // Grand total
-                    if ($isPKP) {
-                        $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
-                    } else {
-                        $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
-                    }
                 @endphp
-                @foreach($invoice->barangKeluarItems as $item)
-                    @php
+                @php
+                    // Group items by product_id
+                    $groupedItems = $invoice->barangKeluarItems->groupBy(function($item) {
                         $offlineSaleItem = $item->offlineSaleItem;
+                        if (!$offlineSaleItem || !$offlineSaleItem->product) {
+                            return 'unknown_' . $item->id;
+                        }
+                        return $offlineSaleItem->product->id;
+                    });
+                    
+                    // Calculate total after discount from grouped items (for DPP calculation)
+                    $totalAfterDiscountFromGrouped = 0;
+                @endphp
+                @foreach($groupedItems as $productId => $items)
+                    @php
+                        // Get first item for product info and price
+                        $firstItem = $items->first();
+                        $offlineSaleItem = $firstItem->offlineSaleItem;
                         $product = $offlineSaleItem && $offlineSaleItem->product ? $offlineSaleItem->product : null;
-                        $qty = $offlineSaleItem && $offlineSaleItem->qty ? $offlineSaleItem->qty : ($item->qty ?? 0);
                         $price = $offlineSaleItem ? $offlineSaleItem->unit_price : 0;
                         
-                        // Hitung total sebelum diskon untuk item ini
-                        $itemBeforeDiscount = $price * $qty;
+                        // After return, use updated quantity from offlineSaleItem
+                        // This ensures we show the correct quantity after returns
+                        // If offlineSaleItem->quantity has been updated (after return), use that
+                        // Otherwise, sum qty from barangKeluar
+                        $totalQtyForProduct = 0;
+                        if ($offlineSaleItem && $offlineSaleItem->quantity > 0) {
+                            // Check if this is after a return by comparing with barangKeluar qty sum
+                            $sumBarangKeluarQty = 0;
+                            foreach ($items as $item) {
+                                $sumBarangKeluarQty += $item->qty ?? 0;
+                            }
+                            
+                            // If offlineSaleItem quantity is less than sum of barangKeluar qty, it means there was a return
+                            // Use the updated quantity from offlineSaleItem
+                            if ($offlineSaleItem->quantity < $sumBarangKeluarQty) {
+                                $totalQtyForProduct = $offlineSaleItem->quantity;
+                            } else {
+                                // No return, use sum from barangKeluar
+                                $totalQtyForProduct = $sumBarangKeluarQty;
+                            }
+                        } else {
+                            // Fallback: sum qty from barangKeluar
+                            foreach ($items as $item) {
+                                $totalQtyForProduct += $item->qty ?? 0;
+                            }
+                        }
+                        
+                        // Hitung total sebelum diskon untuk item ini (menggunakan total qty yang sudah digabung)
+                        $itemBeforeDiscount = $price * $totalQtyForProduct;
                         $currentTotal = $itemBeforeDiscount;
                         
-                        // Hitung diskon persentase
+                        // Hitung diskon persentase (gunakan diskon dari item pertama)
                         $discountItems = [];
                         $hasDiscount = false;
                         for($i = 1; $i <= 5; $i++) {
@@ -501,19 +559,29 @@
                                 $discountText .= implode(' + ', $discountParts);
                                 $discountItems[] = '<span class="discount-item">' . $discountText . '</span>';
                                 
-                                // Calculate discount amount
+                                // Calculate discount amount (gunakan total qty yang sudah digabung)
                                 if($offlineSaleItem->$percentField > 0) {
                                     $currentTotal = \App\Helpers\NumberFormatter::calculatePercentageDiscount($currentTotal, $offlineSaleItem->$percentField);
                                 }
                                 
                                 if($offlineSaleItem->$amountField > 0) {
-                                    $currentTotal = \App\Helpers\NumberFormatter::calculateNominalDiscount($currentTotal, $offlineSaleItem->$amountField * $qty);
+                                    $currentTotal = \App\Helpers\NumberFormatter::calculateNominalDiscount($currentTotal, $offlineSaleItem->$amountField * $totalQtyForProduct);
                                 }
                             }
                         }
                         
-                        $subtotal = \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+                        // Use subtotal from offlineSaleItem if available (already updated after return)
+                        // Otherwise calculate from currentTotal
+                        if ($offlineSaleItem && isset($offlineSaleItem->subtotal) && $offlineSaleItem->subtotal > 0) {
+                            // Use the updated subtotal from database (already includes return adjustments)
+                            $subtotal = \App\Helpers\NumberFormatter::formatForDatabase($offlineSaleItem->subtotal);
+                        } else {
+                            // Fallback: calculate from currentTotal
+                            $subtotal = \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+                        }
+                        
                         $subTotal += $subtotal;
+                        $totalAfterDiscountFromGrouped += $subtotal;
                         
                         // Format diskon text
                         $discountDisplay = $hasDiscount ? implode('', $discountItems) : '<span class="discount-item">-</span>';
@@ -524,7 +592,7 @@
                             {{ $product ? $product->name : 'Unknown Product' }}
                         </td>
                         <td>{{ $product && $product->barcode ? $product->barcode : '-' }}</td>
-                        <td class="text-center">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($qty), 2, ',', '.') }}</td>
+                        <td class="text-center">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($totalQtyForProduct), 2, ',', '.') }}</td>
                         <td class="text-right">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($price), 2, ',', '.') }}</td>
                         <td class="discount-column">{!! $discountDisplay !!}</td>
                         <td class="text-right">{{ number_format(\App\Helpers\NumberFormatter::formatForDatabase($subtotal), 2, ',', '.') }}</td>
@@ -534,6 +602,23 @@
           
         </table>
         </div>
+        
+        @php
+            // Calculate DPP from totalAfterDiscountFromGrouped (total harga setelah diskon dari grouped items yang ditampilkan)
+            // Ini memastikan DPP sesuai dengan total subtotal yang ditampilkan di invoice
+            $dpp = \App\Helpers\NumberFormatter::calculateDPP($totalAfterDiscountFromGrouped);
+            $ppn = 0;
+            $grandTotal = $dpp;
+            
+            if ($isPKP) {
+                $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+            } else {
+                $dpp11_12 = 0;
+                $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+            }
+        @endphp
         
         <div class="horizontal-line"></div>
         
@@ -609,5 +694,6 @@
             </p>
         </div>
     </div>
+    
 </body>
 </html>

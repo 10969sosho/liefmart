@@ -230,16 +230,18 @@
                                 
                                 // Handle both camelCase and snake_case property names
                                 const platformProduct = item.platformProduct || item.platform_product || null;
-                                const warehouseStock = item.warehouseStock || item.warehouse_stock || null;
+                                const mappingBarang = platformProduct ? (platformProduct.mappingBarang || platformProduct.mapping_barang || []) : [];
                                 
                                 const productName = platformProduct ? platformProduct.platform_product_name : 'Unknown Product';
                                 const variation = platformProduct ? (platformProduct.variant || '-') : '-';
                                 
-                                // Display platform product (will be expanded to individual products when saving)
+                                // Display platform product (simplified, no barang keluar details)
                                 if (platformProduct && platformProduct.platform_product_name) {
                                     html += `
                                     <tr>
-                                        <td>${platformProduct.platform_product_name}</td>
+                                        <td>
+                                            <strong>${platformProduct.platform_product_name}</strong>
+                                        </td>
                                         <td>${platformProduct.variant || '-'}</td>
                                         <td class="text-center">
                                             <span class="qty-badge">${item.quantity}</span>
@@ -260,35 +262,9 @@
                                         </td>
                                     </tr>
                                     `;
-                                } else if (warehouseStock && warehouseStock.product) {
-                                    // Fallback ke nama produk warehouse jika tidak ada nama produk platform
-                                    html += `
-                                    <tr>
-                                        <td>${warehouseStock.product.name}</td>
-                                        <td>${warehouseStock.product.size || '-'}</td>
-                                        <td class="text-center">
-                                            <span class="qty-badge">${item.quantity}</span>
-                                        </td>
-                                        <td>
-                                            <input type="hidden" name="details[${index}][order_item_id]" value="${item.id}">
-                                            <input type="hidden" name="details[${index}][product_id]" value="${warehouseStock.product_id}">
-                                            <input type="number" name="details[${index}][qty]" class="form-control form-control-sm qty-input" min="0" max="${item.quantity}" step="1" value="0">
-                                        </td>
-                                        <td>
-                                            <select name="details[${index}][kondisi]" class="form-control form-control-sm">
-                                                <option value="BAGUS">BAGUS (Masuk Warehouse)</option>
-                                                <option value="RUSAK">RUSAK (Masuk Warehouse Rusak)</option>
-                                                <option value="HILANG">HILANG (Tidak Masuk Warehouse)</option>
-                                            </select>
-                                        </td>
-                                        <td>
-                                            <input type="text" name="details[${index}][alasan]" class="form-control form-control-sm" placeholder="Alasan retur">
-                                        </td>
-                                    </tr>
-                                    `;
                                 } else {
-                                    console.warn('Item has no warehouseStock or platformProduct:', item.id);
-                                    // For items without mapping or warehouse stock
+                                    console.warn('Item has no platformProduct:', item.id);
+                                    // For items without platform product
                                     html += `
                                     <tr>
                                         <td>${productName}</td>
@@ -297,7 +273,7 @@
                                             <span class="qty-badge">${item.quantity}</span>
                                         </td>
                                         <td colspan="3" class="text-center text-danger">
-                                            <i class="fas fa-exclamation-triangle mr-1"></i> Produk tidak memiliki mapping atau stok gudang
+                                            <i class="fas fa-exclamation-triangle mr-1"></i> Produk tidak memiliki platform product
                                         </td>
                                     </tr>
                                     `;

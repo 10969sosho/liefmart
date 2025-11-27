@@ -402,18 +402,22 @@
                         @endphp
                         @foreach($platformStats as $stat)
                             <div class="col-md-3 col-sm-6 mb-3">
-                                <div class="d-flex align-items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                            <i class="fas fa-store"></i>
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center">
+                                            <div class="flex-shrink-0">
+                                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                                    <i class="fas fa-store"></i>
+                                                </div>
+                                            </div>
+                                            <div class="flex-grow-1 ms-3">
+                                                <h6 class="mb-0">{{ ucfirst($stat['name']) }}</h6>
+                                                <small class="text-muted">
+                                                    {{ number_format($stat['mapped']) }}/{{ number_format($stat['total']) }} 
+                                                    ({{ $stat['percentage'] }}%)
+                                                </small>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="flex-grow-1 ms-3">
-                                        <h6 class="mb-0">{{ ucfirst($stat['name']) }}</h6>
-                                        <small class="text-muted">
-                                            {{ number_format($stat['mapped']) }}/{{ number_format($stat['total']) }} 
-                                            ({{ $stat['percentage'] }}%)
-                                        </small>
                                     </div>
                                 </div>
                             </div>
@@ -462,7 +466,7 @@
                         @foreach($platforms as $platformOption)
                             <option value="{{ $platformOption->name }}" 
                                     {{ $selectedPlatform == $platformOption->name ? 'selected' : '' }}>
-                                {{ ucfirst($platformOption->name) }}
+                                {{ $platformOption->name }}
                             </option>
                         @endforeach
                     </select>
@@ -507,7 +511,7 @@
                                         <strong>{{ $platformProduct->platform_product_name }}</strong>
                                     </td>
                                     <td>
-                                        <span class="badge bg-primary">{{ ucfirst($platformProduct->platform->name) }}</span>
+                                        <span class="badge bg-primary">{{ $platformProduct->platform ? $platformProduct->platform->name : 'Unknown Platform' }}</span>
                                     </td>
                                     <td>
                                         @if($platformProduct->variant)
@@ -720,6 +724,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                     
                     if (data.mappings && data.mappings.length > 0) {
+                        console.log('Mappings found:', data.mappings.length);
+                        console.log('First mapping:', data.mappings[0]);
                         html += `
                             <div class="table-responsive">
                                 <table class="table table-sm">
@@ -741,11 +747,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <tr>
                                     <td>${index + 1}</td>
                                     <td>
-                                        <strong>${mapping.product.name}</strong>
-                                        ${mapping.product.sku ? `<br><small class="text-muted">SKU: ${mapping.product.sku}</small>` : ''}
+                                        <strong>${mapping.product ? mapping.product.name : 'Product tidak ditemukan (ID: ' + mapping.product_id + ')'}</strong>
+                                        ${mapping.product && mapping.product.sku ? `<br><small class="text-muted">SKU: ${mapping.product.sku}</small>` : ''}
                                     </td>
                                     <td>
-                                        ${mapping.product.product_variant ? mapping.product.product_variant.name : '-'}
+                                        ${mapping.product && mapping.product.product_variant ? mapping.product.product_variant.name : '-'}
                                     </td>
                                     <td>
                                         <span class="badge bg-info">${mapping.quantity}</span>

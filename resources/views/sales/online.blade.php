@@ -31,7 +31,7 @@
                             <div class="card mb-4">
                                 <div class="card-body text-center">
                                     <img src="{{ asset('images/logo/shopee.png') }}" alt="Shopee" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Shopee</h5>
+                                    <h5 class="card-title">Shopee Lamourad</h5>
                                     <a href="{{ route('sales.platform', ['platform' => 'shopee']) }}" class="btn btn-primary">Pilih</a>
                                 </div>
                             </div>
@@ -49,7 +49,7 @@
                             <div class="card mb-4">
                                 <div class="card-body text-center">
                                     <img src="{{ asset('images/logo/tiktok.png') }}" alt="TikTok" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">TikTok</h5>
+                                    <h5 class="card-title">Tiktok Lamourad</h5>
                                     <a href="{{ route('sales.platform', ['platform' => 'tiktok']) }}" class="btn btn-primary">Pilih</a>
                                 </div>
                             </div>
@@ -65,145 +65,32 @@
                         </div>
                     </div>
 
-                    <!-- Additional 10 Merchant Cards -->
+                    <!-- Additional Platform Cards -->
                     <div class="row mt-4">
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <img src="{{ asset('images/logo/lazada.png') }}" alt="Lazada" class="img-fluid" style="max-height: 100px; max-width: 160px;">
-                                    </div>
-                                    <h5 class="card-title">Lazada</h5>
-                                   
-                                    <div class="mt-auto">
-                                        <a href="{{ route('sales.platform', ['platform' => 'lazada']) }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
+                        <div class="col-md-3">
+                            <div class="card mb-4">
+                                <div class="card-body text-center">
+                                    <img src="{{ asset('images/logo/lazada.png') }}" alt="Lazada" class="img-fluid mb-3" style="max-height: 80px;">
+                                    <h5 class="card-title">Lazada Lamourad</h5>
+                                    <a href="{{ route('sales.platform', ['platform' => 'lazada']) }}" class="btn btn-primary">Pilih</a>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-success"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 2</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
+                        <div class="col-md-3">
+                            <div class="card mb-4">
+                                <div class="card-body text-center">
+                                    <img src="{{ asset('images/logo/tiktok.png') }}" alt="TikTok2" class="img-fluid mb-3" style="max-height: 80px;">
+                                    <h5 class="card-title">Tiktok Trubleu</h5>
+                                    <a href="{{ route('sales.platform', ['platform' => 'tiktok2']) }}" class="btn btn-primary">Pilih</a>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-warning"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 3</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-info"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 4</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-danger"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 5</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-secondary"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 6</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-dark"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 7</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-primary"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 8</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-success"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 9</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-body text-center d-flex flex-column">
-                                    <div class="mb-3">
-                                        <i class="fas fa-store fa-3x text-warning"></i>
-                                    </div>
-                                    <h5 class="card-title">Merchant 10</h5>
-                                    <p class="card-text text-muted small">Platform E-commerce</p>
-                                    <div class="mt-auto">
-                                        <a href="{{ route('maintenance') }}" class="btn btn-primary btn-sm">Pilih</a>
-                                    </div>
+                        <div class="col-md-3">
+                            <div class="card mb-4">
+                                <div class="card-body text-center">
+                                    <img src="{{ asset('images/logo/shopee.png') }}" alt="Shopee2" class="img-fluid mb-3" style="max-height: 80px;">
+                                    <h5 class="card-title">Shopee Trubleu</h5>
+                                    <a href="{{ route('sales.platform', ['platform' => 'shopee2']) }}" class="btn btn-primary">Pilih</a>
                                 </div>
                             </div>
                         </div>

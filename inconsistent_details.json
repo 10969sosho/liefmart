@@ -1,0 +1,102 @@
+[
+    {
+        "id": 96,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "BETADINE SOLUTION 30ML",
+        "qty": 21,
+        "harga_hpp": 22471.17,
+        "subtotal_stored": 404481.06,
+        "subtotal_calculated": 471894.56999999995,
+        "diff": 67413.50999999995
+    },
+    {
+        "id": 191,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "BRASOV NAIL POLISH 2IN1 6ML 12-122",
+        "qty": 4,
+        "harga_hpp": 6344.14,
+        "subtotal_stored": 12688.28,
+        "subtotal_calculated": 25376.56,
+        "diff": 12688.28
+    },
+    {
+        "id": 322,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "EVANGELINE EDP LIBRA - 50ML",
+        "qty": 1,
+        "harga_hpp": 17768.02,
+        "subtotal_stored": 53304.06,
+        "subtotal_calculated": 17768.02,
+        "diff": 35536.03999999999
+    },
+    {
+        "id": 369,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "GARNIER BRIGHT COMPLETE FOAM 100ML EB",
+        "qty": 33,
+        "harga_hpp": 18395.5,
+        "subtotal_stored": 1048543.5,
+        "subtotal_calculated": 607051.5,
+        "diff": 441492
+    },
+    {
+        "id": 427,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "HANASUI COLLAGEN WATER SUNSCREEN SPF30 WITH HANGTAG 30GR",
+        "qty": 35,
+        "harga_hpp": 15140.54,
+        "subtotal_stored": 469356.74,
+        "subtotal_calculated": 529918.9,
+        "diff": 60562.16000000003
+    },
+    {
+        "id": 456,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "HANASUI MEN BRIGHT ACTIVE SERUM",
+        "qty": 3,
+        "harga_hpp": 16500,
+        "subtotal_stored": 66000,
+        "subtotal_calculated": 49500,
+        "diff": 16500
+    },
+    {
+        "id": 725,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "MAKARIZO HE FIBERTHERAPY CONDITIONING SHAMPOO ALOE & MELON SACHET 9ML",
+        "qty": 804,
+        "harga_hpp": 700.9,
+        "subtotal_stored": 563524.27,
+        "subtotal_calculated": 563523.6,
+        "diff": 0.6700000000419095
+    },
+    {
+        "id": 732,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "MAKARIZO HE FIBERTHERAPY CONDITIONING SHAMPOO ROYAL JELLY SACHET 9ML",
+        "qty": 924,
+        "harga_hpp": 700.9,
+        "subtotal_stored": 647632.37,
+        "subtotal_calculated": 647631.6,
+        "diff": 0.7700000000186265
+    },
+    {
+        "id": 1144,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "VIVA COMPACT POWDER STANDAR CLASSIC 19G -  NATURAL",
+        "qty": 8,
+        "harga_hpp": 8980.18,
+        "subtotal_stored": 62861.26,
+        "subtotal_calculated": 71841.44,
+        "diff": 8980.18
+    },
+    {
+        "id": 1145,
+        "penerimaan_kode": "PR-20250930-587",
+        "product_name": "VIVA COVERING CREAM BEIGE",
+        "qty": 265,
+        "harga_hpp": 6913.51,
+        "subtotal_stored": 1735291.01,
+        "subtotal_calculated": 1832080.1500000001,
+        "diff": 96789.14000000013
+    }
+]

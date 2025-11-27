@@ -35,6 +35,86 @@
                     </div>
                     @endif
 
+                    <!-- Filter Section -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-filter mr-2"></i>Filter Pencarian
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <form method="GET" action="{{ route('retur-offline.index') }}" id="filterForm">
+                                <div class="row mb-4">
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label for="search">Cari:</label>
+                                            <input type="text" name="search" id="search" class="form-control" 
+                                                   value="{{ request('search') }}" 
+                                                   placeholder="Kode retur, surat jalan, customer, PO, user...">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label for="status">Status:</label>
+                                            <select name="status" id="status" class="form-control">
+                                                <option value="">Semua Status</option>
+                                                <option value="draft" {{ request('status') == 'draft' ? 'selected' : '' }}>Draft</option>
+                                                <option value="selesai" {{ request('status') == 'selesai' ? 'selected' : '' }}>Selesai</option>
+                                                <option value="dibatalkan" {{ request('status') == 'dibatalkan' ? 'selected' : '' }}>Dibatalkan</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label for="user_id">User:</label>
+                                            <select name="user_id" id="user_id" class="form-control">
+                                                <option value="">Semua User</option>
+                                                @foreach($users as $user)
+                                                <option value="{{ $user->id }}" {{ request('user_id') == $user->id ? 'selected' : '' }}>
+                                                    {{ $user->name }}
+                                                </option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label for="date_from">Tanggal Dari:</label>
+                                            <input type="date" name="date_from" id="date_from" class="form-control" 
+                                                   value="{{ request('date_from') }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label for="date_to">Tanggal Sampai:</label>
+                                            <input type="date" name="date_to" id="date_to" class="form-control" 
+                                                   value="{{ request('date_to') }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-1">
+                                        <div class="form-group">
+                                            <label>&nbsp;</label>
+                                            <div class="d-flex gap-2">
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-search"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <a href="{{ route('retur-offline.index') }}" class="btn btn-secondary">
+                                                <i class="fas fa-times"></i> Reset Filter
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover">
                             <thead>
@@ -254,5 +334,90 @@
     .pagination .page-link i {
         font-size: 0.875rem;
     }
+    
+    /* Filter section styling */
+    .card.mb-4 {
+        border: 1px solid #e3e6f0;
+        border-radius: 0.35rem;
+    }
+    
+    .card-header {
+        background-color: #f8f9fc;
+        border-bottom: 1px solid #e3e6f0;
+    }
+    
+    .form-group label {
+        font-weight: 600;
+        color: #5a5c69;
+        font-size: 0.875rem;
+    }
+    
+    .form-control {
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .form-control:focus {
+        border-color: #bac8f3;
+        box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+    }
+    
+    .btn {
+        border-radius: 0.35rem;
+        font-weight: 600;
+    }
+    
+    .btn-primary {
+        background-color: #4e73df;
+        border-color: #4e73df;
+    }
+    
+    .btn-primary:hover {
+        background-color: #2e59d9;
+        border-color: #2653d4;
+    }
+    
+    .btn-secondary {
+        background-color: #858796;
+        border-color: #858796;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #717384;
+        border-color: #6b6d7d;
+    }
 </style>
+@endpush
+
+@push('scripts')
+<script>
+    $(document).ready(function() {
+        // Auto-submit form when select filters change
+        $('#status, #user_id').on('change', function() {
+            $('#filterForm').submit();
+        });
+        
+        // Auto-submit form when date inputs change
+        $('#date_from, #date_to').on('change', function() {
+            $('#filterForm').submit();
+        });
+        
+        // Debounced search input
+        let searchTimeout;
+        $('#search').on('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                $('#filterForm').submit();
+            }, 500);
+        });
+        
+        // Clear search on escape
+        $('#search').on('keydown', function(e) {
+            if (e.keyCode === 27) { // Escape key
+                $(this).val('');
+                $('#filterForm').submit();
+            }
+        });
+    });
+</script>
 @endpush 
