@@ -117,13 +117,76 @@ class ReturPenjualanController extends Controller
      */
     public function create()
     {
-        // Display a list of orders to choose from with eager loaded relations
-        $orderList = Order::with(['platform'])
+        $orderQuery = Order::withoutGlobalScope('mainCategory')
+            ->with(['platform'])
             ->whereHas('orderItems')
+            ->where('tanggal', '>=', now()->subMonths(3));
+
+        if (session()->has('main_category_id')) {
+            $mainCategoryId = session('main_category_id');
+            $orderQuery->where(function ($query) use ($mainCategoryId) {
+                $query->whereHas('orderItems.warehouseStock.product', function ($q) use ($mainCategoryId) {
+                    $q->where('main_category_id', $mainCategoryId);
+                })->orWhereDoesntHave('orderItems.warehouseStock');
+            });
+        }
+
+        $orderList = $orderQuery
             ->orderBy('tanggal', 'desc')
+            ->limit(1000)
             ->get();
 
         return view('retur.penjualan.create', compact('orderList'));
+    }
+
+    public function searchOrders(Request $request)
+    {
+        $term = trim((string) $request->get('q', $request->get('term', '')));
+
+        $query = Order::withoutGlobalScope('mainCategory')
+            ->with(['platform'])
+            ->whereHas('orderItems');
+
+        if ($term !== '') {
+            $query->where(function ($q) use ($term) {
+                $q->where('order_number', 'like', '%' . $term . '%')
+                    ->orWhereHas('orderItems', function ($itemQuery) use ($term) {
+                        $itemQuery->where('tracking_number', 'like', '%' . $term . '%');
+                    });
+            });
+        }
+
+        if (session()->has('main_category_id')) {
+            $mainCategoryId = session('main_category_id');
+            $query->where(function ($query) use ($mainCategoryId) {
+                $query->whereHas('orderItems.warehouseStock.product', function ($q) use ($mainCategoryId) {
+                    $q->where('main_category_id', $mainCategoryId);
+                })->orWhereDoesntHave('orderItems.warehouseStock');
+            });
+        }
+
+        $orders = $query
+            ->orderBy('tanggal', 'desc')
+            ->limit(20)
+            ->get();
+
+        $results = $orders->map(function ($order) {
+            $platformName = $order->platform->name ?? 'Tidak ada platform';
+            $orderNumber = $order->order_number ?: 'Tanpa No Order';
+            $tanggal = $order->tanggal ? $order->tanggal->format('d/m/Y') : null;
+
+            $text = $tanggal ? ($orderNumber . ' - ' . $platformName . ' - ' . $tanggal) : ($orderNumber . ' - ' . $platformName);
+
+            return [
+                'id' => $order->id,
+                'text' => $text,
+            ];
+        })->values();
+
+        return response()->json([
+            'results' => $results,
+            'pagination' => ['more' => false],
+        ]);
     }
 
     /**
@@ -136,7 +199,7 @@ class ReturPenjualanController extends Controller
     {
         try {
             // Get the order with eager loading including barang keluar
-            $order = Order::with([
+            $order = Order::withoutGlobalScope('mainCategory')->with([
                 'orderItems' => function($query) {
                     $query->with([
                         'barangKeluar' => function($q) {
@@ -414,6 +477,19 @@ class ReturPenjualanController extends Controller
                 }
                 
                 \Log::info('Completed processing retur for order item ID: ' . $orderItem->id . ', requested qty (package): ' . $returnQty);
+            }
+
+            // Handle finance logic for return (Calculate refund and update financial transaction)
+            // This ensures that partial returns automatically update the financial records
+            try {
+                $financeService = new ReturFinanceService();
+                $financeService->handleOnlineReturFinance($returPenjualan);
+                \Log::info('Finance processed for retur penjualan ID: ' . $returPenjualan->id);
+            } catch (\Exception $e) {
+                // Log error but don't fail the whole transaction? 
+                // Ideally finance error should roll back everything to ensure consistency.
+                // So we throw to catch block below.
+                throw $e;
             }
 
             DB::commit();
@@ -1115,6 +1191,10 @@ class ReturPenjualanController extends Controller
 
     public function export()
     {
+        // Increase time and memory limits for large exports
+        ini_set('max_execution_time', 300); // 5 minutes
+        ini_set('memory_limit', '512M');
+
         $filename = 'retur_penjualan_detail_' . date('Y-m-d') . '.xlsx';
         
         return Excel::download(new \App\Exports\ReturPenjualanDetailExport(), $filename);

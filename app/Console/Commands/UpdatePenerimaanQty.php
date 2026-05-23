@@ -93,33 +93,48 @@ class UpdatePenerimaanQty extends Command
 
             $this->info("✅ Penerimaan detail qty berhasil diupdate");
 
-            // Update warehouse_stock qty proportionally
+            // Update warehouse_stock qty using delta
             $warehouseStocks = WarehouseStock::where('penerimaan_detail_id', $penerimaanDetail->id)->get();
 
             if ($warehouseStocks->count() > 0) {
                 $this->info("Menemukan {$warehouseStocks->count()} warehouse_stock record(s)");
 
-                // Calculate current total warehouse stock qty
-                $currentTotalStockQty = $warehouseStocks->sum('qty');
-                $this->line("  Total warehouse stock saat ini: {$currentTotalStockQty}");
-
-                if ($currentTotalStockQty > 0) {
-                    // Calculate ratio to adjust all stocks proportionally
-                    $ratio = $newQty / $currentTotalStockQty;
-
+                // Apply delta to the first stock record (LIFO/FIFO logic simplified)
+                // If qtyDiff is positive, add to stock
+                // If qtyDiff is negative, reduce from stock (check if enough)
+                
+                $remainingDiff = abs($qtyDiff);
+                $isAddition = $qtyDiff > 0;
+                
+                if ($isAddition) {
+                    // Add to the first stock record found
+                    $stock = $warehouseStocks->first();
+                    $this->line("  Adding {$remainingDiff} to Stock ID {$stock->id}: {$stock->qty} -> " . ($stock->qty + $remainingDiff));
+                    $stock->qty += $remainingDiff;
+                    $stock->save();
+                } else {
+                    // Reduce from stocks
                     foreach ($warehouseStocks as $stock) {
-                        $newStockQty = $stock->qty * $ratio;
-                        $this->line("  Stock ID {$stock->id}: {$stock->qty} -> " . number_format($newStockQty, 2));
+                        if ($remainingDiff <= 0) break;
+                        
+                        $reduceAmount = min($stock->qty, $remainingDiff);
+                        $newStockQty = $stock->qty - $reduceAmount;
+                        
+                        $this->line("  Reducing {$reduceAmount} from Stock ID {$stock->id}: {$stock->qty} -> {$newStockQty}");
                         $stock->qty = $newStockQty;
                         $stock->save();
+                        
+                        $remainingDiff -= $reduceAmount;
                     }
-
-                    // Verify total
-                    $newTotalStockQty = WarehouseStock::where('penerimaan_detail_id', $penerimaanDetail->id)->sum('qty');
-                    $this->line("  Total warehouse stock setelah update: {$newTotalStockQty}");
-                } else {
-                    $this->warn("  Total warehouse stock adalah 0, tidak dapat diadjust.");
+                    
+                    if ($remainingDiff > 0) {
+                        $this->warn("  Warning: Could not reduce full amount. Remaining diff: {$remainingDiff}");
+                    }
                 }
+
+                // Verify total
+                $newTotalStockQty = WarehouseStock::where('penerimaan_detail_id', $penerimaanDetail->id)->sum('qty');
+                $this->line("  Total warehouse stock setelah update: {$newTotalStockQty}");
 
                 $this->info("✅ Warehouse stock qty berhasil diupdate");
             } else {

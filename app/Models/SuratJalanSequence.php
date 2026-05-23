@@ -23,6 +23,43 @@ class SuratJalanSequence extends Model
         'last_updated' => 'datetime',
     ];
 
+    private static function resolveTaxCode($taxId)
+    {
+        $taxCodeNonPkp = config('invoice.format.non_pkp_tax_code', '02');
+        $taxCodePkp = config('invoice.format.pkp_tax_code', '01');
+
+        $tax = \App\Models\TaxCategory::withoutGlobalScopes()->find($taxId);
+        if (!$tax) {
+            return $taxCodeNonPkp;
+        }
+
+        $name = strtolower(trim((string) $tax->name));
+        if ($name === '') {
+            return $taxCodeNonPkp;
+        }
+
+        if (str_contains($name, 'non') || $name === 'lm' || str_contains($name, 'lm')) {
+            return $taxCodeNonPkp;
+        }
+
+        if (str_contains($name, 'pkp') || $name === 'hgn') {
+            return $taxCodePkp;
+        }
+
+        return $taxCodeNonPkp;
+    }
+
+    private static function getMaxExistingCounter($yearMonth, $taxCode)
+    {
+        $maxCounter = DB::table('offline_sales')
+            ->selectRaw('MAX(CAST(SUBSTRING_INDEX(surat_jalan_number, "/", 1) AS UNSIGNED)) AS max_counter')
+            ->whereRaw('SUBSTRING_INDEX(SUBSTRING_INDEX(surat_jalan_number, "/", 2), "/", -1) = ?', [$yearMonth])
+            ->whereRaw('SUBSTRING_INDEX(surat_jalan_number, "/", -1) = ?', [$taxCode])
+            ->value('max_counter');
+
+        return (int) ($maxCounter ?? 0);
+    }
+
     /**
      * Mendapatkan nomor Surat Jalan berikutnya berdasarkan tanggal ORDER
      * 
@@ -40,28 +77,43 @@ class SuratJalanSequence extends Model
         
         // Format tahun-bulan berdasarkan tanggal ORDER (YYMM)
         $yearMonth = Carbon::parse($orderDate)->format('ym');
+        $taxCode = self::resolveTaxCode($taxId);
+        $sequenceMainCategoryId = 0;
         
         // Menggunakan transaksi database untuk memastikan counter tidak duplikat
-        $counter = DB::transaction(function() use ($yearMonth, $taxId, $mainCategoryId) {
-            // Dapatkan atau buat record counter untuk kombinasi spesifik
-            $sequenceCounter = self::firstOrCreate(
-                [
+        $counter = DB::transaction(function() use ($yearMonth, $taxId, $taxCode, $sequenceMainCategoryId) {
+            $maxExisting = self::getMaxExistingCounter($yearMonth, $taxCode);
+
+            $sequenceCounter = self::where('year_month', $yearMonth)
+                ->where('tax_id', $taxId)
+                ->where('main_category_id', $sequenceMainCategoryId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$sequenceCounter) {
+                self::create([
                     'year_month' => $yearMonth,
                     'tax_id' => $taxId,
-                    'main_category_id' => $mainCategoryId
-                ],
-                [
+                    'main_category_id' => $sequenceMainCategoryId,
                     'counter' => 0,
-                    'last_updated' => now()
-                ]
-            );
-            
-            // Tingkatkan counter
-            $sequenceCounter->counter += 1;
+                    'last_updated' => now(),
+                ]);
+
+                $sequenceCounter = self::where('year_month', $yearMonth)
+                    ->where('tax_id', $taxId)
+                    ->where('main_category_id', $sequenceMainCategoryId)
+                    ->lockForUpdate()
+                    ->first();
+            }
+
+            $currentCounter = (int) ($sequenceCounter->counter ?? 0);
+            $nextCounter = max($currentCounter, $maxExisting) + 1;
+
+            $sequenceCounter->counter = $nextCounter;
             $sequenceCounter->last_updated = now();
             $sequenceCounter->save();
-            
-            return $sequenceCounter->counter;
+
+            return $nextCounter;
         });
         
         // Format nomor SJ berdasarkan kombinasi tax_id dan main_category_id
@@ -86,36 +138,11 @@ class SuratJalanSequence extends Model
     {
         // Format counter (4 digit)
         $formattedCounter = sprintf('%04d', $counter);
-        
-        // Format suffix berdasarkan tax_id dan main_category_id
-        $suffix = '';
-        
-        if ($mainCategoryId == 1) { // HPNSDA (KOPI)
-            if ($taxId == 1) { // PKP
-                $suffix = "HPNSDA-KOP/01";
-            } elseif ($taxId == 2) { // Non PKP
-                $suffix = "HPNSDA-KOP/02";
-            } else {
-                // Default if tax ID not specified
-                $suffix = "HPNSDA-KOP/01";
-            }
-        } elseif ($mainCategoryId == 2) { // HGNSDA (SKINCARE)
-            if ($taxId == 3) { // HGN PKP
-                $suffix = "HGNSDA-KOS/01";
-            } elseif ($taxId == 4) { // LM Non PKP
-                $suffix = "HGNSDA-KOS/02";
-            } else {
-                // Default if tax ID not specified
-                $suffix = "HGNSDA-KOS/01";
-            }
-        } else {
-            // Fallback untuk main category yang tidak dikenal
-            $suffix = "HGNSDA-KOS/01";
-        }
-        
-        // Format: {counter}/{yearMonth}/{suffix}
-        // Contoh: 0001/2508/HGNSDA-KOS/01
-        return $formattedCounter . '/' . $yearMonth . '/' . $suffix;
+
+        $suffix = config('invoice.format.suffix_offline', 'AMP-KOS');
+        $taxCode = self::resolveTaxCode($taxId);
+
+        return "{$formattedCounter}/{$yearMonth}/{$suffix}/{$taxCode}";
     }
 
     /**
@@ -140,31 +167,43 @@ class SuratJalanSequence extends Model
         
         // Format tahun-bulan berdasarkan tanggal ORDER (YYMM)
         $yearMonth = Carbon::parse($orderDate)->format('ym');
+        $taxCode = self::resolveTaxCode($taxId);
+        $sequenceMainCategoryId = 0;
         
         // Menggunakan transaksi database untuk memastikan counter tidak duplikat
-        return DB::transaction(function() use ($yearMonth, $taxId, $mainCategoryId, $count) {
-            // Dapatkan atau buat record counter untuk kombinasi spesifik
-            $sequenceCounter = self::firstOrCreate(
-                [
+        return DB::transaction(function() use ($yearMonth, $taxId, $mainCategoryId, $taxCode, $sequenceMainCategoryId, $count) {
+            $maxExisting = self::getMaxExistingCounter($yearMonth, $taxCode);
+
+            $sequenceCounter = self::where('year_month', $yearMonth)
+                ->where('tax_id', $taxId)
+                ->where('main_category_id', $sequenceMainCategoryId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$sequenceCounter) {
+                self::create([
                     'year_month' => $yearMonth,
                     'tax_id' => $taxId,
-                    'main_category_id' => $mainCategoryId
-                ],
-                [
+                    'main_category_id' => $sequenceMainCategoryId,
                     'counter' => 0,
-                    'last_updated' => now()
-                ]
-            );
-            
-            $startCounter = $sequenceCounter->counter + 1;
+                    'last_updated' => now(),
+                ]);
+
+                $sequenceCounter = self::where('year_month', $yearMonth)
+                    ->where('tax_id', $taxId)
+                    ->where('main_category_id', $sequenceMainCategoryId)
+                    ->lockForUpdate()
+                    ->first();
+            }
+
+            $currentCounter = (int) ($sequenceCounter->counter ?? 0);
+            $startCounter = max($currentCounter, $maxExisting) + 1;
             $endCounter = $startCounter + $count - 1;
-            
-            // Update counter
+
             $sequenceCounter->counter = $endCounter;
             $sequenceCounter->last_updated = now();
             $sequenceCounter->save();
-            
-            // Generate SJ numbers
+
             $suratJalanNumbers = [];
             for ($i = $startCounter; $i <= $endCounter; $i++) {
                 $suratJalanNumbers[] = [
@@ -172,7 +211,7 @@ class SuratJalanSequence extends Model
                     'counter' => $i
                 ];
             }
-            
+
             return $suratJalanNumbers;
         });
     }

@@ -755,16 +755,18 @@
                 `;
                 
                 // Fetch stock history data
-                const url = `{{ route('warehouse.stock.analytics') }}?product_id=${productId}`;
+                const url = `{{ route('warehouse.stock.analytics') }}?product_id=${productId}&_ts=${Date.now()}`;
                 console.log('Fetching stock history from URL:', url);
                 console.log('Product ID:', productId);
                 console.log('Product Name:', productName);
                 
                 fetch(url, {
+                    cache: 'no-store',
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
                         'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
                     }
                 })
                 .then(response => {
@@ -1003,6 +1005,18 @@
                             const orderInfo = getOrderInfo(item);
                             const expiredDate = formatDateDDMMYY(item.warehouse_stock?.expired_date);
                             
+                            // Get platform name from relation if available, otherwise use catatan
+                            let catatanText = '-';
+                            if (item.order_item && item.order_item.order && item.order_item.order.platform) {
+                                // Use platform name from relation
+                                const platformName = item.order_item.order.platform.name || 'N/A';
+                                const orderNumber = item.order_item.order.order_number || 'N/A';
+                                catatanText = `Penjualan online ${platformName} - Order #${orderNumber}`;
+                            } else if (item.catatan && item.catatan.trim() !== '') {
+                                // Fallback to catatan if platform relation not available
+                                catatanText = item.catatan;
+                            }
+                            
                             stockOutHtml += `
                                 <tr>
                                     <td>${index + 1}</td>
@@ -1013,7 +1027,7 @@
                                     <td>${item.warehouse_stock?.lokasi?.nama || 'N/A'}</td>
                                     <td class="text-end">${parseFloat(item.qty).toFixed(2)}</td>
                                     <td>${orderInfo.destination}</td>
-                                    <td>${item.catatan || '-'}</td>
+                                    <td>${catatanText}</td>
                                 </tr>
                             `;
                         });
@@ -1067,6 +1081,7 @@
                             // Set reference and notes based on source type
                             let reference = 'N/A';
                             let notes = 'Penerimaan Barang';
+                            let movementType = 'in';
                             
                             if (item.is_visual_mutation) {
                                 // Handle visual mutation data for mutation table
@@ -1083,7 +1098,8 @@
                                 reference = item.retur_penjualan?.kode_retur || 'N/A';
                                 // Use "RETUR ONLINE PLATFORM - order_number" format for keterangan
                                 const orderNumber = item.retur_penjualan?.order?.order_number || 'N/A';
-                                const platformName = item.retur_penjualan?.order?.platform?.name || item.retur_penjualan?.order?.platform || 'ONLINE';
+                                // Access platform name from the platform relationship
+                                const platformName = item.retur_penjualan?.order?.platform?.name || 'ONLINE';
                                 notes = orderNumber !== 'N/A' ? `RETUR ONLINE ${platformName} - ${orderNumber}` : 'Retur Penjualan Online';
                                 // Add larger time offset for returns to ensure they come at the end of the day
                                 timestamp = new Date(timestamp.getTime() + (23 * 60 * 60 * 1000)); // +23 hours to put at end of day
@@ -1094,6 +1110,10 @@
                                 notes = invoiceNumber !== 'N/A' ? `RETUR OFFLINE - ${invoiceNumber}` : 'Retur Penjualan Offline';
                                 // Add larger time offset for returns to ensure they come at the end of the day
                                 timestamp = new Date(timestamp.getTime() + (23 * 60 * 60 * 1000)); // +23 hours to put at end of day
+                            } else if (item.source_type === 'penyesuaian') {
+                                reference = 'PENYESUAIAN';
+                                notes = item.catatan && item.catatan.trim() !== '' ? item.catatan : 'Penyesuaian stok';
+                                timestamp = new Date(timestamp.getTime() + (24 * 60 * 60 * 1000));
                             } else {
                                 reference = penerimaan ? (penerimaan.nomor_po || 'N/A') : 'N/A';
                                 notes = 'Penerimaan Barang';
@@ -1132,6 +1152,17 @@
                                 // Fallback - use item.qty (already set by backend)
                                 qty = parseFloat(item.qty || 0);
                             }
+
+                            if (item.source_type === 'penyesuaian') {
+                                const signedQty = parseFloat(item.qty || 0);
+                                if (signedQty < 0) {
+                                    movementType = 'out';
+                                    qty = Math.abs(signedQty);
+                                } else {
+                                    movementType = 'in';
+                                    qty = signedQty;
+                                }
+                            }
                             
                             // Set expired date for visual mutation
                             let expiredDate = null;
@@ -1148,14 +1179,14 @@
                             mutationItems.push({
                                 date: date,
                                 timestamp: timestamp,
-                                type: 'in',
+                                type: movementType,
                                 reference: reference,
                                 expiredDate: expiredDate,
                                 location: 'Gudang A', // Always use Gudang A instead of Unlocated
                                 qty: qty,
                                 notes: notes,
                                 original: item, // Keep original item with has_multiple_ed flag
-                                sortPriority: item.source_type ? 3 : 1 // Initial stock gets priority 1, sales get priority 2, returns get priority 3
+                                sortPriority: item.source_type === 'penyesuaian' ? 4 : (item.source_type ? 3 : 1) // Initial stock 1, sales 2, returns 3, adjustments 4
                             });
                         });
                     }
@@ -1325,17 +1356,24 @@
                                 // Use order number for online sales and invoice number for offline sales
                                 if (item.original.order_item && item.original.order_item.order) {
                                     const order = item.original.order_item.order;
-                                    notesText = order.order_number || 'Penjualan Online'; // Just the order number
+                                    // Use platform name from relation if available
+                                    if (order.platform && order.platform.name) {
+                                        notesText = `${order.platform.name} - ${order.order_number || 'N/A'}`;
+                                    } else {
+                                        notesText = order.order_number || 'Penjualan Online';
+                                    }
                                 } else if (item.original.offline_sale_item && item.original.offline_sale_item.offline_sale) {
                                     const sale = item.original.offline_sale_item.offline_sale;
                                     const invoiceNumber = sale.surat_jalan_number || sale.No_PO || sale.id;
-                                    notesText = invoiceNumber || 'Penjualan Offline'; // Just the invoice number
+                                    notesText = invoiceNumber || 'Penjualan Offline';
                                 } else {
                                     notesText = orderInfo.destination || 'Barang Keluar';
                                 }
                                 
-                                // Add original notes if available
-                                if (item.original.catatan && item.original.catatan.trim() !== '') {
+                                // Don't add original catatan if we already have platform name from relation
+                                // Only add if it's not a duplicate and we don't have platform info
+                                if (item.original.catatan && item.original.catatan.trim() !== '' && 
+                                    !(item.original.order_item && item.original.order_item.order && item.original.order_item.order.platform)) {
                                     notesText += ` - ${item.original.catatan}`;
                                 }
                             }
@@ -1494,7 +1532,11 @@
             
             if (item.order_item && item.order_item.order) {
                 orderNumber = item.order_item.order.order_number;
-                destination = `Online (${item.order_item.order.platform_name || 'N/A'})`;
+                // Access platform name from the platform relationship
+                const platformName = item.order_item.order.platform?.name || 
+                                     item.order_item.order.platform_name || 
+                                     'N/A';
+                destination = `Online (${platformName})`;
             } else if (item.offline_sale_item && item.offline_sale_item.offline_sale) {
                 const sale = item.offline_sale_item.offline_sale;
                 orderNumber = sale.No_PO || sale.id;

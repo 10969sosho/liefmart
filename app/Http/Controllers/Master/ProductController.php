@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Exports\ProductsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
 use App\Models\MainCategory;
@@ -11,7 +12,11 @@ use App\Models\ProductSize;
 use App\Models\ProductType;
 use App\Models\ProductVariant;
 use App\Models\SubBrand;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Maatwebsite\Excel\Excel as ExcelFormat;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ProductController extends Controller
 {
@@ -22,44 +27,7 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        // Start building query
-        $query = Product::with([
-            'mainCategory', 
-            'brand', 
-            'subBrand', 
-            'productCategory', 
-            'productType', 
-            'productSize', 
-            'productVariant'
-        ]);
-        
-        // Apply filters if they exist
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('sku', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
-            });
-        }
-        
-        if ($request->filled('main_category_id')) {
-            $query->where('main_category_id', $request->main_category_id);
-        }
-        
-        if ($request->filled('brand_id')) {
-            $query->where('brand_id', $request->brand_id);
-        }
-        
-        if ($request->filled('status')) {
-            $isActive = $request->status === 'active' ? 1 : 0;
-            $query->where('is_active', $isActive);
-        }
-        
-        // Order by
-        $orderBy = $request->order_by ?? 'created_at';
-        $orderDirection = $request->order_direction ?? 'desc';
-        $query->orderBy($orderBy, $orderDirection);
+        $query = $this->buildProductQuery($request);
         
         // Paginate with all current query parameters preserved
         $perPage = $request->per_page ?? 15;
@@ -70,6 +38,58 @@ class ProductController extends Controller
         $brands = Brand::where('is_active', true)->orderBy('name')->get();
         
         return view('master.products.index', compact('products', 'mainCategories', 'brands'));
+    }
+
+    public function export(Request $request, string $format)
+    {
+        $query = $this->buildProductQuery($request);
+        $timestamp = now()->format('Y-m-d_H-i-s');
+
+        if ($format === 'xlsx') {
+            return Excel::download(
+                new ProductsExport($query),
+                "master_products_{$timestamp}.xlsx",
+                ExcelFormat::XLSX
+            );
+        }
+
+        if ($format === 'csv') {
+            return Excel::download(
+                new ProductsExport($query),
+                "master_products_{$timestamp}.csv",
+                ExcelFormat::CSV
+            );
+        }
+
+        if ($format === 'pdf') {
+            $products = $query->get();
+
+            $filterMainCategory = null;
+            if ($request->filled('main_category_id')) {
+                $filterMainCategory = MainCategory::find($request->main_category_id)?->name;
+            }
+
+            $filterBrand = null;
+            if ($request->filled('brand_id')) {
+                $filterBrand = Brand::find($request->brand_id)?->name;
+            }
+
+            $filters = [
+                'search' => $request->input('search'),
+                'main_category' => $filterMainCategory,
+                'brand' => $filterBrand,
+                'status' => $request->input('status'),
+                'order_by' => $request->input('order_by'),
+                'order_direction' => $request->input('order_direction'),
+            ];
+
+            $pdf = Pdf::loadView('master.products.export.pdf', compact('products', 'filters'))
+                ->setPaper('a4', 'landscape');
+
+            return $pdf->download("master_products_{$timestamp}.pdf");
+        }
+
+        abort(404);
     }
 
     /**
@@ -489,5 +509,65 @@ class ProductController extends Controller
                 ]);
             }
         }
+    }
+
+    private function buildProductQuery(Request $request): Builder
+    {
+        $query = Product::with([
+            'mainCategory',
+            'brand',
+            'subBrand',
+            'productCategory',
+            'productType',
+            'productSize',
+            'productVariant',
+        ]);
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('main_category_id')) {
+            $query->where('main_category_id', $request->main_category_id);
+        }
+
+        if ($request->filled('brand_id')) {
+            $query->where('brand_id', $request->brand_id);
+        }
+
+        if ($request->filled('status')) {
+            $isActive = $request->status === 'active' ? 1 : 0;
+            $query->where('is_active', $isActive);
+        }
+
+        $allowedOrderBy = [
+            'name',
+            'sku',
+            'barcode',
+            'initial_price',
+            'discount_percentage',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ];
+
+        $orderBy = $request->input('order_by', 'created_at');
+        if (!in_array($orderBy, $allowedOrderBy, true)) {
+            $orderBy = 'created_at';
+        }
+
+        $orderDirection = strtolower((string) $request->input('order_direction', 'desc'));
+        if (!in_array($orderDirection, ['asc', 'desc'], true)) {
+            $orderDirection = 'desc';
+        }
+
+        $query->orderBy($orderBy, $orderDirection);
+
+        return $query;
     }
 } 

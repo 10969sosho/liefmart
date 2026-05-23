@@ -23,13 +23,10 @@ return new class extends Migration
             $table->text('adjustment_description')->nullable()->after('adjustment');
         });
 
-        // Add adjustment_description to tokopedia_financial_transactions
-        Schema::table('tokopedia_financial_transactions', function (Blueprint $table) {
+        // Add adjustment_description to tiktok2_financial_transactions
+        Schema::table('tiktok2_financial_transactions', function (Blueprint $table) {
             $table->text('adjustment_description')->nullable()->after('adjustment');
         });
-
-        
-       
     }
 
     /**
@@ -49,12 +46,9 @@ return new class extends Migration
             $table->dropColumn('adjustment_description');
         });
 
-        // Remove adjustment_description from tokopedia_financial_transactions
-        Schema::table('tokopedia_financial_transactions', function (Blueprint $table) {
+        // Remove adjustment_description from tiktok2_financial_transactions
+        Schema::table('tiktok2_financial_transactions', function (Blueprint $table) {
             $table->dropColumn('adjustment_description');
         });
-
-        // Remove adjustment_description from blibli_financial_transactions
-      
     }
 };

@@ -14,7 +14,7 @@ use App\Models\ImportTemp;
 class ArusKasShopee2Controller extends Controller
 {
     /**
-     * Display a listing of the imported Shopee2 cash flow data
+     * Display a listing of the imported Shopee Liefmarket cash flow data
      */
     public function index(Request $request)
     {
@@ -47,7 +47,7 @@ class ArusKasShopee2Controller extends Controller
      */
     public function preview(Request $request)
     {
-        Log::info('=== SHOPEE2 PREVIEW START ===');
+        Log::info('=== SHOPEE LIEF MART PREVIEW START ===');
         
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls'

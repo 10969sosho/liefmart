@@ -159,15 +159,10 @@ class TiktokImport implements ToCollection, WithMultipleSheets
                 continue;
             }
 
-            // Cek apakah produk sudah di-mapping
-            $this->checkProductMapping($processedRow['nama_barang'], $processedRow['variasi'] ?? null);
+            // Cek apakah produk sudah di-mapping dan dapatkan platform product
+            $platformProduct = $this->checkProductMapping($processedRow['nama_barang'], $processedRow['variasi'] ?? null);
 
-            // Cari platform product ID untuk validasi stok di preview
-            $platformProduct = PlatformProduct::where('platform_id', $this->platform->id)
-                ->where('platform_product_name', $processedRow['nama_barang'])
-                ->where('variant', $processedRow['variasi'] ?? '')
-                ->first();
-            
+            // Set platform product ID jika ditemukan
             if ($platformProduct) {
                 $processedRow['platform_product_id'] = $platformProduct->id;
             }
@@ -322,10 +317,11 @@ class TiktokImport implements ToCollection, WithMultipleSheets
         \Log::info('Original Headers:', $headers->toArray());
 
         // Daftar HEADER yang TEPAT dari Excel tanpa alias (STRICT MATCHING)
+        // PENTING: Untuk variasi, cari 'VARIASI', 'VARIANT', atau 'VARIAN' (case-insensitive)
         $exactHeaders = [
             'no_order' => 'NOMOR PESANAN',
             'nama_barang' => 'NAMA PRODUK',
-            'variasi' => 'VARIASI',
+            'variasi' => ['VARIASI', 'VARIANT', 'VARIAN'], // Menerima VARIASI, VARIANT, atau VARIAN (case-insensitive)
             'qty' => 'QTY',
             'harga_setelah_diskon' => 'HARGA SETELAH DISKON',
             'hari' => 'HARI',
@@ -349,9 +345,21 @@ class TiktokImport implements ToCollection, WithMultipleSheets
 
             // Cek untuk setiap header yang dibutuhkan
             foreach ($exactHeaders as $key => $exactHeader) {
-                if ($header === $exactHeader) {
-                    $this->columnMapping[$key] = $index;
-                    \Log::info("Mapped column '$key' to exact header '$header' at index $index");
+                // Handle array untuk field yang memiliki multiple header options (seperti variasi)
+                $headerOptions = is_array($exactHeader) ? $exactHeader : [$exactHeader];
+                $matched = false;
+                
+                foreach ($headerOptions as $headerOption) {
+                    // Case-insensitive comparison
+                    if (strtoupper(trim($header)) === strtoupper(trim($headerOption))) {
+                        $this->columnMapping[$key] = $index;
+                        \Log::info("Mapped column '$key' to exact header '$header' (matched '$headerOption') at index $index");
+                        $matched = true;
+                        break;
+                    }
+                }
+                
+                if ($matched) {
                     
                     // Untuk tanggal, simpan juga kolom referensi tanggal
                     if ($key === 'tanggal') {
@@ -576,18 +584,22 @@ class TiktokImport implements ToCollection, WithMultipleSheets
 
     /**
      * Periksa apakah produk sudah dimapping di database
+     * 
+     * PENTING: $variation parameter HARUS diambil dari kolom variant Excel, BUKAN dari parsing nama produk
+     * Meskipun di nama produk ada simbol seperti "-", "+", dll, JANGAN parsing untuk mendapatkan variant
      *
-     * @param  string  $productName
-     * @param  string|null  $variation
-     * @return void
+     * @param  string  $productName Nama produk dari kolom nama_barang Excel
+     * @param  string|null  $variation Variant dari kolom variasi Excel (BUKAN dari parsing nama produk)
+     * @return \App\Models\PlatformProduct|null
      */
     protected function checkProductMapping($productName, $variation = null)
     {
         if (empty($productName)) {
-            return;
+            return null;
         }
 
-        // Buat nama produk lengkap dengan variasi jika ada
+        // PENTING: Variant ($variation) sudah diambil dari kolom variant Excel, bukan dari parsing nama produk
+        // Buat nama produk lengkap dengan variasi jika ada (hanya untuk logging/display)
         $fullProductName = $productName;
         if (!empty($variation)) {
             $fullProductName .= " - " . $variation;
@@ -703,6 +715,8 @@ class TiktokImport implements ToCollection, WithMultipleSheets
                 $this->unmappedProducts[] = $productData;
             }
         }
+
+        return $platformProduct;
     }
 
     /**
@@ -723,6 +737,8 @@ class TiktokImport implements ToCollection, WithMultipleSheets
         }
         if (empty($row['qty']) || !is_numeric($row['qty']) || $row['qty'] <= 0) {
             $errors[] = 'Quantity harus berupa angka positif';
+        } else if (floor($row['qty']) != $row['qty']) {
+            $errors[] = 'Quantity tidak boleh berupa angka desimal (ditemukan: ' . $row['qty'] . '). Harap perbaiki file Excel Anda.';
         }
         
         // Validasi harga yang lebih toleran terhadap input
@@ -919,9 +935,10 @@ class TiktokImport implements ToCollection, WithMultipleSheets
 
                     // Proses setiap item dalam order
                     foreach ($orderItems as $item) {
-                        // Buat nama produk lengkap dengan variasi jika ada
+                        // PENTING: Variant diambil HANYA dari kolom variant Excel ($item['variasi'])
+                        // BUKAN dari parsing nama produk, meskipun di nama produk ada simbol seperti "-", "+", dll
                         $productName = $item['nama_barang'];
-                        $variation = $item['variasi'] ?? null;
+                        $variation = $item['variasi'] ?? null; // Variant HANYA dari kolom variant Excel
                         $fullProductName = !empty($variation) ? "$productName - $variation" : $productName;
                         
                         \Log::info("Processing item: $fullProductName, qty: {$item['qty']}");
@@ -1070,29 +1087,42 @@ class TiktokImport implements ToCollection, WithMultipleSheets
      */
     protected function checkStock($platformProduct, $quantity)
     {
-        // Ambil semua mapping barang AKTIF untuk platform product ini
         $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)
             ->where('is_active', true)
             ->get();
 
         foreach ($mappings as $mapping) {
-            // Hitung jumlah yang perlu dikurangi dari stok
             $qtyToReduce = $quantity * $mapping->quantity;
 
-            // Ambil total stok yang tersedia
-            $availableStock = WarehouseStock::where('product_id', $mapping->product_id)->where('qty', '>', 0)->sum('qty');
+            $remainingQty = $qtyToReduce;
+            $stocks = WarehouseStock::where('product_id', $mapping->product_id)
+                ->where('qty', '>', 0)
+                ->orderBy('warehouse_stock.created_at')
+                ->orderBy('warehouse_stock.tax_id', 'asc')
+                ->get(['warehouse_stock.qty']);
 
-            // Jika stok tidak cukup, return error
-            if ($availableStock < $qtyToReduce) {
+            foreach ($stocks as $stock) {
+                if ($remainingQty <= 0) {
+                    break;
+                }
+
+                $qtyToTake = min($remainingQty, $stock->qty);
+
+                $remainingQty -= $qtyToTake;
+            }
+
+            if ($remainingQty > 0) {
                 $product = Product::find($mapping->product_id);
                 $productName = $product ? $product->name : 'Unknown Product';
+                $effectiveAvailableStock = $qtyToReduce - $remainingQty;
 
                 return [
                     'success' => false,
                     'product_id' => $mapping->product_id,
                     'product_name' => $productName,
                     'required' => $qtyToReduce,
-                    'available' => $availableStock,
+                    'available' => $effectiveAvailableStock,
+                    'shortage' => $remainingQty,
                 ];
             }
         }
@@ -1169,14 +1199,7 @@ class TiktokImport implements ToCollection, WithMultipleSheets
                         break;
                     }
 
-                    // Hitung quantity yang akan dikurangi dari stok ini
-                    // Pastikan qty minimal 1 (tidak ada desimal seperti 0.5)
                     $qtyToTake = min($remainingQty, $stock->qty);
-                    
-                    // Jika qtyToTake kurang dari 1, skip stock ini dan lanjut ke stock berikutnya
-                    if ($qtyToTake < 1) {
-                        continue;
-                    }
                     
                     \Log::info("Reducing from stock ID: {$stock->id}, Available: {$stock->qty}, Taking: {$qtyToTake}");
 
@@ -1371,15 +1394,21 @@ class TiktokImport implements ToCollection, WithMultipleSheets
             return $rawValue;
         }
 
-        // For variasi field - return as is from Excel, no trimming or normalization
+        // PENTING: For variasi field - return as is from Excel, no trimming or normalization
+        // VARIANT HARUS diambil HANYA dari kolom variant Excel, BUKAN dari parsing nama produk
+        // Meskipun di nama produk ada simbol seperti "-", "+", dll, JANGAN parsing untuk mendapatkan variant
+        // Variant hanya dari kolom variant Excel saja
         if ($fieldType === 'variasi') {
             // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
+            // NO PARSING from product name - variant comes ONLY from variant column
             return $rawValue;
         }
         
-        // For nama_barang field - return as is from Excel, no trimming or normalization
+        // PENTING: For nama_barang field - return as is from Excel, no trimming or normalization
+        // Nama produk digunakan apa adanya, TIDAK ada parsing untuk mendapatkan variant
         if ($fieldType === 'nama_barang') {
             // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
+            // NO PARSING - product name is used as-is, variant comes from variant column only
             return $rawValue;
         }
         

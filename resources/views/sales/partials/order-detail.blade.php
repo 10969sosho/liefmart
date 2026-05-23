@@ -8,8 +8,7 @@
                     @if($order->platform)
                         <span class="badge bg-{{ 
                             $order->platform->name == 'shopee' ? 'warning' : 
-                            ($order->platform->name == 'tokopedia' ? 'success' : 
-                            ($order->platform->name == 'tiktok' ? 'dark' : 'primary')) 
+                            ($order->platform->name == 'tiktok' ? 'dark' : 'primary') 
                         }}">
                             {{ $order->platform->name }}
                         </span>

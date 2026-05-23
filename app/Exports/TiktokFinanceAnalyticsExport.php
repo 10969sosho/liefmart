@@ -176,6 +176,8 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             'No. Invoice',
             'Status',
             'Harga (Rp)',
+            'DPP (Rp)',
+            'PPN (Rp)',
             'Biaya Admin (Rp)',
             'Affiliate (Rp)',
             'Shipping (Rp)',
@@ -221,9 +223,9 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             $taxId = 1; // PKP - Coffee
         } elseif (strpos($transaction->no_invoice, 'HPNSDA-OLK/02') !== false) {
             $taxId = 2; // Non PKP - Coffee
-        } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/01') !== false) {
+        } elseif (strpos($transaction->no_invoice, 'AMP/01') !== false) {
             $taxId = 3; // PKP - Skincare
-        } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/02') !== false) {
+        } elseif (strpos($transaction->no_invoice, 'AMP/02') !== false) {
             $taxId = 4; // Non PKP - Skincare
         } else {
             // Extract last two digits if possible
@@ -233,6 +235,16 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
         }
         $isPKP = in_array($taxId, [1, 3, 5, 7]);
         $taxStatus = $taxId ? ($isPKP ? 'PKP' : 'Non-PKP') : 'N/A';
+        
+        // Calculate DPP and PPN
+        $dpp = $transaction->nominal_harga ?? 0;
+        $ppn = 0;
+        
+        if ($isPKP && $dpp > 0) {
+            $dppVal = $dpp / 1.11;
+            $dpp = round($dppVal, 2);
+            $ppn = round($transaction->nominal_harga - $dpp, 2);
+        }
         
         // Calculate adjustment percentage
         $adjustmentPercentage = 0;
@@ -262,6 +274,8 @@ class TiktokFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             (string)($transaction->no_invoice ?? '-'),
             $taxStatus,
             $transaction->nominal_harga ?? 0,
+            $dpp,
+            $ppn,
             $transaction->nominal_diskon1 ?? 0, // BIAYA ADMIN
             $transaction->nominal_diskon2 ?? 0, // AFFILIATE COMMISSION
             $transaction->nominal_diskon3 ?? 0, // SELLER SHIPPING FEE + SFP SERVICE FEE

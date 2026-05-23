@@ -27,7 +27,7 @@ class RoleSeeder extends Seeder
                 'description' => 'Staff yang menangani keuangan semua platform',
                 'permissions' => [
                     'finance.view', 'finance.create', 'finance.edit', 'finance.offline', 
-                    'finance.shopee', 'finance.tokopedia', 'finance.tiktok', 'finance.blibli'
+                    'finance.shopee', 'finance.tiktok'
                 ]
             ],
             [
@@ -54,7 +54,7 @@ class RoleSeeder extends Seeder
                 'permissions' => [
                     'sales.view', 'sales.create', 'sales.edit', 'sales.offline', 'sales.online', 'sales.export',
                     'finance.view', 'finance.create', 'finance.edit', 'finance.offline', 
-                    'finance.shopee', 'finance.tokopedia', 'finance.tiktok', 'finance.blibli',
+                    'finance.shopee', 'finance.tiktok',
                     'warehouse.view', 'warehouse.create', 'warehouse.edit',
                     'analytics.view', 'analytics.sales', 'analytics.finance',
                     'master.view', 'master.create', 'master.edit'

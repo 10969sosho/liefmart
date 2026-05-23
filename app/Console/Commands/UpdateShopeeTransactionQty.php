@@ -54,9 +54,9 @@ class UpdateShopeeTransactionQty extends Command
                     $taxId = 1; // PKP - Coffee
                 } elseif (strpos($transaction->no_invoice, 'HPNSDA-OLK/02') !== false) {
                     $taxId = 2; // Non PKP - Coffee
-                } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/01') !== false) {
+                } elseif (strpos($transaction->no_invoice, 'AMP/01') !== false) {
                     $taxId = 3; // PKP - Skincare
-                } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/02') !== false) {
+                } elseif (strpos($transaction->no_invoice, 'AMP/02') !== false) {
                     $taxId = 4; // Non PKP - Skincare
                 }
                 

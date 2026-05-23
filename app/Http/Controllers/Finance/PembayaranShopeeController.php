@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\ShopeeFinancialTransaction;
 use App\Models\Order;
+use App\Models\Platform;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,7 +20,27 @@ class PembayaranShopeeController extends Controller
 {
     public function index(Request $request)
     {
-        $platform = 'shopee'; // Tetapkan platform
+        // Get platform by ID (Shopee Lamourad = ID 1)
+        $platformModel = Platform::find(1);
+        
+        // Jika tidak ditemukan berdasarkan ID, cari berdasarkan nama dengan case-insensitive
+        if (!$platformModel) {
+            $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee lamourad'])->first();
+        }
+        
+        // Jika masih tidak ditemukan, cari dengan LIKE
+        if (!$platformModel) {
+            $platformModel = Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee lamourad%'])
+                ->whereRaw('LOWER(name) NOT LIKE ?', ['%shopee liefmarket%'])
+                ->first();
+        }
+        
+        if (!$platformModel) {
+            return redirect()->back()->with('error', 'Platform Shopee Lamourad tidak ditemukan');
+        }
+        $platformId = $platformModel->id;
+        $platform = 'shopee';
+        $platformLabel = 'Shopee Lamourad';
         
         // Optimized eager loading - only load what's needed for display
         $query = ShopeeFinancialTransaction::with([
@@ -82,14 +103,29 @@ class PembayaranShopeeController extends Controller
         // Filter by outstanding status
         if ($request->filled('outstanding_status')) {
             if ($request->outstanding_status === '0') {
-                $query->where('outstanding', 0);
+                // Lunas: outstanding harus tepat 0 (dengan toleransi kecil untuk floating point)
+                $query->whereRaw('ABS(outstanding) <= 0.01');
             } elseif ($request->outstanding_status === '1') {
-                $query->where(function($q) {
-                    $q->where('outstanding', '>', 0)
-                      ->orWhere('outstanding', '<', 0);
-                });
+                // Outstanding: outstanding tidak sama dengan 0 (ada selisih)
+                $query->whereRaw('ABS(outstanding) > 0.01');
             }
         }
+        
+        // Exclude only fully returned orders (retur full), not partial returns (retur sebagian)
+        // Orders with partial returns should still appear in finance index
+        $query->whereNotExists(function($subQuery) {
+            $subQuery->select(DB::raw(1))
+                ->from('retur_penjualans as rp')
+                ->join('orders as o', 'rp.order_id', '=', 'o.id')
+                ->join('retur_penjualan_details as rpd', 'rp.id', '=', 'rpd.retur_penjualan_id')
+                ->join('order_items as oi', 'rpd.order_item_id', '=', 'oi.id')
+                ->whereColumn('o.order_number', 'shopee_financial_transactions.no_order')
+                ->whereIn('rp.status', ['draft', 'selesai'])
+                ->whereNotNull('o.order_number')
+                ->where('o.order_number', '!=', '')
+                ->groupBy('o.id')
+                ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+        });
         
         // Optimized: Calculate all totals in a single query with caching
         $cacheKey = 'shopee_totals_' . md5(serialize($request->all()));
@@ -132,14 +168,29 @@ class PembayaranShopeeController extends Controller
             }
             if ($request->filled('outstanding_status')) {
                 if ($request->outstanding_status === '0') {
-                    $totalsQuery->where('outstanding', 0);
+                    // Lunas: outstanding harus tepat 0 (dengan toleransi kecil untuk floating point)
+                    $totalsQuery->whereRaw('ABS(outstanding) <= 0.01');
                 } elseif ($request->outstanding_status === '1') {
-                    $totalsQuery->where(function($q) {
-                        $q->where('outstanding', '>', 0)
-                          ->orWhere('outstanding', '<', 0);
-                    });
+                    // Outstanding: outstanding tidak sama dengan 0 (ada selisih)
+                    $totalsQuery->whereRaw('ABS(outstanding) > 0.01');
                 }
             }
+            
+            // Exclude only fully returned orders (retur full), not partial returns (retur sebagian)
+            // Same filter as main query to ensure totals are consistent
+            $totalsQuery->whereNotExists(function($subQuery) {
+                $subQuery->select(DB::raw(1))
+                    ->from('retur_penjualans as rp')
+                    ->join('orders as o', 'rp.order_id', '=', 'o.id')
+                    ->join('retur_penjualan_details as rpd', 'rp.id', '=', 'rpd.retur_penjualan_id')
+                    ->join('order_items as oi', 'rpd.order_item_id', '=', 'oi.id')
+                    ->whereColumn('o.order_number', 'shopee_financial_transactions.no_order')
+                    ->whereIn('rp.status', ['draft', 'selesai'])
+                    ->whereNotNull('o.order_number')
+                    ->where('o.order_number', '!=', '')
+                    ->groupBy('o.id')
+                    ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+            });
             
             return $totalsQuery->selectRaw('
                 COUNT(*) as total_count,
@@ -159,18 +210,16 @@ class PembayaranShopeeController extends Controller
         // Get paginated transactions
         $transactions = $query->orderBy('tanggal_order', 'desc')->paginate(15);
         
-        // Optimized: Get missing orders with caching and minimal data
-        $missingOrdersCacheKey = 'shopee_missing_orders_' . date('Y-m-d-H'); // Cache for 1 hour
-        $missingOrders = cache()->remember($missingOrdersCacheKey, 3600, function() {
-            return Order::select('id', 'order_number', 'tanggal', 'hari')
-                ->with(['orderItems:id,order_id,price_after_discount,quantity'])
-                ->whereDoesntHave('shopeeFinancialTransactions')
-                ->whereHas('platform', function($query) {
-                    $query->where('name', 'shopee');
-                })
-                ->orderBy('tanggal', 'desc')
-                ->get(); // Show all missing orders
-        });
+        // Get all orders that don't have financial transactions
+        $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
+            ->whereDoesntHave('shopeeFinancialTransactions')
+            ->where('platform_id', $platformId)
+            ->orderBy('tanggal', 'desc') // Use tanggal instead of order_date
+            ->get()
+            ->filter(function($order) {
+                // Filter out fully returned orders
+                return !$order->isFullyReturned();
+            });
             
         // Group transactions by order number for display
         $groupedTransactions = $transactions->groupBy('no_order');
@@ -179,6 +228,7 @@ class PembayaranShopeeController extends Controller
             'transactions', 
             'groupedTransactions', 
             'platform', 
+            'platformLabel',
             'missingOrders',
             'totalCount',
             'totalNominalFix',
@@ -280,7 +330,7 @@ class PembayaranShopeeController extends Controller
             // Look for the 'Order details' sheet
             $orderDetailsSheet = null;
             foreach ($spreadsheet->getAllSheets() as $sheet) {
-                \Log::info("Found sheet: " . $sheet->getTitle());
+                Log::info("Found sheet: " . $sheet->getTitle());
                 if (strtolower($sheet->getTitle()) === 'order details') {
                     $orderDetailsSheet = $sheet;
                     break;
@@ -290,14 +340,14 @@ class PembayaranShopeeController extends Controller
             if (!$orderDetailsSheet) {
                 // Let's try to use the first sheet if Order details isn't found
                 $orderDetailsSheet = $spreadsheet->getActiveSheet();
-                \Log::info("Using active sheet: " . $orderDetailsSheet->getTitle());
+                Log::info("Using active sheet: " . $orderDetailsSheet->getTitle());
             }
             
             $worksheet = $orderDetailsSheet;
             $highestRow = $worksheet->getHighestRow();
             $highestColumn = $worksheet->getHighestColumn();
             
-            \Log::info("Processing sheet: " . $worksheet->getTitle() . " (Rows: $highestRow, Columns: $highestColumn)");
+            Log::info("Processing sheet: " . $worksheet->getTitle() . " (Rows: $highestRow, Columns: $highestColumn)");
             
             // Get headers from first row
             $headerRow = $worksheet->rangeToArray('A1:' . $highestColumn . '1', null, true, false)[0];
@@ -325,7 +375,7 @@ class PembayaranShopeeController extends Controller
                 $standardizedHeaders[] = $headerMapping[$header] ?? $header;
             }
             
-            \Log::info("Mapped headers: " . json_encode($standardizedHeaders));
+            Log::info("Mapped headers: " . json_encode($standardizedHeaders));
             
             // Check for missing required headers
             $requiredHeaders = ['ORDER_ID', 'ORDER_NUMBER', 'PAYMENT_DATE', 'PAYMENT_AMOUNT'];
@@ -337,7 +387,7 @@ class PembayaranShopeeController extends Controller
             }
             $missingHeaders = array_diff($requiredHeaders, $foundRequiredHeaders);
             if (!empty($missingHeaders)) {
-                \Log::warning("Missing required headers: " . json_encode($missingHeaders));
+                Log::warning("Missing required headers: " . json_encode($missingHeaders));
                 return redirect()->back()->with('error', 'Format file tidak sesuai. Kolom yang tidak ditemukan: ' . implode(', ', $missingHeaders));
             }
             
@@ -438,7 +488,7 @@ class PembayaranShopeeController extends Controller
                     ->pluck('no_order')
                     ->toArray();
                 
-                \Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
+                Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
             }
             
             // Second pass: process rows with pre-loaded data
@@ -471,7 +521,7 @@ class PembayaranShopeeController extends Controller
                                 $rowData['PAYMENT_DATE'] = $excelDate->format('Y-m-d');
                                 $date = true;
                             } catch (\Exception $e) {
-                                \Log::warning("Failed to convert Excel date: " . $e->getMessage());
+                                Log::warning("Failed to convert Excel date: " . $e->getMessage());
                             }
                         } else {
                             // Try multiple formats
@@ -491,7 +541,7 @@ class PembayaranShopeeController extends Controller
                         }
                         
                         if (!$date) {
-                            \Log::warning("Invalid date format: " . $dateValue);
+                            Log::warning("Invalid date format: " . $dateValue);
                             $rowIssues[] = 'Format tanggal tidak valid. Format yang didukung: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY';
                         }
                     }
@@ -509,7 +559,7 @@ class PembayaranShopeeController extends Controller
                 // 4. Check if order exists in database (using pre-loaded data)
                 $order = $orders[$rowData['ORDER_NUMBER']] ?? null;
                 if (!$order) {
-                    \Log::warning("Order tidak ditemukan: " . $rowData['ORDER_NUMBER']);
+                    Log::warning("Order tidak ditemukan: " . $rowData['ORDER_NUMBER']);
                     $rowIssues[] = 'Nomor order tidak ditemukan di database';
                     
                     // Skip this transaction instead of creating placeholder data
@@ -525,7 +575,7 @@ class PembayaranShopeeController extends Controller
                 // 5. Check if transaction already exists (using pre-loaded data)
                 $transactionExists = in_array($rowData['ORDER_NUMBER'], $existingTransactions);
                 if ($transactionExists) {
-                    \Log::warning("Transaksi sudah ada untuk order: " . $rowData['ORDER_NUMBER']);
+                    Log::warning("Transaksi sudah ada untuk order: " . $rowData['ORDER_NUMBER']);
                     $rowIssues[] = 'Transaksi untuk order ini sudah ada';
                 }
                 
@@ -553,6 +603,12 @@ class PembayaranShopeeController extends Controller
                     'nominal_diskon4' => !empty($rowData['BIAYA_LAYANAN']) ? -abs((float) $rowData['BIAYA_LAYANAN']) : 0,
                     'nominal_diskon5' => !empty($rowData['DISKON_5']) ? -abs((float) $rowData['DISKON_5']) : 0,
                     'nominal_diskon6' => !empty($rowData['DISKON_6']) ? -abs((float) $rowData['DISKON_6']) : 0,
+                    'nominal_diskon7' => !empty($rowData['DISKON_7']) ? -abs((float) $rowData['DISKON_7']) : 0,
+                    'nominal_diskon8' => !empty($rowData['DISKON_8']) ? -abs((float) $rowData['DISKON_8']) : 0,
+                    'nominal_diskon9' => !empty($rowData['DISKON_9']) ? -abs((float) $rowData['DISKON_9']) : 0,
+                    'nominal_diskon10' => !empty($rowData['DISKON_10']) ? -abs((float) $rowData['DISKON_10']) : 0,
+                    'nominal_diskon11' => !empty($rowData['DISKON_11']) ? -abs((float) $rowData['DISKON_11']) : 0,
+                    'nominal_diskon12' => !empty($rowData['DISKON_12']) ? -abs((float) $rowData['DISKON_12']) : 0,
                     'adjustment' => 0,
                     'saldo_masuk' => !empty($rowData['PAYMENT_AMOUNT']) ? (float) $rowData['PAYMENT_AMOUNT'] : 0,
                     'tanggal_masuk_pembayaran' => $rowData['PAYMENT_DATE'],
@@ -564,6 +620,12 @@ class PembayaranShopeeController extends Controller
                         (!empty($rowData['BIAYA_LAYANAN']) ? -abs((float) $rowData['BIAYA_LAYANAN']) : 0) +
                         (!empty($rowData['DISKON_5']) ? -abs((float) $rowData['DISKON_5']) : 0) +
                         (!empty($rowData['DISKON_6']) ? -abs((float) $rowData['DISKON_6']) : 0) +
+                        (!empty($rowData['DISKON_7']) ? -abs((float) $rowData['DISKON_7']) : 0) +
+                        (!empty($rowData['DISKON_8']) ? -abs((float) $rowData['DISKON_8']) : 0) +
+                        (!empty($rowData['DISKON_9']) ? -abs((float) $rowData['DISKON_9']) : 0) +
+                        (!empty($rowData['DISKON_10']) ? -abs((float) $rowData['DISKON_10']) : 0) +
+                        (!empty($rowData['DISKON_11']) ? -abs((float) $rowData['DISKON_11']) : 0) +
+                        (!empty($rowData['DISKON_12']) ? -abs((float) $rowData['DISKON_12']) : 0) +
                         0,
                     'outstanding' => 0,
                     'status' => 'preview'
@@ -649,7 +711,7 @@ class PembayaranShopeeController extends Controller
             $validRows = session('shopee_valid_rows');
             $invalidRows = session('shopee_invalid_rows');
             
-            \Log::info("preview GET: previewData is " . (is_array($previewData) ? "array with " . count($previewData) . " items" : "not an array"));
+            Log::info("preview GET: previewData is " . (is_array($previewData) ? "array with " . count($previewData) . " items" : "not an array"));
             
             // If any of the required data is missing, redirect to import
             if (!$previewData || !$previewHeaders || !$headerLabels) {
@@ -1019,7 +1081,7 @@ class PembayaranShopeeController extends Controller
                                 
                                 // Add the order data to the preview data
                                 $previewData[] = $orderData;
-                                \Log::info("Added order data for order {$orderData['no_order']} with " . count($orderData['invoices']) . " invoices");
+                                Log::info("Added order data for order {$orderData['no_order']} with " . count($orderData['invoices']) . " invoices");
                             }
                         }
                     }
@@ -1106,7 +1168,7 @@ class PembayaranShopeeController extends Controller
         $validRows = session('shopee_valid_rows');
         $invalidRows = session('shopee_invalid_rows');
         
-        \Log::info("showPreview: previewData is " . (is_array($previewData) ? "array with " . count($previewData) . " items" : "not an array"));
+        Log::info("showPreview: previewData is " . (is_array($previewData) ? "array with " . count($previewData) . " items" : "not an array"));
         
         // If any of the required data is missing, redirect to import
         if (!$previewData || !$previewHeaders || !$headerLabels) {
@@ -1295,75 +1357,105 @@ class PembayaranShopeeController extends Controller
                 $rowData = $orderData['rowData'];
                 
                 try {
-                    // Calculate total quantity across all order items
-                    $totalQty = $order->orderItems->sum('quantity');
+                    // Group order items by tax_id from barang keluar
+                    $taxGroups = $this->groupOrderItemsByTaxId($order);
                     
-                    // Calculate total invoice value (price_after_discount × quantity)
-                    $totalInvoiceValue = 0;
-                    foreach ($order->orderItems as $item) {
-                        $totalInvoiceValue += $item->price_after_discount * $item->quantity;
+                    if (empty($taxGroups)) {
+                        $skippedCount++;
+                        $skippedReasons[] = "Order {$order->order_number}: Tidak ada barang keluar dengan tax_id";
+                        Log::warning("Skipping order {$order->order_number} - no tax groups found");
+                        continue;
                     }
+                    
+                    // Calculate total invoice value for proportion calculation
+                    $totalInvoiceValue = $order->orderItems->sum(function($item) {
+                        return $item->price_after_discount * $item->quantity;
+                    });
                     
                     // Process discount values from the import data
-                    $nominal_diskon1 = !empty($rowData['Voucher Ditanggung Penjual']) ? -abs((float)$rowData['Voucher Ditanggung Penjual']) : 0;
-                    $nominal_diskon2 = !empty($rowData['KOMISI AMS/AFFILIATE']) ? -abs((float)$rowData['KOMISI AMS/AFFILIATE']) : 0;
-                    $nominal_diskon3 = !empty($rowData['BIAYA ADMIN']) ? -abs((float)$rowData['BIAYA ADMIN']) : 0;
-                    $nominal_diskon4 = !empty($rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) ? -abs((float)$rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) : 0;
-                    $nominal_diskon5 = !empty($rowData['DISKON 5']) ? -abs((float)$rowData['DISKON 5']) : 0;
-                    $nominal_diskon6 = !empty($rowData['DISKON 6']) ? -abs((float)$rowData['DISKON 6']) : 0;
-                    $nominal_diskon7 = !empty($rowData['DISKON 7']) ? -abs((float)$rowData['DISKON 7']) : 0;
-                    $nominal_diskon8 = !empty($rowData['DISKON 8']) ? -abs((float)$rowData['DISKON 8']) : 0;
-                    $nominal_diskon9 = !empty($rowData['DISKON 9']) ? -abs((float)$rowData['DISKON 9']) : 0;
-                    $nominal_diskon10 = !empty($rowData['DISKON 10']) ? -abs((float)$rowData['DISKON 10']) : 0;
-                    $nominal_diskon11 = !empty($rowData['DISKON 11']) ? -abs((float)$rowData['DISKON 11']) : 0;
-                    $nominal_diskon12 = !empty($rowData['DISKON 12']) ? -abs((float)$rowData['DISKON 12']) : 0;
+                    $total_nominal_diskon1 = !empty($rowData['Voucher Ditanggung Penjual']) ? -abs((float)$rowData['Voucher Ditanggung Penjual']) : 0;
+                    $total_nominal_diskon2 = !empty($rowData['KOMISI AMS/AFFILIATE']) ? -abs((float)$rowData['KOMISI AMS/AFFILIATE']) : 0;
+                    $total_nominal_diskon3 = !empty($rowData['BIAYA ADMIN']) ? -abs((float)$rowData['BIAYA ADMIN']) : 0;
+                    $total_nominal_diskon4 = !empty($rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) ? -abs((float)$rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) : 0;
+                    $total_nominal_diskon5 = !empty($rowData['DISKON 5']) ? -abs((float)$rowData['DISKON 5']) : 0;
+                    $total_nominal_diskon6 = !empty($rowData['DISKON 6']) ? -abs((float)$rowData['DISKON 6']) : 0;
+                    $total_nominal_diskon7 = !empty($rowData['DISKON 7']) ? -abs((float)$rowData['DISKON 7']) : 0;
+                    $total_nominal_diskon8 = !empty($rowData['DISKON 8']) ? -abs((float)$rowData['DISKON 8']) : 0;
+                    $total_nominal_diskon9 = !empty($rowData['DISKON 9']) ? -abs((float)$rowData['DISKON 9']) : 0;
+                    $total_nominal_diskon10 = !empty($rowData['DISKON 10']) ? -abs((float)$rowData['DISKON 10']) : 0;
+                    $total_nominal_diskon11 = !empty($rowData['DISKON 11']) ? -abs((float)$rowData['DISKON 11']) : 0;
+                    $total_nominal_diskon12 = !empty($rowData['DISKON 12']) ? -abs((float)$rowData['DISKON 12']) : 0;
                     
-                    $saldo_masuk = (float)$rowData['JUMLAH MASUK PEMBAYARAN'];
+                    $total_saldo_masuk = (float)$rowData['JUMLAH MASUK PEMBAYARAN'];
                     
-                    // Calculate nominal_fix and outstanding
-                    $nominal_fix = $totalInvoiceValue + $nominal_diskon1 + $nominal_diskon2 + $nominal_diskon3 + 
-                                  $nominal_diskon4 + $nominal_diskon5 + $nominal_diskon6 + $nominal_diskon7 + 
-                                  $nominal_diskon8 + $nominal_diskon9 + $nominal_diskon10 + $nominal_diskon11 + $nominal_diskon12;
-                    
-                    $outstanding = $nominal_fix - $saldo_masuk;
-                    
-                    // Add validation for potential overpayment scenarios
-                    if ($saldo_masuk > 0 && $nominal_fix > 0) {
-                        $ratio = $saldo_masuk / $nominal_fix;
-                        if ($ratio > 3.0) { // If payment is more than 3x the expected amount
-                            \Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$saldo_masuk}, nominal_fix={$nominal_fix}");
+                    // Create a transaction for each tax_id
+                    foreach ($taxGroups as $taxId => $group) {
+                        // Calculate proportion based on nominal_harga
+                        $proportion = $totalInvoiceValue > 0 ? ($group['total_nominal'] / $totalInvoiceValue) : (1 / count($taxGroups));
+                        
+                        // Distribute discounts proportionally
+                        $nominal_diskon1 = $total_nominal_diskon1 * $proportion;
+                        $nominal_diskon2 = $total_nominal_diskon2 * $proportion;
+                        $nominal_diskon3 = $total_nominal_diskon3 * $proportion;
+                        $nominal_diskon4 = $total_nominal_diskon4 * $proportion;
+                        $nominal_diskon5 = $total_nominal_diskon5 * $proportion;
+                        $nominal_diskon6 = $total_nominal_diskon6 * $proportion;
+                        $nominal_diskon7 = $total_nominal_diskon7 * $proportion;
+                        $nominal_diskon8 = $total_nominal_diskon8 * $proportion;
+                        $nominal_diskon9 = $total_nominal_diskon9 * $proportion;
+                        $nominal_diskon10 = $total_nominal_diskon10 * $proportion;
+                        $nominal_diskon11 = $total_nominal_diskon11 * $proportion;
+                        $nominal_diskon12 = $total_nominal_diskon12 * $proportion;
+                        $saldo_masuk = $total_saldo_masuk * $proportion;
+                        
+                        // Calculate nominal_fix and outstanding for this tax group
+                        $nominal_fix = $group['total_nominal'] + $nominal_diskon1 + $nominal_diskon2 + $nominal_diskon3 + 
+                                      $nominal_diskon4 + $nominal_diskon5 + $nominal_diskon6 + $nominal_diskon7 + 
+                                      $nominal_diskon8 + $nominal_diskon9 + $nominal_diskon10 + $nominal_diskon11 + $nominal_diskon12;
+                        
+                        $outstanding = $nominal_fix - $saldo_masuk;
+                        
+                        // Add validation for potential overpayment scenarios
+                        if ($saldo_masuk > 0 && $nominal_fix > 0) {
+                            $ratio = $saldo_masuk / $nominal_fix;
+                            if ($ratio > 3.0) { // If payment is more than 3x the expected amount
+                                Log::warning("Potential overpayment detected for order {$order->order_number} (tax_id: {$taxId}): saldo_masuk={$saldo_masuk}, nominal_fix={$nominal_fix}");
+                            }
                         }
+                        
+                        // Generate invoice number for this tax_id
+                        $invoiceNumber = $this->generateInvoiceForOrder($order, $taxId);
+                        
+                        // Prepare transaction data for bulk insert
+                        $transactionsToInsert[] = [
+                            'tanggal_order' => $order->tanggal,
+                            'hari_order' => $order->hari,
+                            'no_order' => $order->order_number,
+                            'no_invoice' => $invoiceNumber,
+                            'order_id' => $order->id,
+                            'qty' => $group['total_qty'],
+                            'nominal_harga' => $group['total_nominal'],
+                            'nominal_diskon1' => $nominal_diskon1,
+                            'nominal_diskon2' => $nominal_diskon2,
+                            'nominal_diskon3' => $nominal_diskon3,
+                            'nominal_diskon4' => $nominal_diskon4,
+                            'nominal_diskon5' => $nominal_diskon5,
+                            'nominal_diskon6' => $nominal_diskon6,
+                            'nominal_diskon7' => $nominal_diskon7,
+                            'nominal_diskon8' => $nominal_diskon8,
+                            'nominal_diskon9' => $nominal_diskon9,
+                            'nominal_diskon10' => $nominal_diskon10,
+                            'nominal_diskon11' => $nominal_diskon11,
+                            'nominal_diskon12' => $nominal_diskon12,
+                            'tanggal_masuk_pembayaran' => $rowData['TANGGAL MASUK PEMBAYARAN'],
+                            'hari_masuk_pembayaran' => $rowData['HARI MASUK PEMBAYARAN'],
+                            'saldo_masuk' => $saldo_masuk,
+                            'nominal_fix' => $nominal_fix,
+                            'outstanding' => $outstanding,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
                     }
-                    
-                    // Prepare transaction data for bulk insert
-                    $transactionsToInsert[] = [
-                        'tanggal_order' => $order->tanggal,
-                        'hari_order' => $order->hari,
-                        'no_order' => $order->order_number,
-                        'no_invoice' => $this->generateInvoiceForOrder($order),
-                        'order_id' => $order->id,
-                        'qty' => $totalQty,
-                        'nominal_harga' => $totalInvoiceValue,
-                        'nominal_diskon1' => $nominal_diskon1,
-                        'nominal_diskon2' => $nominal_diskon2,
-                        'nominal_diskon3' => $nominal_diskon3,
-                        'nominal_diskon4' => $nominal_diskon4,
-                        'nominal_diskon5' => $nominal_diskon5,
-                        'nominal_diskon6' => $nominal_diskon6,
-                        'nominal_diskon7' => $nominal_diskon7,
-                        'nominal_diskon8' => $nominal_diskon8,
-                        'nominal_diskon9' => $nominal_diskon9,
-                        'nominal_diskon10' => $nominal_diskon10,
-                        'nominal_diskon11' => $nominal_diskon11,
-                        'nominal_diskon12' => $nominal_diskon12,
-                        'tanggal_masuk_pembayaran' => $rowData['TANGGAL MASUK PEMBAYARAN'],
-                        'hari_masuk_pembayaran' => $rowData['HARI MASUK PEMBAYARAN'],
-                        'saldo_masuk' => $saldo_masuk,
-                        'nominal_fix' => $nominal_fix,
-                        'outstanding' => $outstanding,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
                     
                 } catch (\Exception $e) {
                     $skippedCount++;
@@ -1426,9 +1518,12 @@ class PembayaranShopeeController extends Controller
             // Clear cache to ensure fresh data on next load
             $this->clearShopeeCache();
             
-            // Store skipped reasons in session if any
+            // Store skipped reasons in session if any (platform-specific)
             if (!empty($skippedReasons)) {
-                session(['skipped_reasons' => $skippedReasons]);
+                session(['shopee_skipped_reasons' => $skippedReasons]);
+            } else {
+                // Clear any old skipped reasons if no new ones
+                session()->forget('shopee_skipped_reasons');
             }
             
             return redirect()->route('finance.shopee.index')
@@ -1468,66 +1563,127 @@ class PembayaranShopeeController extends Controller
     }
 
     /**
-     * Generate invoice number for an order based on warehouse stock tax_id
+     * Group order items by tax_id from barang keluar
      * 
      * @param Order $order
-     * @return string
+     * @return array Array of tax_id => [order_items, total_qty, total_nominal]
      */
-    protected function generateInvoiceForOrder($order)
+    protected function groupOrderItemsByTaxId($order)
     {
-        // First, let's check BarangKeluar records associated with this order
+        // First, check BarangKeluar records associated with this order
         $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($query) use ($order) {
             $query->where('order_id', $order->id);
-        })->with('warehouseStock')->get();
+        })->with(['warehouseStock', 'orderItem'])->get();
         
-        // Group by tax_id and calculate quantity for each tax_id
-        $taxGroupsFromBarangKeluar = [];
-        $taxQty = [];
+        // Group by tax_id
+        $taxGroups = [];
         
-        foreach ($barangKeluarItems as $item) {
-            if ($item->warehouseStock && $item->warehouseStock->tax_id) {
-                $taxId = $item->warehouseStock->tax_id;
-                if (!isset($taxGroupsFromBarangKeluar[$taxId])) {
-                    $taxGroupsFromBarangKeluar[$taxId] = [];
-                    $taxQty[$taxId] = 0;
+        foreach ($barangKeluarItems as $bk) {
+            if ($bk->warehouseStock && $bk->warehouseStock->tax_id) {
+                $taxId = $bk->warehouseStock->tax_id;
+                
+                if (!isset($taxGroups[$taxId])) {
+                    $taxGroups[$taxId] = [
+                        'order_items' => [],
+                        'barang_keluar' => [],
+                        'total_qty' => 0,
+                        'total_nominal' => 0,
+                    ];
                 }
-                $taxGroupsFromBarangKeluar[$taxId][] = $item;
-                $taxQty[$taxId] += $item->qty;
+                
+                // Add barang keluar item
+                $taxGroups[$taxId]['barang_keluar'][] = $bk;
+                $taxGroups[$taxId]['total_qty'] += $bk->qty;
+                
+                // Add order item if not already added
+                if ($bk->orderItem) {
+                    $orderItemId = $bk->orderItem->id;
+                    if (!isset($taxGroups[$taxId]['order_items'][$orderItemId])) {
+                        $taxGroups[$taxId]['order_items'][$orderItemId] = $bk->orderItem;
+                        $taxGroups[$taxId]['total_nominal'] += $bk->orderItem->price_after_discount * $bk->orderItem->quantity;
+                    }
+                }
             }
         }
         
         // If no BarangKeluar items, fall back to order items
-        if (empty($taxGroupsFromBarangKeluar)) {
+        if (empty($taxGroups)) {
             $orderItems = $order->orderItems()->with('warehouseStock')->get();
-            $taxGroups = [];
             
             foreach ($orderItems as $item) {
                 if ($item->warehouseStock && $item->warehouseStock->tax_id) {
                     $taxId = $item->warehouseStock->tax_id;
+                    
                     if (!isset($taxGroups[$taxId])) {
-                        $taxGroups[$taxId] = [];
-                        $taxQty[$taxId] = 0;
+                        $taxGroups[$taxId] = [
+                            'order_items' => [],
+                            'barang_keluar' => [],
+                            'total_qty' => 0,
+                            'total_nominal' => 0,
+                        ];
                     }
-                    $taxGroups[$taxId][] = $item;
-                    $taxQty[$taxId] += $item->quantity;
+                    
+                    $taxGroups[$taxId]['order_items'][$item->id] = $item;
+                    $taxGroups[$taxId]['total_qty'] += $item->quantity;
+                    $taxGroups[$taxId]['total_nominal'] += $item->price_after_discount * $item->quantity;
                 }
             }
-            
-            $taxGroupsFromBarangKeluar = $taxGroups;
+        }
+        
+        return $taxGroups;
+    }
+
+    /**
+     * Generate invoice number for an order based on warehouse stock tax_id
+     * 
+     * @param Order $order
+     * @param int $taxId
+     * @return string
+     */
+    protected function generateInvoiceForOrder($order, $taxId = null)
+    {
+        // If tax_id is provided, use it directly
+        if ($taxId !== null) {
+            return ShopeeFinancialTransaction::generateInvoiceNumber($order, $taxId);
+        }
+        
+        // Otherwise, find the tax_id with the highest quantity (backward compatibility)
+        $taxGroups = $this->groupOrderItemsByTaxId($order);
+        
+        if (empty($taxGroups)) {
+            // Default to Non-PKP if no tax_id found
+            return ShopeeFinancialTransaction::generateInvoiceNumber($order, 4);
         }
         
         // Find the tax_id with the highest quantity
-        arsort($taxQty);
-        $dominantTaxId = key($taxQty);
+        $maxQty = 0;
+        $dominantTaxId = null;
+        foreach ($taxGroups as $tid => $group) {
+            if ($group['total_qty'] > $maxQty) {
+                $maxQty = $group['total_qty'];
+                $dominantTaxId = $tid;
+            }
+        }
         
-        // Generate invoice number based on tax_id
-        return ShopeeFinancialTransaction::generateInvoiceNumber($order, $dominantTaxId);
+        return ShopeeFinancialTransaction::generateInvoiceNumber($order, $dominantTaxId ?? 4);
     }
     
     public function manual()
     {
-        // Implementasi halaman manual input jika diperlukan
-        return view('financial.shopee.manual');
+        // Get Shopee platform ID (ID 1 for Shopee Lamourad)
+        $shopeePlatformId = 1;
+        $platformLabel = 'Shopee Lamourad';
+        
+        // Get order_id from request if available
+        $orderId = request('order_id');
+        $order = null;
+        
+        // If order_id is provided, try to find the order
+        if ($orderId) {
+            $order = Order::where('platform_id', $shopeePlatformId)->find($orderId);
+        }
+        
+        return view('financial.shopee.manual', compact('order', 'platformLabel'));
     }
 
     public function storeManual(Request $request)
@@ -1555,7 +1711,17 @@ class PembayaranShopeeController extends Controller
         try {
             DB::beginTransaction();
             
+            // Get Shopee platform ID (ID 1 for Shopee Lamourad)
+            $shopeePlatformId = 1;
+            
             $order = Order::findOrFail($request->order_id);
+            
+            // Check if order is from Shopee platform (by platform_id)
+            if (!$order->platform_id || $order->platform_id !== $shopeePlatformId) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Nomor pesanan yang dipilih bukan dari platform Shopee.');
+            }
             
             // Cek jika sudah ada transaksi untuk order ini
             $exists = ShopeeFinancialTransaction::where('order_id', $order->id)->exists();
@@ -1563,65 +1729,100 @@ class PembayaranShopeeController extends Controller
                 return redirect()->back()->with('error', 'Transaksi untuk order ini sudah ada.');
             }
             
-            // Create a single transaction for the order
-            $transaction = new ShopeeFinancialTransaction();
-            $transaction->tanggal_order = $order->tanggal;
-            $transaction->hari_order = $order->hari;
-            $transaction->no_order = $order->order_number;
+            // Group order items by tax_id from barang keluar
+            $taxGroups = $this->groupOrderItemsByTaxId($order);
             
-            // Calculate total quantity across all order items
-            $totalQty = $order->orderItems->sum('quantity');
-            $transaction->qty = $totalQty;
-            
-            // Calculate total invoice value (price_after_discount × quantity)
-            $totalInvoiceValue = 0;
-            foreach ($order->orderItems as $item) {
-                $totalInvoiceValue += $item->price_after_discount * $item->quantity;
+            if (empty($taxGroups)) {
+                return redirect()->back()->with('error', 'Tidak ada barang keluar dengan tax_id untuk order ini.');
             }
-            $transaction->nominal_harga = $totalInvoiceValue;
             
-            $transaction->nominal_diskon1 = $request->nominal_diskon1 ? -abs((float)$request->nominal_diskon1) : 0;
-            $transaction->nominal_diskon2 = $request->nominal_diskon2 ? -abs((float)$request->nominal_diskon2) : 0;
-            $transaction->nominal_diskon3 = $request->nominal_diskon3 ? -abs((float)$request->nominal_diskon3) : 0;
-            $transaction->nominal_diskon4 = $request->nominal_diskon4 ? -abs((float)$request->nominal_diskon4) : 0;
-            $transaction->nominal_diskon5 = $request->nominal_diskon5 ? -abs((float)$request->nominal_diskon5) : 0;
-            $transaction->nominal_diskon6 = $request->nominal_diskon6 ? -abs((float)$request->nominal_diskon6) : 0;
-            $transaction->nominal_diskon7 = $request->nominal_diskon7 ? -abs((float)$request->nominal_diskon7) : 0;
-            $transaction->nominal_diskon8 = $request->nominal_diskon8 ? -abs((float)$request->nominal_diskon8) : 0;
-            $transaction->nominal_diskon9 = $request->nominal_diskon9 ? -abs((float)$request->nominal_diskon9) : 0;
-            $transaction->nominal_diskon10 = $request->nominal_diskon10 ? -abs((float)$request->nominal_diskon10) : 0;
-            $transaction->nominal_diskon11 = $request->nominal_diskon11 ? -abs((float)$request->nominal_diskon11) : 0;
-            $transaction->nominal_diskon12 = $request->nominal_diskon12 ? -abs((float)$request->nominal_diskon12) : 0;
-            $transaction->adjustment = $request->adjustment ?? 0;
-            $transaction->saldo_masuk = $request->saldo_masuk;
-            $transaction->tanggal_masuk_pembayaran = $request->tanggal_masuk_pembayaran;
-            $transaction->hari_masuk_pembayaran = $request->hari_masuk_pembayaran;
-            $transaction->order_id = $order->id;
+            $invoiceMessages = [];
+            $totalSaldoMasuk = $request->saldo_masuk;
+            $totalNominalFix = 0;
             
-            // Generate invoice number
-            $transaction->no_invoice = $this->generateInvoiceForOrder($order);
+            // Calculate total nominal_fix for all tax groups first
+            foreach ($taxGroups as $taxId => $group) {
+                $groupNominalHarga = $group['total_nominal'];
+                $groupNominalFix = $groupNominalHarga + 
+                    ($request->nominal_diskon1 ? -abs((float)$request->nominal_diskon1) : 0) +
+                    ($request->nominal_diskon2 ? -abs((float)$request->nominal_diskon2) : 0) +
+                    ($request->nominal_diskon3 ? -abs((float)$request->nominal_diskon3) : 0) +
+                    ($request->nominal_diskon4 ? -abs((float)$request->nominal_diskon4) : 0) +
+                    ($request->nominal_diskon5 ? -abs((float)$request->nominal_diskon5) : 0) +
+                    ($request->nominal_diskon6 ? -abs((float)$request->nominal_diskon6) : 0) +
+                    ($request->nominal_diskon7 ? -abs((float)$request->nominal_diskon7) : 0) +
+                    ($request->nominal_diskon8 ? -abs((float)$request->nominal_diskon8) : 0) +
+                    ($request->nominal_diskon9 ? -abs((float)$request->nominal_diskon9) : 0) +
+                    ($request->nominal_diskon10 ? -abs((float)$request->nominal_diskon10) : 0) +
+                    ($request->nominal_diskon11 ? -abs((float)$request->nominal_diskon11) : 0) +
+                    ($request->nominal_diskon12 ? -abs((float)$request->nominal_diskon12) : 0) +
+                    ($request->adjustment ?? 0);
+                $totalNominalFix += $groupNominalFix;
+            }
             
-            // Use the model's helper methods to calculate values
-            $transaction->calculateNominalFix()
-                        ->calculateOutstanding()
-                        ->calculatePercentages();
-            
-            // Add validation for potential overpayment scenarios
-            if ($transaction->saldo_masuk > 0 && $transaction->nominal_fix > 0) {
-                $ratio = $transaction->saldo_masuk / $transaction->nominal_fix;
-                if ($ratio > 3.0) { // If payment is more than 3x the expected amount
-                    \Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$transaction->saldo_masuk}, nominal_fix={$transaction->nominal_fix}");
+            // Process each tax group separately
+            foreach ($taxGroups as $taxId => $group) {
+                $transaction = new ShopeeFinancialTransaction();
+                $transaction->tanggal_order = $order->tanggal;
+                $transaction->hari_order = $order->hari;
+                $transaction->no_order = $order->order_number;
+                $transaction->order_id = $order->id;
+                
+                // Calculate quantity and nominal for this tax group
+                $transaction->qty = $group['total_qty'];
+                $transaction->nominal_harga = $group['total_nominal'];
+                
+                // Distribute discounts proportionally based on nominal_harga
+                $proportion = $totalNominalFix > 0 ? ($group['total_nominal'] / $order->orderItems->sum(function($item) {
+                    return $item->price_after_discount * $item->quantity;
+                })) : (1 / count($taxGroups));
+                
+                $transaction->nominal_diskon1 = $request->nominal_diskon1 ? -abs((float)$request->nominal_diskon1 * $proportion) : 0;
+                $transaction->nominal_diskon2 = $request->nominal_diskon2 ? -abs((float)$request->nominal_diskon2 * $proportion) : 0;
+                $transaction->nominal_diskon3 = $request->nominal_diskon3 ? -abs((float)$request->nominal_diskon3 * $proportion) : 0;
+                $transaction->nominal_diskon4 = $request->nominal_diskon4 ? -abs((float)$request->nominal_diskon4 * $proportion) : 0;
+                $transaction->nominal_diskon5 = $request->nominal_diskon5 ? -abs((float)$request->nominal_diskon5 * $proportion) : 0;
+                $transaction->nominal_diskon6 = $request->nominal_diskon6 ? -abs((float)$request->nominal_diskon6 * $proportion) : 0;
+                $transaction->nominal_diskon7 = $request->nominal_diskon7 ? -abs((float)$request->nominal_diskon7 * $proportion) : 0;
+                $transaction->nominal_diskon8 = $request->nominal_diskon8 ? -abs((float)$request->nominal_diskon8 * $proportion) : 0;
+                $transaction->nominal_diskon9 = $request->nominal_diskon9 ? -abs((float)$request->nominal_diskon9 * $proportion) : 0;
+                $transaction->nominal_diskon10 = $request->nominal_diskon10 ? -abs((float)$request->nominal_diskon10 * $proportion) : 0;
+                $transaction->nominal_diskon11 = $request->nominal_diskon11 ? -abs((float)$request->nominal_diskon11 * $proportion) : 0;
+                $transaction->nominal_diskon12 = $request->nominal_diskon12 ? -abs((float)$request->nominal_diskon12 * $proportion) : 0;
+                $transaction->adjustment = ($request->adjustment ?? 0) * $proportion;
+                $transaction->saldo_masuk = $totalSaldoMasuk * $proportion;
+                $transaction->tanggal_masuk_pembayaran = $request->tanggal_masuk_pembayaran;
+                $transaction->hari_masuk_pembayaran = $request->hari_masuk_pembayaran;
+                
+                // Generate invoice number for this tax_id
+                $transaction->no_invoice = $this->generateInvoiceForOrder($order, $taxId);
+                
+                // Use the model's helper methods to calculate values
+                $transaction->calculateNominalFix()
+                            ->calculateOutstanding()
+                            ->calculatePercentages();
+                
+                // Add validation for potential overpayment scenarios
+                if ($transaction->saldo_masuk > 0 && $transaction->nominal_fix > 0) {
+                    $ratio = $transaction->saldo_masuk / $transaction->nominal_fix;
+                    if ($ratio > 3.0) { // If payment is more than 3x the expected amount
+                        Log::warning("Potential overpayment detected for order {$order->order_number} (tax_id: {$taxId}): saldo_masuk={$transaction->saldo_masuk}, nominal_fix={$transaction->nominal_fix}");
+                    }
                 }
+                
+                $transaction->save();
+                
+                $taxCategory = in_array($taxId, [1, 3, 5, 7]) ? 'PKP' : 'Non-PKP';
+                $invoiceMessages[] = "Invoice {$transaction->no_invoice} berhasil dibuat untuk barang {$taxCategory}";
             }
-            
-            $transaction->save();
             
             DB::commit();
             
             // Clear cache to ensure fresh data on next load
             $this->clearShopeeCache();
             
-            return redirect()->route('finance.shopee.index')->with('success', 'Transaksi keuangan berhasil ditambahkan.');
+            return redirect()->route('finance.shopee.index')
+                ->with('success', implode('<br>', $invoiceMessages));
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Error saat menambahkan transaksi Shopee manual: " . $e->getMessage());
@@ -1726,24 +1927,17 @@ class PembayaranShopeeController extends Controller
             
             // Determine the tax_id from the invoice number
             $taxId = null;
-            $logoFile = 'HGN.jpeg'; // Default logo file
+            $logoFile = 'PKP.jpeg'; // Default logo file
             $isPKP = true; // Default to PKP
             
-            if (strpos($transaction->no_invoice, 'HPNSDA-OLK/01') !== false) {
-                $taxId = 1; // PKP - Coffee
-                $logoFile = 'HGN.jpeg';
+            // Format baru: 0001/2601/AMP/01 atau 0001/2601/AMP/02
+            if (strpos($transaction->no_invoice, 'AMP/01') !== false) {
+                $taxId = 3; // PKP - Skincare (HGN -> PKP)
+                $logoFile = 'PKP.jpeg';
                 $isPKP = true;
-            } elseif (strpos($transaction->no_invoice, 'HPNSDA-OLK/02') !== false) {
-                $taxId = 2; // Non PKP - Coffee
-                $logoFile = 'LM.jpeg';
-                $isPKP = false;
-            } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/01') !== false) {
-                $taxId = 3; // PKP - Skincare
-                $logoFile = 'HGN.jpeg';
-                $isPKP = true;
-            } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/02') !== false) {
-                $taxId = 4; // Non PKP - Skincare
-                $logoFile = 'LM.jpeg';
+            } elseif (strpos($transaction->no_invoice, 'AMP/02') !== false) {
+                $taxId = 4; // Non PKP - Skincare (LM -> NON PKP)
+                $logoFile = 'NONPKP.jpeg';
                 $isPKP = false;
             } else {
                 // If we can't determine from pattern, extract the last 2 digits
@@ -1751,7 +1945,7 @@ class PembayaranShopeeController extends Controller
                 if (!empty($matches[1])) {
                     $taxId = (int) $matches[1];
                     $isPKP = in_array($taxId, [1, 3, 5, 7]);
-                    $logoFile = $isPKP ? 'HGN.jpeg' : 'LM.jpeg';
+                    $logoFile = $isPKP ? 'PKP.jpeg' : 'NONPKP.jpeg';
                 }
             }
             
@@ -1940,14 +2134,29 @@ class PembayaranShopeeController extends Controller
         // Filter by outstanding status
         if ($request->filled('outstanding_status')) {
             if ($request->outstanding_status === '0') {
-                $query->where('outstanding', 0);
+                // Lunas: outstanding harus tepat 0 (dengan toleransi kecil untuk floating point)
+                $query->whereRaw('ABS(outstanding) <= 0.01');
             } elseif ($request->outstanding_status === '1') {
-                $query->where(function($q) {
-                    $q->where('outstanding', '>', 0)
-                      ->orWhere('outstanding', '<', 0);
-                });
+                // Outstanding: outstanding tidak sama dengan 0 (ada selisih)
+                $query->whereRaw('ABS(outstanding) > 0.01');
             }
         }
+        
+        // Exclude only fully returned orders (retur full), not partial returns (retur sebagian)
+        // Orders with partial returns should still appear in finance index
+        $query->whereNotExists(function($subQuery) {
+            $subQuery->select(DB::raw(1))
+                ->from('retur_penjualans as rp')
+                ->join('orders as o', 'rp.order_id', '=', 'o.id')
+                ->join('retur_penjualan_details as rpd', 'rp.id', '=', 'rpd.retur_penjualan_id')
+                ->join('order_items as oi', 'rpd.order_item_id', '=', 'oi.id')
+                ->whereColumn('o.order_number', 'shopee_financial_transactions.no_order')
+                ->whereIn('rp.status', ['draft', 'selesai'])
+                ->whereNotNull('o.order_number')
+                ->where('o.order_number', '!=', '')
+                ->groupBy('o.id')
+                ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+        });
         
         $transactions = $query->orderBy('tanggal_order', 'desc')->get();
         

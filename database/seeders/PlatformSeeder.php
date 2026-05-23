@@ -14,13 +14,11 @@ class PlatformSeeder extends Seeder
     {
         // Buat data platform e-commerce
         $platforms = [
-            ['name' => 'shopee'],
-            ['name' => 'shopee2'],
-            ['name' => 'tokopedia'],
-            ['name' => 'tiktok'],
-            ['name' => 'tiktok2'],
-            ['name' => 'blibli'],
-            ['name' => 'lazada'],
+            ['name' => 'Shopee Lamourad'],
+            ['name' => 'Shopee Liefmarket'],
+            ['name' => 'Tiktok Lamourad'],
+            ['name' => 'Tiktok Liefmarket'],
+            ['name' => 'offline'],
         ];
 
         foreach ($platforms as $platform) {

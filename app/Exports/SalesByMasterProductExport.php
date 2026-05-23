@@ -63,53 +63,57 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
 
     public function map($row): array
     {
-        // ALL CALCULATIONS ARE NOW DONE IN SQL - JUST USE THE VALUES
-        // No more PHP calculations needed!
-        // Data comes as array from Query class
+        // ALL CALCULATIONS ARE NOW DONE IN SQL - JUST USE THE VALUES DIRECTLY
+        // Data comes as array from Query class - use exact same columns as view
         
-        $qty = $row['quantity'] ?? 0; // QTY (master barang)
-        $proportionPercent = $row['proportion_percent'] ?? 0;
+        // Use order_date_formatted if available, otherwise format order_date
+        $orderDate = $row['order_date_formatted'] ?? 
+            (isset($row['order_date']) ? Carbon::parse($row['order_date'])->format('d/m/Y') : '-');
         
-        // All values below are already calculated in SQL
-        $paymentAmount = $row['order_total_payment'] ?? 0; // jumlah masuk pembayaran dari order
-        $paymentAmountWithoutPPN = $paymentAmount / 1.11; // tanpa PPN
-        $pricelistPerItem = $row['price'] ?? 0; // harga pricelist per item
-        $pricelistTotal = $row['pricelist_total'] ?? 0; // harga pricelist per item X QTY (from SQL)
-        $totalPricelistOrder = $row['total_order_value_from_products'] ?? 0; // total nilai order
-        $persenDalamOrder = $proportionPercent / 100; // Konversi dari persentase ke desimal untuk Excel
+        // All values below are already calculated in SQL - use them directly
+        $platformQty = (float)($row['platform_quantity'] ?? 0); // QTY dari platform
+        $qty = (float)($row['quantity'] ?? 0); // QTY master barang
+        $proportionPercent = (float)($row['proportion_percent'] ?? 0);
         
-        // These are all calculated in SQL - just use them directly
-        $paymentPerProduct = $row['payment_per_product_per_pcs'] ?? 0; // from SQL
-        $paymentPerProductWithoutPPN = $row['payment_per_product_without_ppn'] ?? 0; // from SQL
-        $unitCost = $row['modal_per_pcs'] ?? 0; // from SQL (cogs_per_unit)
-        $profitPerPCS = $row['profit_per_pcs'] ?? 0; // from SQL
-        $grossProfitTotal = $row['gross_profit_total'] ?? 0; // from SQL
-        $marginPerPCS = ($row['margin_per_pcs'] ?? 0) / 100; // from SQL, convert to decimal for Excel
-        $marginPerItem = ($row['margin_per_item'] ?? 0) / 100; // from SQL, convert to decimal for Excel
+        // Use values directly from SQL (already calculated)
+        $paymentAmount = (float)($row['order_total_payment'] ?? 0);
+        $paymentAmountWithoutPPN = (float)($row['order_total_payment_without_ppn'] ?? 0); // Already calculated in SQL
+        $pricelistPerItem = (float)($row['price'] ?? 0);
+        $pricelistTotal = (float)($row['pricelist_total'] ?? 0);
+        $totalPricelistOrder = (float)($row['total_order_value_from_products'] ?? 0);
+        
+        // These are all calculated in SQL - use them directly
+        $paymentPerProduct = (float)($row['payment_per_product_per_pcs'] ?? 0);
+        $paymentPerProductWithoutPPN = (float)($row['payment_per_product_without_ppn'] ?? 0);
+        $unitCost = (float)($row['unit_cost'] ?? 0); // Use unit_cost (not modal_per_pcs)
+        $profitPerPCS = (float)($row['profit_per_pcs'] ?? 0);
+        $grossProfitTotal = (float)($row['gross_profit_total'] ?? 0);
+        $marginPerPCS = (float)($row['margin_per_pcs'] ?? 0); // Keep as percentage (not decimal)
+        $marginPerItem = (float)($row['margin_per_item'] ?? 0); // Keep as percentage (not decimal)
 
         return [
-            isset($row['order_date']) ? Carbon::parse($row['order_date'])->format('d M Y') : '-', // Tanggal (Pembayaran Masuk)
-            isset($row['order_number']) ? (string)$row['order_number'] : '-', // No Pesanan as text
+            $orderDate, // Tanggal (Pembayaran Masuk) - formatted as d/m/Y
+            isset($row['order_number']) ? str_replace(',', '', (string)$row['order_number']) : '-', // No Pesanan as text (remove commas if any)
             isset($row['invoice_number']) ? (string)$row['invoice_number'] : '-', // No Invoice as text
             $row['platform_product_name'] ?? '-', // Nama Produk (Platform)
             $row['platform_product_variant'] ?? '-', // Variasi (Platform)
-            $row['platform_quantity'] ?? 0, // Jumlah QTY (PCS) (Platform)
+            $platformQty, // Jumlah QTY (PCS) (Platform)
             isset($row['sku']) ? (string)$row['sku'] : '-', // SKU as text
             $row['product_name'] ?? '-', // Master Barang
-            $qty, // QTY
-            round($paymentAmount, 2), // Jumlah masuk pembayaran (Rp)
-            round($paymentAmountWithoutPPN, 2), // Jumlah masuk pembayaran - PPN (Rp)
+            $qty, // QTY (master barang)
+            round($paymentAmount, 2), // Jumlah masuk pembayaran (Rp) - order_total_payment
+            round($paymentAmountWithoutPPN, 2), // Jumlah masuk pembayaran - PPN (Rp) - use pre-calculated value
             round($pricelistPerItem, 2), // Harga pricelist per item (Rp)
             round($pricelistTotal, 2), // Harga pricelist per item X QTY (Rp)
             round($totalPricelistOrder, 2), // Total harga pricelist (Rp)
-            $persenDalamOrder, // Persen dalam order (%)
+            $proportionPercent / 100, // Persen dalam order (%) - convert to decimal for Excel percentage format
             round($paymentPerProduct, 2), // Masuk pembayaran per produk (Rp)
             round($paymentPerProductWithoutPPN, 2), // Masuk pembayaran per produk - PPN (Rp)
             round($unitCost, 2), // Harga Modal (COGS) (Rp)
             round($profitPerPCS, 2), // Profit per PCS (Rp)
             round($grossProfitTotal, 2), // Gross Profit total (Rp)
-            $marginPerPCS, // Margin per pcs (%)
-            $marginPerItem // Margin per item (%)
+            $marginPerPCS / 100, // Margin per pcs (%) - convert to decimal for Excel percentage format
+            $marginPerItem / 100 // Margin per item (%) - convert to decimal for Excel percentage format
         ];
     }
 
@@ -158,8 +162,9 @@ class SalesByMasterProductExport implements FromCollection, WithHeadings, WithMa
                         $value = $sheet->getCell($cell)->getValue();
                         
                         if ($value !== null && $value !== '-') {
-                            // Set as text without apostrophe
-                            $sheet->setCellValueExplicit($cell, (string)$value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                            // Remove commas and set as text without apostrophe
+                            $textValue = str_replace(',', '', (string)$value);
+                            $sheet->setCellValueExplicit($cell, $textValue, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
                         }
                     }
                 }

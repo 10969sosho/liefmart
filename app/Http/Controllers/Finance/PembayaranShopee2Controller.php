@@ -22,13 +22,25 @@ class PembayaranShopee2Controller extends Controller
 {
     public function index(Request $request)
     {
-        // Get platform by ID (shopee2)
-        $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee2'])->first();
+        // Get platform by ID (Shopee Liefmarket = ID 6)
+        $platformModel = Platform::find(6);
+        
+        // Jika tidak ditemukan berdasarkan ID, cari berdasarkan nama dengan case-insensitive
         if (!$platformModel) {
-            return redirect()->back()->with('error', 'Platform shopee2 tidak ditemukan');
+            $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee liefmarket'])->first();
+        }
+        
+        // Jika masih tidak ditemukan, cari dengan LIKE
+        if (!$platformModel) {
+            $platformModel = Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee liefmarket%'])->first();
+        }
+        
+        if (!$platformModel) {
+            return redirect()->back()->with('error', 'Platform Shopee Liefmarket tidak ditemukan');
         }
         $platformId = $platformModel->id;
-        $platform = 'shopee2'; // Set platform name for view
+        $platform = 'shopee2'; 
+        $platformLabel = 'Shopee Liefmarket';
         
         $query = Shopee2FinancialTransaction::with([
             'order.orderItems.platformProduct.mappingBarang', 
@@ -143,6 +155,7 @@ class PembayaranShopee2Controller extends Controller
             'transactions', 
             'groupedTransactions', 
             'platform', 
+            'platformLabel',
             'missingOrders',
             'totalCount', 
             'totalNominalFix', 
@@ -176,7 +189,7 @@ class PembayaranShopee2Controller extends Controller
             $validRows = session('shopee2_valid_rows');
             $invalidRows = session('shopee2_invalid_rows');
             
-            \Log::info("preview GET: previewData is " . (is_array($previewData) ? "array with " . count($previewData) . " items" : "not an array"));
+            Log::info("preview GET: previewData is " . (is_array($previewData) ? "array with " . count($previewData) . " items" : "not an array"));
             
             // If any of the required data is missing, redirect to import
             if (!$previewData || !$previewHeaders || !$headerLabels) {
@@ -522,6 +535,12 @@ class PembayaranShopee2Controller extends Controller
                                 $invoice['nominal_diskon4'] = !empty($rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) ? -abs((float) $rowData['BIAYA LAYANAN (GRATIS ONGKIR + CASHBACK)']) : 0;
                                 $invoice['nominal_diskon5'] = !empty($rowData['DISKON 5']) ? -abs((float) $rowData['DISKON 5']) : 0;
                                 $invoice['nominal_diskon6'] = !empty($rowData['DISKON 6']) ? -abs((float) $rowData['DISKON 6']) : 0;
+                                $invoice['nominal_diskon7'] = !empty($rowData['DISKON 7']) ? -abs((float) $rowData['DISKON 7']) : 0;
+                                $invoice['nominal_diskon8'] = !empty($rowData['DISKON 8']) ? -abs((float) $rowData['DISKON 8']) : 0;
+                                $invoice['nominal_diskon9'] = !empty($rowData['DISKON 9']) ? -abs((float) $rowData['DISKON 9']) : 0;
+                                $invoice['nominal_diskon10'] = !empty($rowData['DISKON 10']) ? -abs((float) $rowData['DISKON 10']) : 0;
+                                $invoice['nominal_diskon11'] = !empty($rowData['DISKON 11']) ? -abs((float) $rowData['DISKON 11']) : 0;
+                                $invoice['nominal_diskon12'] = !empty($rowData['DISKON 12']) ? -abs((float) $rowData['DISKON 12']) : 0;
                                 $invoice['adjustment'] = 0;
                                 
                                 // Calculate nominal_fix for display
@@ -532,6 +551,12 @@ class PembayaranShopee2Controller extends Controller
                                     $invoice['nominal_diskon4'] + 
                                     $invoice['nominal_diskon5'] + 
                                     $invoice['nominal_diskon6'] + 
+                                    $invoice['nominal_diskon7'] + 
+                                    $invoice['nominal_diskon8'] + 
+                                    $invoice['nominal_diskon9'] + 
+                                    $invoice['nominal_diskon10'] + 
+                                    $invoice['nominal_diskon11'] + 
+                                    $invoice['nominal_diskon12'] + 
                                     $invoice['adjustment'];
                                 
                                 $invoice['saldo_masuk'] = (float) $rowData['JUMLAH MASUK PEMBAYARAN'];
@@ -541,7 +566,7 @@ class PembayaranShopee2Controller extends Controller
                                 
                                 // Add the order data to the preview data
                                 $previewData[] = $orderData;
-                                \Log::info("Added order data for order {$orderData['no_order']} with " . count($orderData['invoices']) . " invoices");
+                                Log::info("Added order data for order {$orderData['no_order']} with " . count($orderData['invoices']) . " invoices");
                             }
                         }
                     }
@@ -824,7 +849,7 @@ class PembayaranShopee2Controller extends Controller
                     if ($saldo_masuk > 0 && $nominal_fix > 0) {
                         $ratio = $saldo_masuk / $nominal_fix;
                         if ($ratio > 3.0) { // If payment is more than 3x the expected amount
-                            \Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$saldo_masuk}, nominal_fix={$nominal_fix}");
+                            Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$saldo_masuk}, nominal_fix={$nominal_fix}");
                         }
                     }
                     
@@ -919,9 +944,12 @@ class PembayaranShopee2Controller extends Controller
             // Clear cache to ensure fresh data on next load
             $this->clearShopee2Cache();
             
-            // Store skipped reasons in session if any
+            // Store skipped reasons in session if any (platform-specific)
             if (!empty($skippedReasons)) {
-                session(['skipped_reasons' => $skippedReasons]);
+                session(['shopee2_skipped_reasons' => $skippedReasons]);
+            } else {
+                // Clear any old skipped reasons if no new ones
+                session()->forget('shopee2_skipped_reasons');
             }
             
             return redirect()->route('finance.shopee2.index')
@@ -961,69 +989,127 @@ class PembayaranShopee2Controller extends Controller
     }
 
     /**
-     * Generate invoice number for an order based on warehouse stock tax_id
+     * Group order items by tax_id from barang keluar
      * 
      * @param Order $order
-     * @return string
+     * @return array Array of tax_id => [order_items, total_qty, total_nominal]
      */
-    protected function generateInvoiceForOrder($order)
+    protected function groupOrderItemsByTaxId($order)
     {
-        // First, let's check BarangKeluar records associated with this order
+        // First, check BarangKeluar records associated with this order
         $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($query) use ($order) {
             $query->where('order_id', $order->id);
-        })->with('warehouseStock')->get();
+        })->with(['warehouseStock', 'orderItem'])->get();
         
-        // Group by tax_id and calculate quantity for each tax_id
-        $taxGroupsFromBarangKeluar = [];
-        $taxQty = [];
+        // Group by tax_id
+        $taxGroups = [];
         
-        foreach ($barangKeluarItems as $item) {
-            if ($item->warehouseStock && $item->warehouseStock->tax_id) {
-                $taxId = $item->warehouseStock->tax_id;
-                if (!isset($taxGroupsFromBarangKeluar[$taxId])) {
-                    $taxGroupsFromBarangKeluar[$taxId] = [];
-                    $taxQty[$taxId] = 0;
+        foreach ($barangKeluarItems as $bk) {
+            if ($bk->warehouseStock && $bk->warehouseStock->tax_id) {
+                $taxId = $bk->warehouseStock->tax_id;
+                
+                if (!isset($taxGroups[$taxId])) {
+                    $taxGroups[$taxId] = [
+                        'order_items' => [],
+                        'barang_keluar' => [],
+                        'total_qty' => 0,
+                        'total_nominal' => 0,
+                    ];
                 }
-                $taxGroupsFromBarangKeluar[$taxId][] = $item;
-                $taxQty[$taxId] += $item->qty;
+                
+                // Add barang keluar item
+                $taxGroups[$taxId]['barang_keluar'][] = $bk;
+                $taxGroups[$taxId]['total_qty'] += $bk->qty;
+                
+                // Add order item if not already added
+                if ($bk->orderItem) {
+                    $orderItemId = $bk->orderItem->id;
+                    if (!isset($taxGroups[$taxId]['order_items'][$orderItemId])) {
+                        $taxGroups[$taxId]['order_items'][$orderItemId] = $bk->orderItem;
+                        $taxGroups[$taxId]['total_nominal'] += $bk->orderItem->price_after_discount * $bk->orderItem->quantity;
+                    }
+                }
             }
         }
         
         // If no BarangKeluar items, fall back to order items
-        if (empty($taxGroupsFromBarangKeluar)) {
+        if (empty($taxGroups)) {
             $orderItems = $order->orderItems()->with('warehouseStock')->get();
-            $taxGroups = [];
             
             foreach ($orderItems as $item) {
                 if ($item->warehouseStock && $item->warehouseStock->tax_id) {
                     $taxId = $item->warehouseStock->tax_id;
+                    
                     if (!isset($taxGroups[$taxId])) {
-                        $taxGroups[$taxId] = [];
-                        $taxQty[$taxId] = 0;
+                        $taxGroups[$taxId] = [
+                            'order_items' => [],
+                            'barang_keluar' => [],
+                            'total_qty' => 0,
+                            'total_nominal' => 0,
+                        ];
                     }
-                    $taxGroups[$taxId][] = $item;
-                    $taxQty[$taxId] += $item->quantity;
+                    
+                    $taxGroups[$taxId]['order_items'][$item->id] = $item;
+                    $taxGroups[$taxId]['total_qty'] += $item->quantity;
+                    $taxGroups[$taxId]['total_nominal'] += $item->price_after_discount * $item->quantity;
                 }
             }
-            
-            $taxGroupsFromBarangKeluar = $taxGroups;
+        }
+        
+        return $taxGroups;
+    }
+
+    /**
+     * Generate invoice number for an order based on warehouse stock tax_id
+     * 
+     * @param Order $order
+     * @param int $taxId
+     * @return string
+     */
+    protected function generateInvoiceForOrder($order, $taxId = null)
+    {
+        // If tax_id is provided, use it directly
+        if ($taxId !== null) {
+            return Shopee2FinancialTransaction::generateInvoiceNumber($order, $taxId);
+        }
+        
+        // Otherwise, find the tax_id with the highest quantity (backward compatibility)
+        $taxGroups = $this->groupOrderItemsByTaxId($order);
+        
+        if (empty($taxGroups)) {
+            // Default to Non-PKP if no tax_id found
+            return Shopee2FinancialTransaction::generateInvoiceNumber($order, 4);
         }
         
         // Find the tax_id with the highest quantity
-        arsort($taxQty);
-        $dominantTaxId = key($taxQty);
+        $maxQty = 0;
+        $dominantTaxId = null;
+        foreach ($taxGroups as $tid => $group) {
+            if ($group['total_qty'] > $maxQty) {
+                $maxQty = $group['total_qty'];
+                $dominantTaxId = $tid;
+            }
+        }
         
-        // Generate invoice number based on tax_id
-        return Shopee2FinancialTransaction::generateInvoiceNumber($order, $dominantTaxId);
+        return Shopee2FinancialTransaction::generateInvoiceNumber($order, $dominantTaxId ?? 4);
     }
 
     public function manual()
     {
-        $orders = Order::whereDoesntHave('shopee2FinancialTransaction')
-            ->orderBy('tanggal', 'desc')
-            ->paginate(20);
-            
-        return view('financial.shopee2.manual', compact('orders'));
+        // Get Shopee2 platform ID (ID 6 for Shopee Liefmarket)
+        $shopee2PlatformId = 6;
+        $platformLabel = 'Shopee Liefmarket';
+        
+        // Get order_id from request if available
+        $orderId = request('order_id');
+        $order = null;
+        
+        // If order_id is provided, try to find the order
+        if ($orderId) {
+            $order = Order::where('platform_id', $shopee2PlatformId)->find($orderId);
+        }
+        
+        return view('financial.shopee2.manual', compact('order', 'platformLabel'));
     }
 
     public function storeManual(Request $request)
@@ -1041,25 +1127,91 @@ class PembayaranShopee2Controller extends Controller
         ]);
 
         try {
+            DB::beginTransaction();
+            
+            // Get Shopee2 platform ID (ID 6 for Shopee Trubleu)
+            $shopee2PlatformId = 6;
+            
             $order = Order::findOrFail($request->order_id);
             
-            $transaction = new Shopee2FinancialTransaction();
-            $transaction->setDataFromOrder($order);
-            $transaction->nominal_harga = $request->nominal_harga;
-            $transaction->nominal_diskon1 = $request->nominal_diskon1 ?? 0;
-            $transaction->nominal_diskon2 = $request->nominal_diskon2 ?? 0;
-            $transaction->nominal_diskon3 = $request->nominal_diskon3 ?? 0;
-            $transaction->nominal_diskon4 = $request->nominal_diskon4 ?? 0;
-            $transaction->nominal_diskon5 = $request->nominal_diskon5 ?? 0;
-            $transaction->nominal_diskon6 = $request->nominal_diskon6 ?? 0;
-            $transaction->adjustment = $request->adjustment ?? 0;
+            // Check if order is from Shopee2 platform (by platform_id)
+            if (!$order->platform_id || $order->platform_id !== $shopee2PlatformId) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Nomor pesanan yang dipilih bukan dari platform Shopee2.');
+            }
             
-            $transaction->calculateNominalFix()
-                ->calculateOutstanding()
-                ->calculatePercentages()
-                ->save();
+            // Cek jika sudah ada transaksi untuk order ini
+            $exists = Shopee2FinancialTransaction::where('order_id', $order->id)->exists();
+            if ($exists) {
+                return redirect()->back()->with('error', 'Transaksi untuk order ini sudah ada.');
+            }
             
-            return redirect()->route('finance.shopee2.index')->with('success', 'Transaksi berhasil ditambahkan');
+            // Group order items by tax_id from barang keluar
+            $taxGroups = $this->groupOrderItemsByTaxId($order);
+            
+            if (empty($taxGroups)) {
+                return redirect()->back()->with('error', 'Tidak ada barang keluar dengan tax_id untuk order ini.');
+            }
+            
+            $invoiceMessages = [];
+            $totalNominal = $request->nominal_harga;
+            $totalNominalFix = 0;
+            
+            // Calculate total nominal_fix for all tax groups first
+            foreach ($taxGroups as $taxId => $group) {
+                $groupNominalHarga = $group['total_nominal'];
+                $groupNominalFix = $groupNominalHarga + 
+                    ($request->nominal_diskon1 ?? 0) +
+                    ($request->nominal_diskon2 ?? 0) +
+                    ($request->nominal_diskon3 ?? 0) +
+                    ($request->nominal_diskon4 ?? 0) +
+                    ($request->nominal_diskon5 ?? 0) +
+                    ($request->nominal_diskon6 ?? 0) +
+                    ($request->adjustment ?? 0);
+                $totalNominalFix += $groupNominalFix;
+            }
+            
+            // Process each tax group separately
+            foreach ($taxGroups as $taxId => $group) {
+                $transaction = new Shopee2FinancialTransaction();
+                $transaction->setDataFromOrder($order);
+                $transaction->order_id = $order->id;
+                
+                // Calculate quantity and nominal for this tax group
+                $transaction->qty = $group['total_qty'];
+                $transaction->nominal_harga = $group['total_nominal'];
+                
+                // Distribute discounts proportionally based on nominal_harga
+                $totalOrderNominal = $order->orderItems->sum(function($item) {
+                    return $item->price_after_discount * $item->quantity;
+                });
+                $proportion = $totalOrderNominal > 0 ? ($group['total_nominal'] / $totalOrderNominal) : (1 / count($taxGroups));
+                
+                $transaction->nominal_diskon1 = ($request->nominal_diskon1 ?? 0) * $proportion;
+                $transaction->nominal_diskon2 = ($request->nominal_diskon2 ?? 0) * $proportion;
+                $transaction->nominal_diskon3 = ($request->nominal_diskon3 ?? 0) * $proportion;
+                $transaction->nominal_diskon4 = ($request->nominal_diskon4 ?? 0) * $proportion;
+                $transaction->nominal_diskon5 = ($request->nominal_diskon5 ?? 0) * $proportion;
+                $transaction->nominal_diskon6 = ($request->nominal_diskon6 ?? 0) * $proportion;
+                $transaction->adjustment = ($request->adjustment ?? 0) * $proportion;
+                
+                // Generate invoice number for this tax_id
+                $transaction->no_invoice = $this->generateInvoiceForOrder($order, $taxId);
+                
+                $transaction->calculateNominalFix()
+                    ->calculateOutstanding()
+                    ->calculatePercentages()
+                    ->save();
+                
+                $taxCategory = in_array($taxId, [1, 3, 5, 7]) ? 'PKP' : 'Non-PKP';
+                $invoiceMessages[] = "Invoice {$transaction->no_invoice} berhasil dibuat untuk barang {$taxCategory}";
+            }
+            
+            DB::commit();
+            
+            return redirect()->route('finance.shopee2.index')
+                ->with('success', implode('<br>', $invoiceMessages));
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
         }

@@ -73,7 +73,7 @@ class MasterProductQuery
                     p.id as product_id,
                     p.name as product_name,
                     COALESCE(p.sku, 'N/A') as sku,
-                    COALESCE(p.initial_price, 0) as price,
+                    COALESCE(pipv.initial_price, 0) as price,
                     ws.id as warehouse_stock_id,
                     pd.id as penerimaan_detail_id,
                     pd.harga_hpp,
@@ -90,11 +90,14 @@ class MasterProductQuery
                     ot.order_total_value as total_saldo_masuk,
                     -- Calculate total order value from products (pricelist)
                     COALESCE((
-                        SELECT SUM(p2.initial_price * bk2.qty)
+                        SELECT SUM(COALESCE(pipv2.initial_price, 0) * bk2.qty)
                         FROM order_items oi2
                         INNER JOIN barang_keluar bk2 ON bk2.order_item_id = oi2.id
                         INNER JOIN warehouse_stock ws2 ON ws2.id = bk2.warehouse_stock_id
                         INNER JOIN products p2 ON p2.id = ws2.product_id
+                        LEFT JOIN product_initial_price_versions pipv2 ON pipv2.product_id = p2.id
+                            AND pipv2.valid_from <= o.created_at
+                            AND (pipv2.valid_until IS NULL OR pipv2.valid_until > o.created_at)
                         WHERE oi2.order_id = o.id
                     ), 0) as total_order_value_from_products,
                     -- Get invoice number from financial transactions
@@ -110,18 +113,6 @@ class MasterProductQuery
                         WHERE order_id = o.id AND saldo_masuk > 0 
                         ORDER BY tanggal_masuk_pembayaran ASC 
                         LIMIT 1
-                    ), (
-                        SELECT no_invoice 
-                        FROM tokopedia_financial_transactions 
-                        WHERE order_id = o.id AND saldo_masuk > 0 
-                        ORDER BY tanggal_masuk_pembayaran ASC 
-                        LIMIT 1
-                    ), (
-                        SELECT no_invoice 
-                        FROM blibli_financial_transactions 
-                        WHERE order_id = o.id AND saldo_masuk > 0 
-                        ORDER BY tanggal_masuk_pembayaran ASC 
-                        LIMIT 1
                     ), '-') as invoice_number
                 FROM orders o
                 INNER JOIN platforms pl ON pl.id = o.platform_id
@@ -131,6 +122,9 @@ class MasterProductQuery
                 INNER JOIN barang_keluar bk ON bk.order_item_id = oi.id
                 INNER JOIN warehouse_stock ws ON ws.id = bk.warehouse_stock_id
                 INNER JOIN products p ON p.id = ws.product_id
+                LEFT JOIN product_initial_price_versions pipv ON pipv.product_id = p.id
+                    AND pipv.valid_from <= o.created_at
+                    AND (pipv.valid_until IS NULL OR pipv.valid_until > o.created_at)
                 LEFT JOIN penerimaan_detail pd ON pd.id = ws.penerimaan_detail_id
                 WHERE 1=1{$dateFilter}{$platformFilter}{$orderNumberFilter}{$searchFilter}{$productFilters}
             ),
@@ -372,4 +366,3 @@ class MasterProductQuery
         return "ORDER BY {$sortColumn} {$sortDirection}";
     }
 }
-

@@ -90,9 +90,6 @@
         .badge-shopee {
             background-color: #FF6720;
         }
-        .badge-tokopedia {
-            background-color: #42B549;
-        }
         .badge-tiktok {
             background-color: #000000;
         }

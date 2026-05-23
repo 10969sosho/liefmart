@@ -57,18 +57,13 @@
         color: #721c24;
     }
     
-    /* Only apply to the main content container, not navbar */
     .container-fluid.py-4:not(.navbar) {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         min-height: calc(100vh - 60px);
-        padding-left: 2rem !important;
-        padding-right: 2rem !important;
     }
     
     @media (max-width: 768px) {
         .container-fluid.py-4:not(.navbar) {
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
+            min-height: auto;
         }
     }
     

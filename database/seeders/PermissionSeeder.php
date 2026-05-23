@@ -28,9 +28,7 @@ class PermissionSeeder extends Seeder
             ['name' => 'finance.delete', 'display_name' => 'Hapus Keuangan', 'description' => 'Dapat menghapus data keuangan', 'category' => 'finance'],
             ['name' => 'finance.offline', 'display_name' => 'Keuangan Offline', 'description' => 'Dapat mengakses keuangan offline', 'category' => 'finance'],
             ['name' => 'finance.shopee', 'display_name' => 'Keuangan Shopee', 'description' => 'Dapat mengakses keuangan Shopee', 'category' => 'finance'],
-            ['name' => 'finance.tokopedia', 'display_name' => 'Keuangan Tokopedia', 'description' => 'Dapat mengakses keuangan Tokopedia', 'category' => 'finance'],
             ['name' => 'finance.tiktok', 'display_name' => 'Keuangan TikTok', 'description' => 'Dapat mengakses keuangan TikTok', 'category' => 'finance'],
-            ['name' => 'finance.blibli', 'display_name' => 'Keuangan Blibli', 'description' => 'Dapat mengakses keuangan Blibli', 'category' => 'finance'],
 
             // Warehouse Permissions
             ['name' => 'warehouse.view', 'display_name' => 'Lihat Gudang', 'description' => 'Dapat melihat data gudang', 'category' => 'warehouse'],

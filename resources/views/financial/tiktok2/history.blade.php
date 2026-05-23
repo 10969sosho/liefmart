@@ -6,7 +6,7 @@
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
             <h1 class="h3 mb-0 text-gray-800">Riwayat Perubahan Transaksi</h1>
-            <p class="text-muted small mb-0">Menampilkan riwayat perubahan untuk transaksi TikTok {{ $transaction->no_order }}</p>
+            <p class="text-muted small mb-0">Menampilkan riwayat perubahan untuk transaksi Tiktok Liefmarket {{ $transaction->no_order }}</p>
         </div>
         <div class="col-md-6 text-end">
             <a href="{{ route('finance.tiktok2.index') }}" class="btn btn-secondary">

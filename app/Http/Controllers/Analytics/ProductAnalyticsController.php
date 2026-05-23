@@ -52,87 +52,138 @@ class ProductAnalyticsController extends Controller
 
     /**
      * Return SubBrands filtered by selected Brand IDs (JSON)
+     * Enhanced with AJAX search support and limit
      */
     public function getSubBrands(Request $request)
     {
         $brandIds = $request->input('brand_ids', $request->input('brand_ids', []));
+        $search = $request->input('search', '');
+        
         if (!is_array($brandIds)) {
-            // Support single id or comma separated
             $brandIds = array_filter(explode(',', (string) $brandIds));
         }
 
-        $query = \App\Models\SubBrand::query();
-        if (!empty($brandIds)) {
-            $query->whereIn('brand_id', $brandIds);
-        } else {
-            // No brand selected → return empty to enforce cascading behavior
+        // Convert brand IDs to integers
+        $brandIds = array_map('intval', array_filter($brandIds));
+
+        if (empty($brandIds)) {
             return response()->json([]);
         }
 
-        $subBrands = $query->orderBy('name')->get(['id', 'name', 'brand_id']);
-        return response()->json($subBrands);
+        $query = \App\Models\SubBrand::query();
+        $query->whereIn('brand_id', $brandIds);
+        
+        if ($search) {
+            $query->where('name', 'like', "%{$search}%");
+        }
+
+        // Limit to 50 results for performance
+        $subBrands = $query->orderBy('name')->limit(50)->get(['id', 'name', 'brand_id']);
+        
+        // Ensure we return proper JSON array, filter out any null/empty values
+        $result = $subBrands->filter(function($item) {
+            return $item->id && $item->name;
+        })->map(function($item) {
+            return [
+                'id' => $item->id,
+                'name' => $item->name,
+                'brand_id' => $item->brand_id
+            ];
+        })->values();
+        
+        return response()->json($result);
     }
 
     /**
      * Return Product Types filtered by selected Category IDs (JSON)
+     * Enhanced with AJAX search support and limit
      */
     public function getProductTypes(Request $request)
     {
         $categoryIds = $request->input('category_ids', []);
+        $search = $request->input('search', '');
+        
         if (!is_array($categoryIds)) {
             $categoryIds = array_filter(explode(',', (string) $categoryIds));
         }
         if (empty($categoryIds)) {
             return response()->json([]);
         }
-        $types = \App\Models\ProductType::whereIn('product_category_id', $categoryIds)
-            ->orderBy('name')
-            ->get(['id', 'name', 'product_category_id']);
+        
+        $query = \App\Models\ProductType::whereIn('product_category_id', $categoryIds);
+        
+        if ($search) {
+            $query->where('name', 'like', "%{$search}%");
+        }
+        
+        // Limit to 50 results for performance
+        $types = $query->orderBy('name')->limit(50)->get(['id', 'name', 'product_category_id']);
         return response()->json($types);
     }
 
     /**
      * Return Product Sizes filtered by selected Type IDs (JSON)
+     * Enhanced with AJAX search support and limit
      */
     public function getProductSizes(Request $request)
     {
         $typeIds = $request->input('type_ids', []);
+        $search = $request->input('search', '');
+        
         if (!is_array($typeIds)) {
             $typeIds = array_filter(explode(',', (string) $typeIds));
         }
         if (empty($typeIds)) {
             return response()->json([]);
         }
-        $sizes = \App\Models\ProductSize::whereIn('product_type_id', $typeIds)
-            ->orderBy('name')
-            ->get(['id', 'name', 'product_type_id']);
+        
+        $query = \App\Models\ProductSize::whereIn('product_type_id', $typeIds);
+        
+        if ($search) {
+            $query->where('name', 'like', "%{$search}%");
+        }
+        
+        // Limit to 50 results for performance
+        $sizes = $query->orderBy('name')->limit(50)->get(['id', 'name', 'product_type_id']);
         return response()->json($sizes);
     }
 
     /**
      * Return Product Variants filtered by selected Size IDs (JSON)
+     * Enhanced with AJAX search support and limit
      */
     public function getProductVariants(Request $request)
     {
         $sizeIds = $request->input('size_ids', []);
+        $search = $request->input('search', '');
+        
         if (!is_array($sizeIds)) {
             $sizeIds = array_filter(explode(',', (string) $sizeIds));
         }
         if (empty($sizeIds)) {
             return response()->json([]);
         }
-        $variants = \App\Models\ProductVariant::whereIn('product_size_id', $sizeIds)
-            ->orderBy('name')
-            ->get(['id', 'name', 'product_size_id']);
+        
+        $query = \App\Models\ProductVariant::whereIn('product_size_id', $sizeIds);
+        
+        if ($search) {
+            $query->where('name', 'like', "%{$search}%");
+        }
+        
+        // Limit to 50 results for performance
+        $variants = $query->orderBy('name')->limit(50)->get(['id', 'name', 'product_size_id']);
         return response()->json($variants);
     }
 
     /**
      * Return Product Categories filtered by selected SubBrand IDs (JSON)
+     * Enhanced with AJAX search support and limit
      */
     public function getProductCategories(Request $request)
     {
         $subBrandIds = $request->input('sub_brand_ids', []);
+        $search = $request->input('search', '');
+        
         if (!is_array($subBrandIds)) {
             $subBrandIds = array_filter(explode(',', (string) $subBrandIds));
         }
@@ -151,9 +202,14 @@ class ProductAnalyticsController extends Controller
             return response()->json([]);
         }
 
-        $categories = \App\Models\ProductCategory::whereIn('id', $categoryIds)
-            ->orderBy('name')
-            ->get(['id','name']);
+        $query = \App\Models\ProductCategory::whereIn('id', $categoryIds);
+        
+        if ($search) {
+            $query->where('name', 'like', "%{$search}%");
+        }
+
+        // Limit to 50 results for performance
+        $categories = $query->orderBy('name')->limit(50)->get(['id','name']);
 
         return response()->json($categories);
     }
@@ -283,12 +339,19 @@ class ProductAnalyticsController extends Controller
             ->get();
         
         // Transform results (calculate net quantity in PHP - unavoidable for division)
+        // PERBAIKAN: order_items.quantity sudah dikurangi retur, jadi:
+        // - total_quantity (dari order_items) = NET (setelah retur)
+        // - TERJUAL (original) = total_quantity + qty_retur
         $items = $products->map(function($product) {
             $qtyReturPackage = $product->package_quantity > 0 
                 ? $product->qty_retur_individual / $product->package_quantity 
                 : $product->qty_retur_individual;
             
-            $netQuantity = max(0, $product->total_quantity - $qtyReturPackage);
+            // total_quantity dari order_items sudah adalah NET (setelah retur)
+            $netQuantity = (float) $product->total_quantity;
+            
+            // TERJUAL (original sebelum retur) = NET + RETUR
+            $totalQuantityOriginal = $netQuantity + (float) $qtyReturPackage;
             
             return [
                 'platform_product_id' => $product->platform_product_id,
@@ -296,9 +359,9 @@ class ProductAnalyticsController extends Controller
                 'variant' => $product->variant ?? '-',
                 'platform_id' => $product->platform_id,
                 'platform_name' => $product->platform_name,
-                'total_quantity' => (float) $product->total_quantity,
+                'total_quantity' => (float) $totalQuantityOriginal, // TERJUAL (sebelum retur)
                 'qty_retur' => (float) $qtyReturPackage,
-                'net_quantity' => (float) $netQuantity,
+                'net_quantity' => (float) $netQuantity, // NET (setelah retur)
                 'order_count' => (int) $product->order_count,
                 'total_value' => (float) $product->total_value,
             ];
@@ -1177,22 +1240,112 @@ class ProductAnalyticsController extends Controller
             
             // Use Query class - all calculations done in SQL
             $query = new \App\Queries\SalesByMasterProductQuery($request);
-            $productRows = $query->paginate(10);
+            
+            // Performance testing: Enable query logging
+            if (config('app.debug') && $request->has('debug_query')) {
+                \DB::flushQueryLog();
+                \DB::enableQueryLog();
+            }
+            
+            // Use pagination with limit 20 for better performance (max 20 for 22-column table)
+            $perPage = min((int) $request->input('per_page', 20), 20); // Max 20 per page for performance
+            
+            $startTime = microtime(true);
+            $productRows = $query->paginate($perPage);
+            $paginationTime = (microtime(true) - $startTime) * 1000; // milliseconds
+            
+            // Get summary using database aggregates (never loads all rows)
+            $startTime = microtime(true);
             $summary = $query->getSummary();
+            $summaryTime = (microtime(true) - $startTime) * 1000; // milliseconds
+            
+            // Log performance metrics if debug mode
+            if (config('app.debug') && $request->has('debug_query')) {
+                $queryLog = \DB::getQueryLog();
+                \Log::info('Sales by Master Product Performance', [
+                    'pagination_time_ms' => $paginationTime,
+                    'summary_time_ms' => $summaryTime,
+                    'total_time_ms' => $paginationTime + $summaryTime,
+                    'total_queries' => count($queryLog),
+                    'queries' => array_map(function($log) {
+                        return [
+                            'time' => $log['time'],
+                            'query' => substr($log['query'], 0, 500),
+                        ];
+                    }, $queryLog),
+                ]);
+                
+                // Return debug info if requested
+                if ($request->has('debug_query') && $request->input('debug_query') === 'json') {
+                    return response()->json([
+                        'pagination_time_ms' => $paginationTime,
+                        'summary_time_ms' => $summaryTime,
+                        'total_time_ms' => $paginationTime + $summaryTime,
+                        'queries' => $queryLog,
+                    ]);
+                }
+            }
             
             // Get filter data for view
             $platforms = Platform::all();
-            $productCategories = \App\Models\ProductCategory::orderBy('name')->get();
             $brands = \App\Models\Brand::orderBy('name')->get();
-            $subBrands = \App\Models\SubBrand::orderBy('name')->get();
-            $productTypes = \App\Models\ProductType::orderBy('name')->get();
-            $productSizes = \App\Models\ProductSize::orderBy('name')->get();
-            $productVariants = \App\Models\ProductVariant::orderBy('name')->get();
+            
+            // Get selected values from request
+            $selectedBrands = (array) $request->input('brands', []);
+            $selectedSubBrands = (array) $request->input('sub_brands', []);
+            $selectedProductCategories = (array) $request->input('product_categories', []);
+            $selectedProductTypes = (array) $request->input('product_types', []);
+            $selectedProductSizes = (array) $request->input('product_sizes', []);
+            $selectedProductVariants = (array) $request->input('product_variants', []);
             
             // Cascade: filter sub brands by selected brands
-            $selectedBrands = (array) $request->input('brands', []);
+            $subBrands = collect();
             if (!empty($selectedBrands)) {
                 $subBrands = \App\Models\SubBrand::whereIn('brand_id', $selectedBrands)->orderBy('name')->get();
+            } elseif (!empty($selectedSubBrands)) {
+                // If sub brands are selected but no brands, get sub brands anyway
+                $subBrands = \App\Models\SubBrand::whereIn('id', $selectedSubBrands)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product categories by selected sub brands
+            $productCategories = collect();
+            if (!empty($selectedSubBrands)) {
+                // Find distinct category IDs used by products under the selected sub-brands
+                $categoryIds = \App\Models\Product::whereIn('sub_brand_id', $selectedSubBrands)
+                    ->whereNotNull('product_category_id')
+                    ->distinct()
+                    ->pluck('product_category_id')
+                    ->toArray();
+                if (!empty($categoryIds)) {
+                    $productCategories = \App\Models\ProductCategory::whereIn('id', $categoryIds)->orderBy('name')->get();
+                }
+            } elseif (!empty($selectedProductCategories)) {
+                // If categories are selected but no sub brands, get categories anyway
+                $productCategories = \App\Models\ProductCategory::whereIn('id', $selectedProductCategories)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product types by selected categories
+            $productTypes = collect();
+            if (!empty($selectedProductCategories)) {
+                $productTypes = \App\Models\ProductType::whereIn('product_category_id', $selectedProductCategories)->orderBy('name')->get();
+            } elseif (!empty($selectedProductTypes)) {
+                $productTypes = \App\Models\ProductType::whereIn('id', $selectedProductTypes)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product sizes by selected types
+            $productSizes = collect();
+            if (!empty($selectedProductTypes)) {
+                $productSizes = \App\Models\ProductSize::whereIn('product_type_id', $selectedProductTypes)->orderBy('name')->get();
+            } elseif (!empty($selectedProductSizes)) {
+                $productSizes = \App\Models\ProductSize::whereIn('id', $selectedProductSizes)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product variants by selected sizes
+            $productVariants = collect();
+            if (!empty($selectedProductSizes)) {
+                $productVariants = \App\Models\ProductVariant::whereIn('product_size_id', $selectedProductSizes)->orderBy('name')->get();
+            } elseif (!empty($selectedProductVariants)) {
+                $productVariants = \App\Models\ProductVariant::whereIn('id', $selectedProductVariants)->orderBy('name')->get();
             }
             
             return view('analytics.sales_by_master_product_new', [
@@ -1210,11 +1363,11 @@ class ProductAnalyticsController extends Controller
                 'productSizes' => $productSizes,
                 'productVariants' => $productVariants,
                 'selectedBrands' => $selectedBrands,
-                'selectedSubBrands' => (array) $request->input('sub_brands', []),
-                'selectedProductCategories' => (array) $request->input('product_categories', []),
-                'selectedProductTypes' => (array) $request->input('product_types', []),
-                'selectedProductSizes' => (array) $request->input('product_sizes', []),
-                'selectedProductVariants' => (array) $request->input('product_variants', []),
+                'selectedSubBrands' => $selectedSubBrands,
+                'selectedProductCategories' => $selectedProductCategories,
+                'selectedProductTypes' => $selectedProductTypes,
+                'selectedProductSizes' => $selectedProductSizes,
+                'selectedProductVariants' => $selectedProductVariants,
             ]);
             
         } catch (\Exception $e) {
@@ -1256,17 +1409,64 @@ class ProductAnalyticsController extends Controller
             
             // Get filter data for view
             $platforms = Platform::all();
-            $productCategories = \App\Models\ProductCategory::orderBy('name')->get();
             $brands = \App\Models\Brand::orderBy('name')->get();
-            $subBrands = \App\Models\SubBrand::orderBy('name')->get();
-            $productTypes = \App\Models\ProductType::orderBy('name')->get();
-            $productSizes = \App\Models\ProductSize::orderBy('name')->get();
-            $productVariants = \App\Models\ProductVariant::orderBy('name')->get();
+            
+            // Get selected values from request
+            $selectedBrands = (array) $request->input('brands', []);
+            $selectedSubBrands = (array) $request->input('sub_brands', []);
+            $selectedProductCategories = (array) $request->input('product_categories', []);
+            $selectedProductTypes = (array) $request->input('product_types', []);
+            $selectedProductSizes = (array) $request->input('product_sizes', []);
+            $selectedProductVariants = (array) $request->input('product_variants', []);
             
             // Cascade: filter sub brands by selected brands
-            $selectedBrands = (array) $request->input('brands', []);
+            $subBrands = collect();
             if (!empty($selectedBrands)) {
                 $subBrands = \App\Models\SubBrand::whereIn('brand_id', $selectedBrands)->orderBy('name')->get();
+            } elseif (!empty($selectedSubBrands)) {
+                // If sub brands are selected but no brands, get sub brands anyway
+                $subBrands = \App\Models\SubBrand::whereIn('id', $selectedSubBrands)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product categories by selected sub brands
+            $productCategories = collect();
+            if (!empty($selectedSubBrands)) {
+                // Find distinct category IDs used by products under the selected sub-brands
+                $categoryIds = \App\Models\Product::whereIn('sub_brand_id', $selectedSubBrands)
+                    ->whereNotNull('product_category_id')
+                    ->distinct()
+                    ->pluck('product_category_id')
+                    ->toArray();
+                if (!empty($categoryIds)) {
+                    $productCategories = \App\Models\ProductCategory::whereIn('id', $categoryIds)->orderBy('name')->get();
+                }
+            } elseif (!empty($selectedProductCategories)) {
+                // If categories are selected but no sub brands, get categories anyway
+                $productCategories = \App\Models\ProductCategory::whereIn('id', $selectedProductCategories)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product types by selected categories
+            $productTypes = collect();
+            if (!empty($selectedProductCategories)) {
+                $productTypes = \App\Models\ProductType::whereIn('product_category_id', $selectedProductCategories)->orderBy('name')->get();
+            } elseif (!empty($selectedProductTypes)) {
+                $productTypes = \App\Models\ProductType::whereIn('id', $selectedProductTypes)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product sizes by selected types
+            $productSizes = collect();
+            if (!empty($selectedProductTypes)) {
+                $productSizes = \App\Models\ProductSize::whereIn('product_type_id', $selectedProductTypes)->orderBy('name')->get();
+            } elseif (!empty($selectedProductSizes)) {
+                $productSizes = \App\Models\ProductSize::whereIn('id', $selectedProductSizes)->orderBy('name')->get();
+            }
+            
+            // Cascade: filter product variants by selected sizes
+            $productVariants = collect();
+            if (!empty($selectedProductSizes)) {
+                $productVariants = \App\Models\ProductVariant::whereIn('product_size_id', $selectedProductSizes)->orderBy('name')->get();
+            } elseif (!empty($selectedProductVariants)) {
+                $productVariants = \App\Models\ProductVariant::whereIn('id', $selectedProductVariants)->orderBy('name')->get();
             }
             
             return view('analytics.sales_by_master_product_special', [
@@ -1284,11 +1484,11 @@ class ProductAnalyticsController extends Controller
                 'productSizes' => $productSizes,
                 'productVariants' => $productVariants,
                 'selectedBrands' => $selectedBrands,
-                'selectedSubBrands' => (array) $request->input('sub_brands', []),
-                'selectedProductCategories' => (array) $request->input('product_categories', []),
-                'selectedProductTypes' => (array) $request->input('product_types', []),
-                'selectedProductSizes' => (array) $request->input('product_sizes', []),
-                'selectedProductVariants' => (array) $request->input('product_variants', []),
+                'selectedSubBrands' => $selectedSubBrands,
+                'selectedProductCategories' => $selectedProductCategories,
+                'selectedProductTypes' => $selectedProductTypes,
+                'selectedProductSizes' => $selectedProductSizes,
+                'selectedProductVariants' => $selectedProductVariants,
             ]);
             
         } catch (\Exception $e) {
@@ -1297,5 +1497,114 @@ class ProductAnalyticsController extends Controller
             
             return redirect()->back()->with('error', 'Terjadi kesalahan saat memproses data. Silakan coba lagi atau hubungi administrator.');
         }
+    }
+
+    /**
+     * AJAX endpoint: Get table HTML only
+     */
+    public function salesByMasterProductTable(Request $request)
+    {
+        try {
+            // Increase execution time and memory limit for large datasets
+            set_time_limit(120);
+            ini_set('memory_limit', '1024M');
+            
+            // Validate date range
+            $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->format('Y-m-d');
+            $endDate = $request->filled('end_date') ? $request->input('end_date') : now()->format('Y-m-d');
+            
+            if ($startDate > $endDate) {
+                return response('<div class="alert alert-danger">Tanggal mulai tidak boleh lebih besar dari tanggal akhir.</div>', 400);
+            }
+            
+            $startDateObj = \Carbon\Carbon::parse($startDate);
+            $endDateObj = \Carbon\Carbon::parse($endDate);
+            if ($startDateObj->diffInDays($endDateObj) > 90) {
+                return response('<div class="alert alert-danger">Rentang tanggal tidak boleh lebih dari 90 hari untuk performa yang optimal.</div>', 400);
+            }
+            
+            $query = new \App\Queries\SalesByMasterProductQuery($request);
+            $perPage = min((int) $request->input('per_page', 20), 20);
+            
+            $productRows = $query->paginate($perPage);
+            $summary = $query->getSummary();
+            
+            return view('analytics.partials.sales_master_product_table', compact('productRows', 'summary'));
+        } catch (\Exception $e) {
+            \Log::error('Error in salesByMasterProductTable: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response('<div class="alert alert-danger">Error loading table: ' . $e->getMessage() . '</div>', 500);
+        }
+    }
+
+    /**
+     * AJAX endpoint: Get modal HTML (lazy load)
+     */
+    public function salesByMasterProductModal()
+    {
+        return view('analytics.partials.sales_master_product_modal');
+    }
+
+    /**
+     * AJAX endpoint: Get table HTML only (Special Report)
+     */
+    public function salesByMasterProductSpecialTable(Request $request)
+    {
+        try {
+            // Increase execution time and memory limit for large datasets
+            set_time_limit(120);
+            ini_set('memory_limit', '1024M');
+            
+            // Validate date range
+            $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->format('Y-m-d');
+            $endDate = $request->filled('end_date') ? $request->input('end_date') : now()->format('Y-m-d');
+            
+            if ($startDate > $endDate) {
+                return response('<div class="alert alert-danger">Tanggal mulai tidak boleh lebih besar dari tanggal akhir.</div>', 400);
+            }
+            
+            $startDateObj = \Carbon\Carbon::parse($startDate);
+            $endDateObj = \Carbon\Carbon::parse($endDate);
+            if ($startDateObj->diffInDays($endDateObj) > 90) {
+                return response('<div class="alert alert-danger">Rentang tanggal tidak boleh lebih dari 90 hari untuk performa yang optimal.</div>', 400);
+            }
+            
+            $query = new \App\Queries\SalesByMasterProductSpecialQuery($request);
+            $perPage = min((int) $request->input('per_page', 20), 20);
+            
+            $productRows = $query->paginate($perPage);
+            $summary = $query->getSummary();
+            
+            return view('analytics.partials.sales_master_product_table', compact('productRows', 'summary'));
+        } catch (\Exception $e) {
+            \Log::error('Error in salesByMasterProductSpecialTable: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response('<div class="alert alert-danger">Error loading table: ' . $e->getMessage() . '</div>', 500);
+        }
+    }
+
+    /**
+     * AJAX endpoint: Get modal HTML (lazy load) - Special Report
+     */
+    public function salesByMasterProductSpecialModal()
+    {
+        return view('analytics.partials.sales_master_product_modal');
+    }
+
+    /**
+     * AJAX endpoint: Get brands with search
+     */
+    public function getBrands(Request $request)
+    {
+        $search = $request->input('search', '');
+        $query = \App\Models\Brand::query();
+        
+        if ($search) {
+            $query->where('name', 'like', "%{$search}%");
+        }
+        
+        // Limit to 50 results for performance (TomSelect AJAX remote search)
+        $brands = $query->orderBy('name')->limit(50)->get(['id', 'name']);
+        return response()->json($brands);
     }
 }

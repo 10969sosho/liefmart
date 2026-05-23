@@ -59,12 +59,42 @@ class FinanceOfflineInvoiceExport implements FromCollection, WithHeadings, WithM
         $firstItem = $invoice->barangKeluarItems->first();
         $taxId = $firstItem && $firstItem->warehouseStock && $firstItem->warehouseStock->tax_id ? $firstItem->warehouseStock->tax_id : null;
         
-        // DPP = nominal (yang sudah berdasarkan total_amount dari offline_sales)
-        // Tidak perlu reverse calculate karena nominal sudah benar
-        $dpp = $invoice->nominal;
+        // Check if this is partial refund (nominal already includes PPN)
+        $isPartialRefund = $invoice->status == 'partial_refund';
+        
+        if ($isPartialRefund) {
+            // Nominal already includes PPN (grand total), need to reverse calculate
+            $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
+            
+            if ($taxId == 3) {
+                // PKP: Reverse calculate DPP from grand total
+                $dpp = \App\Helpers\NumberFormatter::roundToWholeNumber($grandTotal / 1.11);
+                $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                $ppn = $grandTotal - $dpp;
+                $ppn = \App\Helpers\NumberFormatter::roundToWholeNumber($ppn);
+            } else {
+                // Non-PKP: No PPN, DPP = Grand Total
+                $dpp = $grandTotal;
+                $ppn = 0;
+            }
+        } else {
+            // Normal case: use nominal from DB directly (DPP)
+            $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
+            $ppn = 0;
+            $grandTotal = $dpp;
+            
+            if ($taxId == 3) {
+                $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+            } else {
+                $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+            }
+        }
         
         $totalPaid = $invoice->payments->sum('amount');
         $totalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($totalPaid);
+        $remainingAmount = max(0, $grandTotal - $totalPaid);
         
         // Get SJ numbers, tax_id and customer
         $sjNumber = '-';
@@ -88,107 +118,89 @@ class FinanceOfflineInvoiceExport implements FromCollection, WithHeadings, WithM
             }
         }
         
-        // Calculate NET: NET = DPP - Retur
-        // DPP = nominal (yang sudah berdasarkan total_amount dari offline_sales)
-        // Retur = jumlah retur yang proportional
+        // Get retur information and calculate amounts
+        $returAmount = 0; // Nominal yang diretur (DPP dengan diskon)
+        $dppOriginal = 0; // DPP original (sebelum retur) - tetap sama, tidak berubah
         
-        // Get all unique offline sales from this invoice
-        $offlineSales = collect();
-        foreach ($invoice->barangKeluarItems as $bk) {
-            if ($bk->offlineSaleItem && $bk->offlineSaleItem->offlineSale) {
-                $offlineSales->push($bk->offlineSaleItem->offlineSale);
-            }
-        }
-        $offlineSales = $offlineSales->unique('id');
-        
-        // Calculate retur amount (proportional to nominal/DPP)
-        $returAmount = 0;
-        
-        foreach ($offlineSales as $sale) {
-            $sale->load('items');
+        // Calculate retur amount and DPP original (sebelum retur)
+        if ($firstItem && $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale) {
+            $offlineSale = $firstItem->offlineSaleItem->offlineSale;
             
-            // Calculate total value of all items in the sale (with discounts) - untuk proportion
-            // Use original quantity (before return) for accurate proportion calculation
-            $totalSaleItemsValue = 0;
-            foreach ($sale->items as $saleItem) {
-                // Get original quantity (current + returned)
-                $returnedQty = \App\Models\ReturOfflineSaleDetail::where('offline_sale_item_id', $saleItem->id)
-                    ->whereHas('returOfflineSale', function($q) {
-                        $q->where('status', 'selesai');
-                    })
-                    ->sum('qty');
-                $originalQty = (float)$saleItem->quantity + (float)$returnedQty;
-                
-                $itemValue = $this->calculateItemValueWithQty($saleItem, $originalQty);
-                $totalSaleItemsValue += $itemValue;
-            }
+            // Get all returs - use eager loaded if available
+            $returs = $offlineSale->relationLoaded('returOfflineSales') 
+                ? $offlineSale->returOfflineSales 
+                : \App\Models\ReturOfflineSale::where('offline_sale_id', $offlineSale->id)
+                    ->where('status', 'selesai')
+                    ->get();
             
-            // Calculate value of items from this sale that are in this invoice
-            // Use original quantity (before return) for accurate proportion calculation
-            $invoiceItemsValue = 0;
+            // Calculate DPP Original from quantity original (before retur)
+            // Only count each offline_sale_item once
+            $processedSaleItemIds = [];
             foreach ($invoice->barangKeluarItems as $bk) {
-                if ($bk->offlineSaleItem && $bk->offlineSaleItem->offline_sale_id == $sale->id) {
-                    $saleItem = $bk->offlineSaleItem;
+                if ($bk->offlineSaleItem) {
+                    $osi = $bk->offlineSaleItem;
+                    $saleItemId = $osi->id;
                     
-                    // Get original quantity (current + returned)
-                    $returnedQty = \App\Models\ReturOfflineSaleDetail::where('offline_sale_item_id', $saleItem->id)
-                        ->whereHas('returOfflineSale', function($q) {
-                            $q->where('status', 'selesai');
-                        })
-                        ->sum('qty');
-                    $originalQty = (float)$saleItem->quantity + (float)$returnedQty;
-                    
-                    $itemValue = $this->calculateItemValueWithQty($saleItem, $originalQty);
-                    $invoiceItemsValue += $itemValue;
-                }
-            }
-            
-            // Calculate proportion: how much of this sale is in this invoice
-            $proportion = $totalSaleItemsValue > 0 ? ($invoiceItemsValue / $totalSaleItemsValue) : 0;
-            
-            // Get sale total_amount (DPP dari sales - ini yang digunakan di sales value)
-            $saleDPP = $sale->tax_amount > 0 ? $sale->total_amount : $sale->subtotal;
-            
-            // Calculate retur amount for this sale (proportional to DPP)
-            $saleReturAmount = 0;
-            $returs = \App\Models\ReturOfflineSale::where('offline_sale_id', $sale->id)
-                ->where('status', 'selesai')
-                ->get();
-            
-            foreach ($returs as $retur) {
-                foreach ($retur->details as $detail) {
-                    $offlineSaleItem = $detail->offlineSaleItem;
-                    if ($offlineSaleItem) {
-                        // Get returned quantity
-                        $returnedQty = (float)$detail->qty;
-                        $currentQty = (float)$offlineSaleItem->quantity;
+                    // Only count each sale item once
+                    if (!in_array($saleItemId, $processedSaleItemIds)) {
+                        $currentQty = $osi->quantity;
+                        $currentSubtotal = $osi->subtotal ?? 0;
+                        
+                        // Calculate returned qty from returs
+                        $returnedQty = 0;
+                        foreach ($returs as $retur) {
+                            foreach ($retur->details as $detail) {
+                                if ($detail->offline_sale_item_id == $osi->id) {
+                                    $returnedQty += $detail->qty;
+                                }
+                            }
+                        }
+                        
+                        // Calculate original quantity (before retur)
                         $originalQty = $currentQty + $returnedQty;
                         
-                        // Calculate item value with original quantity (before return)
-                        $returItemValue = $this->calculateItemValueWithQty($offlineSaleItem, $originalQty);
-                        $returProportion = $totalSaleItemsValue > 0 ? ($returItemValue / $totalSaleItemsValue) : 0;
+                        // Calculate original subtotal
+                        if ($currentQty > 0) {
+                            // Calculate subtotal per unit, then multiply by original qty
+                            $subtotalPerUnit = $currentSubtotal / $currentQty;
+                            $originalSubtotal = $subtotalPerUnit * $originalQty;
+                        } else {
+                            // If current qty is 0, calculate from unit_price
+                            $originalSubtotal = $osi->unit_price * $originalQty;
+                        }
                         
-                        // Retur qty proportion (how much of original qty is returned)
-                        $returQtyProportion = $originalQty > 0 ? ($returnedQty / $originalQty) : 0;
-                        
-                        // Retur amount = sale DPP * proportion of item * proportion of qty
-                        $saleReturAmount += $saleDPP * $returProportion * $returQtyProportion;
+                        $dppOriginal += $originalSubtotal;
+                        $processedSaleItemIds[] = $saleItemId;
                     }
                 }
             }
             
-            // Apply proportion to retur (karena invoice mungkin hanya sebagian dari sale)
-            $proportionalRetur = $saleReturAmount * $proportion;
-            $returAmount += $proportionalRetur;
+            // Calculate retur amount (DPP yang diretur dengan diskon)
+            foreach ($returs as $retur) {
+                foreach ($retur->details as $detail) {
+                    $offlineSaleItem = $detail->offlineSaleItem;
+                    if ($offlineSaleItem) {
+                        $qtyRetur = (float)($detail->qty ?? 0);
+                        
+                        // Use helper to calculate value with discounts
+                        $currentTotal = $this->calculateItemValueWithQty($offlineSaleItem, $qtyRetur);
+                        
+                        // Add to retur amount (already includes discounts)
+                        $returAmount += \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+                    }
+                }
+            }
+        } else {
+            // If no offline sale, use nominal from DB directly (DPP)
+            // This is for backward compatibility
+            $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
         }
         
-        // DPP = nominal (sudah berdasarkan total_amount dari offline_sales)
-        $dppOriginal = $invoice->nominal;
-        
-        // Round retur amount
+        // Round amounts
+        $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($dppOriginal);
         $returAmount = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmount);
         
-        // NET = DPP (nominal) - Retur
+        // NET = DPP setelah retur = DPP original - RETUR
         $netDPP = max(0, $dppOriginal - $returAmount);
         $netDPP = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPP);
         
@@ -229,12 +241,24 @@ class FinanceOfflineInvoiceExport implements FromCollection, WithHeadings, WithM
             $mainCategoryName = session('main_category_name');
         }
         
-        // Update status based on net total
-        // Check if there's a partial return
-        $hasPartialReturn = $returAmount > 0 && $invoice->status != 'retur_full' && $invoice->nominal > 0;
+        // Use status from DB directly
+        $dbStatus = $invoice->status ?? 'unpaid';
         
-        if ($invoice->status == 'retur_full' || $invoice->nominal == 0) {
+        // Check if there's a partial return for display
+        $hasPartialReturn = $returAmount > 0 && $dbStatus != 'refunded' && $invoice->nominal > 0;
+        
+        // Map DB status to display status
+        if ($dbStatus == 'refunded') {
             $status = 'Retur Full';
+        } elseif ($dbStatus == 'partial_refund') {
+            // For partial_refund, check payment status
+            if ($totalPaid >= $netTotal) {
+                $status = 'Lunas (Retur Sebagian)';
+            } else {
+                $status = 'Belum Lunas (Retur Sebagian)';
+            }
+        } elseif ($dbStatus == 'paid') {
+            $status = 'Lunas';
         } elseif ($totalPaid > $netTotal) {
             // Tidak Balance: pembayaran melebihi net total
             $status = 'Tidak Balance';

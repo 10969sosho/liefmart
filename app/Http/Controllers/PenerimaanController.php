@@ -96,10 +96,7 @@ class PenerimaanController extends Controller
         // Ambil data satuan
         $satuan = Satuan::where('is_active', true)->get();
 
-        // Generate kode penerimaan baru
-        $lastPenerimaan = Penerimaan::orderBy('id', 'desc')->first();
-        $lastNumber = $lastPenerimaan ? intval(substr($lastPenerimaan->kode_penerimaan, 4)) : 0;
-        $kodePenerimaan = 'PNR-'.str_pad($lastNumber + 1, 6, '0', STR_PAD_LEFT);
+        $kodePenerimaan = $this->generateUniqueKodePenerimaan();
 
         return view('penerimaan.create', compact('satuan', 'kodePenerimaan', 'taxCategories'));
     }
@@ -556,19 +553,61 @@ class PenerimaanController extends Controller
      */
     public function createHeader(Request $request)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'main_category_id' => 'required',
             'tax_category_id' => 'required',
-            'kode_penerimaan' => 'required|unique:penerimaan,kode_penerimaan',
+            'kode_penerimaan' => 'nullable|string',
             'nomor_po' => 'required',
             'tanggal_penerimaan' => 'required|date',
             'metode_pembayaran' => 'required|in:Cash,Jatuh Tempo',
             'tanggal_jatuh_tempo' => 'required_if:metode_pembayaran,Jatuh Tempo|nullable|date',
         ]);
 
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
         try {
+            $requestedKode = (string) ($request->kode_penerimaan ?? '');
+            $requestedKode = trim($requestedKode);
+
+            $existing = null;
+            if ($requestedKode !== '') {
+                $existing = Penerimaan::withoutGlobalScopes()
+                    ->where('kode_penerimaan', $requestedKode)
+                    ->first();
+            }
+
+            if ($existing && $existing->status === 'Unlocated' && $existing->details()->count() === 0) {
+                $existing->update([
+                    'main_category_id' => $request->main_category_id,
+                    'tax_category_id' => $request->tax_category_id,
+                    'nomor_po' => $request->nomor_po,
+                    'tanggal_penerimaan' => $request->tanggal_penerimaan,
+                    'metode_pembayaran' => $request->metode_pembayaran,
+                    'tanggal_jatuh_tempo' => $request->metode_pembayaran == 'Jatuh Tempo' ? $request->tanggal_jatuh_tempo : null,
+                    'catatan' => $request->catatan,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'penerimaan_id' => $existing->id,
+                    'kode_penerimaan' => $existing->kode_penerimaan,
+                    'message' => 'Header penerimaan berhasil dibuat'
+                ]);
+            }
+
+            $kodeToUse = $requestedKode;
+            if ($kodeToUse === '' || $existing) {
+                $kodeToUse = $this->generateUniqueKodePenerimaan();
+            }
+
             $penerimaan = Penerimaan::create([
-                'kode_penerimaan' => $request->kode_penerimaan,
+                'kode_penerimaan' => $kodeToUse,
                 'main_category_id' => $request->main_category_id,
                 'tax_category_id' => $request->tax_category_id,
                 'nomor_po' => $request->nomor_po,
@@ -584,6 +623,7 @@ class PenerimaanController extends Controller
             return response()->json([
                 'success' => true,
                 'penerimaan_id' => $penerimaan->id,
+                'kode_penerimaan' => $penerimaan->kode_penerimaan,
                 'message' => 'Header penerimaan berhasil dibuat'
             ]);
         } catch (\Exception $e) {
@@ -603,7 +643,7 @@ class PenerimaanController extends Controller
      */
     public function storeBatchDetails(Request $request, $id)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'items' => 'required|array|min:1',
             'items.*.barang_id' => 'required|exists:products,id',
             'items.*.qty' => 'required|numeric|min:0.01',
@@ -621,6 +661,14 @@ class PenerimaanController extends Controller
             'items.*.diskon_nominal_5' => 'nullable|numeric|min:0',
             'items.*.is_free' => 'nullable|boolean',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
         try {
             DB::beginTransaction();
@@ -809,7 +857,7 @@ class PenerimaanController extends Controller
      */
     public function updateHeader(Request $request, $id)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'main_category_id' => 'required',
             'tax_category_id' => 'required',
             'nomor_po' => 'required',
@@ -817,6 +865,14 @@ class PenerimaanController extends Controller
             'metode_pembayaran' => 'required|in:Cash,Jatuh Tempo',
             'tanggal_jatuh_tempo' => 'required_if:metode_pembayaran,Jatuh Tempo|nullable|date',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
         try {
             $penerimaan = Penerimaan::findOrFail($id);
@@ -926,5 +982,116 @@ class PenerimaanController extends Controller
             'description' => $description,
             'details' => $details
         ]);
+    }
+
+    private function generateUniqueKodePenerimaan(): string
+    {
+        $prefix = 'PNR-';
+        $lastPenerimaan = Penerimaan::withoutGlobalScopes()
+            ->where('kode_penerimaan', 'like', $prefix . '%')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $lastNumber = 0;
+        if ($lastPenerimaan && preg_match('/^PNR-(\d+)$/', (string) $lastPenerimaan->kode_penerimaan, $matches)) {
+            $lastNumber = (int) $matches[1];
+        }
+
+        $candidate = $lastNumber + 1;
+        while (true) {
+            $kode = $prefix . str_pad((string) $candidate, 6, '0', STR_PAD_LEFT);
+            if (!Penerimaan::withoutGlobalScopes()->where('kode_penerimaan', $kode)->exists()) {
+                return $kode;
+            }
+            $candidate++;
+        }
+    }
+
+    /**
+     * Get price and discount history for a product
+     *
+     * @param int $productId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getPriceHistory($productId)
+    {
+        try {
+            // Get product info
+            $product = Product::findOrFail($productId);
+            
+            // Get price history from penerimaan_detail
+            $priceHistory = PenerimaanDetail::with(['penerimaan' => function($query) {
+                    $query->select('id', 'kode_penerimaan', 'tanggal_penerimaan', 'nomor_po')
+                          ->orderBy('tanggal_penerimaan', 'desc');
+                }])
+                ->where('product_id', $productId)
+                ->whereNotNull('harga_hpp')
+                ->where('harga_hpp', '>', 0)
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get([
+                    'penerimaan_id',
+                    'harga_hpp',
+                    'diskon_persen_1',
+                    'diskon_persen_2',
+                    'diskon_persen_3',
+                    'diskon_persen_4',
+                    'diskon_persen_5',
+                    'diskon_nominal_1',
+                    'diskon_nominal_2',
+                    'diskon_nominal_3',
+                    'diskon_nominal_4',
+                    'diskon_nominal_5',
+                    'is_free',
+                    'created_at'
+                ]);
+
+            // Format the history data
+            $formattedHistory = $priceHistory->map(function($item) {
+                // Calculate total discount percentage
+                $totalDiscountPercentage = 0;
+                $discountDetails = [];
+                
+                for ($i = 1; $i <= 5; $i++) {
+                    $persen = $item->{"diskon_persen_$i"};
+                    $nominal = $item->{"diskon_nominal_$i"};
+                    
+                    if ($persen > 0) {
+                        $totalDiscountPercentage += $persen;
+                        $discountDetails[] = "Diskon $i: {$persen}%";
+                    } elseif ($nominal > 0) {
+                        $discountDetails[] = "Diskon $i: Rp " . number_format($nominal, 0, ',', '.');
+                    }
+                }
+
+                return [
+                    'tanggal' => $item->penerimaan->tanggal_penerimaan,
+                    'kode_penerimaan' => $item->penerimaan->kode_penerimaan,
+                    'nomor_po' => $item->penerimaan->nomor_po,
+                    'harga' => $item->harga_hpp,
+                    'harga_formatted' => 'Rp ' . number_format($item->harga_hpp, 0, ',', '.'),
+                    'diskon_persen_total' => $totalDiscountPercentage,
+                    'diskon_detail' => $discountDetails,
+                    'is_free' => $item->is_free,
+                    'tanggal_formatted' => \Carbon\Carbon::parse($item->penerimaan->tanggal_penerimaan)->format('d/m/Y')
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'product' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku
+                ],
+                'history' => $formattedHistory
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

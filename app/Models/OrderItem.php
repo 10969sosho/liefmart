@@ -51,6 +51,14 @@ class OrderItem extends Model
     }
 
     /**
+     * Relasi ke retur penjualan details
+     */
+    public function returPenjualanDetails()
+    {
+        return $this->hasMany(ReturPenjualanDetail::class, 'order_item_id');
+    }
+
+    /**
      * Customize the array representation
      * 
      * @return array

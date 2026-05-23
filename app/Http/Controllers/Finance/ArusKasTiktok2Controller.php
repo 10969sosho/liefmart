@@ -14,7 +14,7 @@ use App\Models\ImportTemp;
 class ArusKasTiktok2Controller extends Controller
 {
     /**
-     * Display a listing of the imported TikTok2 cash flow data
+     * Display a listing of the imported TikTok Liefmarket cash flow data
      */
     public function index(Request $request)
     {
@@ -51,7 +51,7 @@ class ArusKasTiktok2Controller extends Controller
      */
     public function preview(Request $request)
     {
-        Log::info('=== TIKTOK2 PREVIEW START ===');
+        Log::info('=== TIKTOK LIEF MART PREVIEW START ===');
         
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls'

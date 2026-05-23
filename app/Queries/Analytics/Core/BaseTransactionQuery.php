@@ -100,45 +100,6 @@ class BaseTransactionQuery
                 FROM orders o
                 INNER JOIN tiktok2_financial_transactions ft ON ft.order_id = o.id
                 WHERE ft.saldo_masuk > 0{$dateFilter}{$platformFilter}{$statusFilter}
-                
-                UNION ALL
-                
-                SELECT 
-                    o.id as order_id,
-                    o.tanggal,
-                    o.platform_id,
-                    o.status_hari,
-                    COALESCE(ft.saldo_masuk, 0) as saldo_masuk,
-                    COALESCE(ft.qty, 0) as qty
-                FROM orders o
-                INNER JOIN tokopedia_financial_transactions ft ON ft.order_id = o.id
-                WHERE ft.saldo_masuk > 0{$dateFilter}{$platformFilter}{$statusFilter}
-                
-                UNION ALL
-                
-                SELECT 
-                    o.id as order_id,
-                    o.tanggal,
-                    o.platform_id,
-                    o.status_hari,
-                    COALESCE(ft.saldo_masuk, 0) as saldo_masuk,
-                    0 as qty
-                FROM orders o
-                INNER JOIN blibli_financial_transactions ft ON ft.order_id = o.id
-                WHERE ft.saldo_masuk > 0{$dateFilter}{$platformFilter}{$statusFilter}
-                
-                UNION ALL
-                
-                SELECT 
-                    o.id as order_id,
-                    o.tanggal,
-                    o.platform_id,
-                    o.status_hari,
-                    COALESCE(ft.saldo_masuk, 0) as saldo_masuk,
-                    0 as qty
-                FROM orders o
-                INNER JOIN lazada_financial_transactions ft ON ft.order_id = o.id
-                WHERE ft.saldo_masuk > 0{$dateFilter}{$platformFilter}{$statusFilter}
             )";
     }
     

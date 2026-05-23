@@ -143,14 +143,27 @@ class ShopeeFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
         }
         if (isset($this->request['outstanding_status']) && $this->request['outstanding_status'] !== '') {
             if ($this->request['outstanding_status'] === '0') {
-                $query->where('outstanding', 0);
+                $query->whereRaw('ABS(outstanding) <= 0.01');
             } elseif ($this->request['outstanding_status'] === '1') {
-                $query->where(function($q) {
-                    $q->where('outstanding', '>', 0)
-                      ->orWhere('outstanding', '<', 0);
-                });
+                $query->whereRaw('ABS(outstanding) > 0.01');
             }
         }
+
+        // Exclude only fully returned orders (retur full), not partial returns (retur sebagian)
+        // Orders with partial returns should still appear in finance index
+        $query->whereNotExists(function($subQuery) {
+            $subQuery->select(\Illuminate\Support\Facades\DB::raw(1))
+                ->from('retur_penjualans as rp')
+                ->join('orders as o', 'rp.order_id', '=', 'o.id')
+                ->join('retur_penjualan_details as rpd', 'rp.id', '=', 'rpd.retur_penjualan_id')
+                ->join('order_items as oi', 'rpd.order_item_id', '=', 'oi.id')
+                ->whereColumn('o.order_number', 'shopee_financial_transactions.no_order')
+                ->whereIn('rp.status', ['draft', 'selesai'])
+                ->whereNotNull('o.order_number')
+                ->where('o.order_number', '!=', '')
+                ->groupBy('o.id')
+                ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+        });
 
         return $query;
     }
@@ -164,6 +177,8 @@ class ShopeeFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             'No. Invoice',
             'Status',
             'Harga (Rp)',
+            'DPP (Rp)',
+            'PPN (Rp)',
             'Voucher (Rp)',
             'Komisi (Rp)',
             'Biaya Admin (Rp)',
@@ -209,9 +224,9 @@ class ShopeeFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             $taxId = 1; // PKP - Coffee
         } elseif (strpos($transaction->no_invoice, 'HPNSDA-OLK/02') !== false) {
             $taxId = 2; // Non PKP - Coffee
-        } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/01') !== false) {
+        } elseif (strpos($transaction->no_invoice, 'AMP/01') !== false) {
             $taxId = 3; // PKP - Skincare
-        } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/02') !== false) {
+        } elseif (strpos($transaction->no_invoice, 'AMP/02') !== false) {
             $taxId = 4; // Non PKP - Skincare
         } else {
             // Extract last two digits if possible
@@ -221,6 +236,20 @@ class ShopeeFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
         }
         $isPKP = in_array($taxId, [1, 3, 5, 7]);
         $taxStatus = $taxId ? ($isPKP ? 'PKP' : 'Non-PKP') : 'N/A';
+        
+        // Calculate DPP and PPN
+        $dpp = $transaction->nominal_harga ?? 0;
+        $ppn = 0;
+        
+        if ($isPKP && $dpp > 0) {
+            $dppVal = $dpp / 1.11;
+            // Round DPP to nearest whole number or 2 decimal places? 
+            // Usually tax calculations round to nearest rupiah or use floor.
+            // Let's use standard rounding to 2 decimals for display, but user might want integer.
+            // Based on other parts of the system, it seems integers are preferred for final values, but let's keep precision for now.
+            $dpp = round($dppVal, 2);
+            $ppn = round($transaction->nominal_harga - $dpp, 2);
+        }
         
         // Calculate percentages correctly (same as in view) with custom rounding
         $persentase_diskon1 = $transaction->nominal_harga > 0 ? 
@@ -267,6 +296,8 @@ class ShopeeFinanceAnalyticsExport extends DefaultValueBinder implements FromQue
             (string)($transaction->no_invoice ?? '-'),
             $taxStatus,
             $transaction->nominal_harga ?? 0,
+            $dpp,
+            $ppn,
             $transaction->nominal_diskon1 ?? 0, // Voucher Ditanggung Penjual
             $transaction->nominal_diskon2 ?? 0, // KOMISI AMS/AFFILIATE
             $transaction->nominal_diskon3 ?? 0, // BIAYA ADMIN

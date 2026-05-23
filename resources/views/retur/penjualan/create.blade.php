@@ -38,7 +38,7 @@
                                         <option value="">-- Pilih Order --</option>
                                         @foreach($orderList as $order)
                                         <option value="{{ $order->id }}">
-                                            {{ $order->order_number }} - {{ $order->platform->name ?? 'Tidak ada platform' }} - {{ $order->tanggal->format('d/m/Y') }}
+                                            {{ $order->order_number ?: 'Tanpa No Order' }} - {{ $order->platform->name ?? 'Tidak ada platform' }} - {{ optional($order->tanggal)->format('d/m/Y') }}
                                         </option>
                                         @endforeach
                                     </select>
@@ -175,12 +175,24 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
     jQuery(document).ready(function($) {
-        // Initialize Select2
-        $('.select2').select2({
+        $('#order_id').select2({
             theme: 'bootstrap4',
             placeholder: 'Pilih Order',
             allowClear: true,
-            width: '100%'
+            width: '100%',
+            minimumInputLength: 0,
+            ajax: {
+                url: "{{ route('retur-penjualan.search-orders') }}",
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return { q: params.term };
+                },
+                processResults: function (data) {
+                    return data;
+                },
+                cache: true
+            }
         });
 
         $('#order_id').change(function() {
@@ -203,7 +215,8 @@
                         let html = '';
                         
                         // Update Order information
-                        $('#info-order-number').text(response.order_number);
+                        const orderNumberDisplay = response.order_number || response.orderNumber || 'Tanpa No Order';
+                        $('#info-order-number').text(orderNumberDisplay);
                         $('#info-tanggal').text(response.tanggal ? new Date(response.tanggal).toLocaleDateString('id-ID') : '-');
                         
                         // Handle both camelCase and snake_case property names for platform

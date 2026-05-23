@@ -149,6 +149,16 @@
                     $totalQtyRetur = 0;
                     $grandTotalRetur = 0;
                     $totalDiskonRetur = 0;
+                    
+                    // Get tax_id from first detail item's barang keluar
+                    $taxId = null;
+                    $firstDetail = $returOfflineSale->details->first();
+                    if ($firstDetail && $firstDetail->offlineSaleItem) {
+                        $barangKeluar = $firstDetail->offlineSaleItem->barangKeluar()->with('warehouseStock')->first();
+                        if ($barangKeluar && $barangKeluar->warehouseStock) {
+                            $taxId = $barangKeluar->warehouseStock->tax_id;
+                        }
+                    }
                 @endphp
                 
                 @foreach($returOfflineSale->details as $index => $detail)
@@ -216,6 +226,47 @@
                 </tr>
             </tbody>
         </table>
+        
+        @php
+            // Calculate DPP, PPN, and Grand Total
+            // grandTotalRetur adalah total setelah diskon (DPP retur)
+            $dpp = \App\Helpers\NumberFormatter::calculateDPP($grandTotalRetur);
+            $ppn = 0;
+            $grandTotal = $dpp;
+            
+            if ($taxId == 3) {
+                // PKP: Calculate PPN
+                // DPP = grandTotalRetur (total setelah diskon)
+                // DPP 11/12 = DPP * (11/12)
+                // PPN = DPP 11/12 * 12% = DPP * 0.11
+                $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+            } else {
+                // Non-PKP: No PPN
+                $dpp11_12 = 0;
+                $ppn = 0;
+                $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+            }
+            // grandTotal adalah nominal retur (pembayaran) = DPP + PPN
+        @endphp
+        
+        <div style="margin-top: 20px; margin-bottom: 20px;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="width: 50%; text-align: right; padding-right: 20px; font-weight: bold;">DPP (Dasar Pengenaan Pajak)</td>
+                    <td style="width: 50%; text-align: right; font-weight: bold;">Rp {{ number_format($dpp, 0, ',', '.') }}</td>
+                </tr>
+                <tr>
+                    <td style="text-align: right; padding-right: 20px; font-weight: bold;">PPN (11%)</td>
+                    <td style="text-align: right; font-weight: bold;">Rp {{ number_format($ppn, 0, ',', '.') }}</td>
+                </tr>
+                <tr style="background-color: #f8f8f8;">
+                    <td style="text-align: right; padding-right: 20px; font-weight: bold;">TOTAL (DPP + PPN)</td>
+                    <td style="text-align: right; font-weight: bold;">Rp {{ number_format($grandTotal, 0, ',', '.') }}</td>
+                </tr>
+            </table>
+        </div>
         
         @if($returOfflineSale->catatan)
         <div style="margin-bottom: 20px;">

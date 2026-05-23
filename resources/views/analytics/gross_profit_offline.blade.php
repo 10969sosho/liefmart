@@ -101,8 +101,8 @@
     </div>
 
     <!-- Summary Cards -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
             <div class="card border-0 h-100">
                 <div class="card-body p-3">
                     <div class="d-flex align-items-center mb-3">
@@ -121,7 +121,7 @@
             </div>
         </div>
 
-        <div class="col-md-3">
+        <div class="col-md-4">
             <div class="card border-0 h-100">
                 <div class="card-body p-3">
                     <div class="d-flex align-items-center mb-3">
@@ -140,7 +140,28 @@
             </div>
         </div>
 
-        <div class="col-md-3">
+        <div class="col-md-4">
+            <div class="card border-0 h-100">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="flex-shrink-0">
+                            <div class="stat-icon rounded d-flex align-items-center justify-content-center" 
+                                 style="width: 48px; height: 48px; background-color: rgba(59, 130, 246, 0.1);">
+                                <i class="fas fa-receipt text-info" style="font-size: 1.2rem;"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Total Revenue -PPN</h6>
+                            <h3 class="card-title fw-bold mb-0">Rp {{ number_format($totalRevenueWithoutPPN, 0, ',', '.') }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
             <div class="card border-0 h-100">
                 <div class="card-body p-3">
                     <div class="d-flex align-items-center mb-3">
@@ -159,7 +180,7 @@
             </div>
         </div>
 
-        <div class="col-md-3">
+        <div class="col-md-6">
             <div class="card border-0 h-100">
                 <div class="card-body p-3">
                     <div class="d-flex align-items-center mb-3">
@@ -190,19 +211,25 @@
                     <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                         <tr class="bg-white">
                             <th scope="col" class="text-center">#</th>
+                            <th scope="col">Tanggal Penjualan</th>
                             <th scope="col">Tanggal Pembayaran</th>
+                            <th scope="col">Customer</th>
                             <th scope="col">No. PO</th>
                             <th scope="col">No. Invoice</th>
                             <th scope="col">Nama Produk</th>
                             <th scope="col" class="text-center">Qty</th>
                             <th scope="col">SKU</th>
                             <th scope="col" class="text-end">Pembayaran per INV</th>
-                            <th scope="col" class="text-end">Pembayaran per Produk</th>
-                            <th scope="col" class="text-end">Harga Modal</th>
+                            <th scope="col" class="text-end">Pembayaran per INV -PPN</th>
+                            <th scope="col" class="text-end">Pembayaran per Produk -PPN</th>
+                            <th scope="col" class="text-end">Pembayaran per PCS -PPN</th>
+                            <th scope="col" class="text-end">Harga Modal per produk(COGS)</th>
                             <th scope="col" class="text-end">Harga Modal Total</th>
                             <th scope="col" class="text-end">Profit per PCS</th>
+                            <th scope="col" class="text-end">Profit per Produk</th>
                             <th scope="col" class="text-end">Profit per INV</th>
                             <th scope="col" class="text-center">Margin per PCS %</th>
+                            <th scope="col" class="text-center">Margin per Produk %</th>
                             <th scope="col" class="text-center">Margin per INV %</th>
                         </tr>
                     </thead>
@@ -210,18 +237,25 @@
                         @forelse($profitData as $index => $item)
                             <tr>
                                 <td class="text-center">{{ $index + 1 }}</td>
+                                <td>{{ $item['sale_date'] ? \Carbon\Carbon::parse($item['sale_date'])->format('d/m/Y') : '-' }}</td>
                                 <td>{{ $item['payment_date'] ? \Carbon\Carbon::parse($item['payment_date'])->format('d/m/Y') : '-' }}</td>
+                                <td>{{ $item['customer_name'] }}</td>
                                 <td>{{ $item['po_number'] }}</td>
                                 <td>{{ $item['invoice_number'] }}</td>
                                 <td>{{ $item['product_name'] }}</td>
                                 <td class="text-center">{{ number_format($item['quantity'], 0) }}</td>
                                 <td>{{ $item['sku'] }}</td>
                                 <td class="text-end">Rp {{ number_format($item['payment_per_invoice'], 0, ',', '.') }}</td>
-                                <td class="text-end">Rp {{ number_format($item['payment_per_product'], 0, ',', '.') }}</td>
+                                <td class="text-end">Rp {{ number_format($item['payment_per_invoice_without_ppn'], 0, ',', '.') }}</td>
+                                <td class="text-end">Rp {{ number_format($item['payment_per_product_without_ppn'], 0, ',', '.') }}</td>
+                                <td class="text-end">Rp {{ number_format($item['payment_per_pcs_without_ppn'], 0, ',', '.') }}</td>
                                 <td class="text-end">Rp {{ number_format($item['cost_price'], 0, ',', '.') }}</td>
                                 <td class="text-end">Rp {{ number_format($item['total_cost_price'], 0, ',', '.') }}</td>
                                 <td class="text-end {{ $item['profit_per_unit'] >= 0 ? 'text-success' : 'text-danger' }}">
                                     Rp {{ number_format($item['profit_per_unit'], 0, ',', '.') }}
+                                </td>
+                                <td class="text-end {{ $item['profit_per_product'] >= 0 ? 'text-success' : 'text-danger' }}">
+                                    Rp {{ number_format($item['profit_per_product'], 0, ',', '.') }}
                                 </td>
                                 <td class="text-end {{ $item['profit_per_invoice'] >= 0 ? 'text-success' : 'text-danger' }}">
                                     Rp {{ number_format($item['profit_per_invoice'], 0, ',', '.') }}
@@ -229,13 +263,16 @@
                                 <td class="text-center {{ $item['margin_per_unit'] >= 0 ? 'text-success' : 'text-danger' }}">
                                     {{ number_format($item['margin_per_unit'], 2) }}%
                                 </td>
+                                <td class="text-center {{ $item['margin_per_product'] >= 0 ? 'text-success' : 'text-danger' }}">
+                                    {{ number_format($item['margin_per_product'], 2) }}%
+                                </td>
                                 <td class="text-center {{ $item['margin_per_invoice'] >= 0 ? 'text-success' : 'text-danger' }}">
                                     {{ number_format($item['margin_per_invoice'], 2) }}%
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="14" class="text-center py-4">
+                                <td colspan="21" class="text-center py-4">
                                     <div class="d-flex flex-column align-items-center">
                                         <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
                                         <h5 class="fw-normal">Belum ada data profit</h5>

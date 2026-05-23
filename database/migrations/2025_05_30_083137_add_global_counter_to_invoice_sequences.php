@@ -7,8 +7,6 @@ use Illuminate\Support\Facades\DB;
 use App\Models\InvoiceSequence;
 use App\Models\ShopeeFinancialTransaction;
 use App\Models\TiktokFinancialTransaction;
-use App\Models\BlibliFinancialTransaction;
-use App\Models\TokopediaFinancialTransaction;
 
 return new class extends Migration
 {
@@ -80,11 +78,9 @@ return new class extends Migration
         // Kumpulkan semua nomor invoice dari semua platform
         $shopeeInvoices = ShopeeFinancialTransaction::pluck('no_invoice')->toArray();
         $tiktokInvoices = TiktokFinancialTransaction::pluck('no_invoice')->toArray();
-        $blibliInvoices = BlibliFinancialTransaction::pluck('no_invoice')->toArray();
-        $tokopediaInvoices = TokopediaFinancialTransaction::pluck('no_invoice')->toArray();
         
         // Gabungkan semua nomor invoice
-        $allInvoices = array_merge($shopeeInvoices, $tiktokInvoices, $blibliInvoices, $tokopediaInvoices);
+        $allInvoices = array_merge($shopeeInvoices, $tiktokInvoices);
         
         // Ekstrak counter dari setiap nomor invoice
         foreach ($allInvoices as $invoiceNumber) {

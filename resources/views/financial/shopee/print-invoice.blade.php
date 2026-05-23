@@ -178,7 +178,7 @@
         
         <div class="header">
             <div class="company-info" style="width: 100%; display: flex; justify-content: center; align-items: center;">
-                <img src="{{ asset('images/INV/' . ($logoFile ?? 'HGN.jpeg')) }}" alt="Logo" class="logo" style="width: 500px; height: auto;">
+                <img src="{{ asset('images/INV/' . ($logoFile ?? 'PKP.jpeg')) }}" alt="Logo" class="logo" style="width: 500px; height: auto;">
             </div>
         </div>
         
@@ -307,7 +307,7 @@
             <div class="signature" style="text-align: right;">
                 <div>Hormat Kami,</div>
                 <div class="signature-line"></div>
-                <div>( PT. {{ $isPKP ? 'HARVEST GLOBAL NIAGA' : 'LUMBUNG MASYARAKAT' }} )</div>
+                <div>( PT. {{ $isPKP ? 'HARVEST GLOBAL NIAGA' : 'NON PKP' }} )</div>
             </div>
         </div>
         

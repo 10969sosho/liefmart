@@ -217,7 +217,7 @@
                             // Update PO information
                             $('#info-nomor-po').text(response.nomor_po);
                             $('#info-tanggal').text(response.tanggal_penerimaan ? new Date(response.tanggal_penerimaan).toLocaleDateString('id-ID') : '-');
-                            $('#info-kategori').text(response.main_category ? response.main_category.name : '-');
+                            $('#info-kategori').text(response.main_category ? (response.main_category.name || '-') : '-');
                             $('#info-status').html(getStatusBadge(response.status));
                             $('#info-lokasi').text(response.lokasi ? response.lokasi.name : '-');
                             $('#info-total').text(formatRupiah(response.total_harga));

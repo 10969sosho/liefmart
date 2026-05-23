@@ -227,22 +227,22 @@
                                 <ul class="nav flex-column ms-3 mt-1">
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.shopee') }}" target="_blank">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Shopee
+                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Shopee Lamourad
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.tokopedia') }}" target="_blank">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Tokopedia
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.shopee2') }}" target="_blank">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Shopee Liefmarket
                                         </a>
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.tiktok') }}" target="_blank">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Tiktok
+                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Tiktok Lamourad
                                         </a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.blibli') }}" target="_blank">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Blibli
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.finance.tiktok2') }}" target="_blank">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Analytic Tiktok Liefmarket
                                         </a>
                                     </li>
                                 </ul>
@@ -271,8 +271,13 @@
                                         </a>
                                     </li>
                                     <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-export-mapped') }}" target="_blank">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Sales Detail (Mapped)
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.internal-product-sales') }}" target="_blank">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Sales Internal
+                                            <i class="fas fa-circle fa-xs me-2"></i> Analytics Penjualan Master Internal
                                         </a>
                                     </li>
                                     <li class="nav-item">
@@ -297,7 +302,7 @@
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('analytics.sales-by-master-product') }}" target="_blank">
-                                            <i class="fas fa-circle fa-xs me-2"></i> Gross Profit Master
+                                            <i class="fas fa-circle fa-xs me-2"></i> Gross Profit by Master Internal
                                         </a>
                                     </li>
                                     <li class="nav-item">
@@ -472,6 +477,11 @@
                                     <li class="nav-item">
                                         <a class="nav-link py-1 px-3" href="{{ route('products.index') }}">
                                             <i class="fas fa-circle fa-xs me-2"></i> All Products
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link py-1 px-3" href="{{ route('products.initial-price.index') }}">
+                                            <i class="fas fa-circle fa-xs me-2"></i> Harga Awal (Versi)
                                         </a>
                                     </li>
                                     <li class="nav-item">

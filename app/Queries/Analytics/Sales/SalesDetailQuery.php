@@ -15,6 +15,32 @@ use Illuminate\Support\Facades\DB;
 class SalesDetailQuery
 {
     /**
+     * Build the order_items_with_retur CTE with correct retur calculation
+     * Based on view blade logic: originalQty = currentQty + qtyRetur, remainingQty = max(0, originalQty - qtyRetur) = currentQty
+     */
+    private static function buildOrderItemsWithReturCTE(): string
+    {
+        // Based on export/view blade logic:
+        // originalQty = currentQty + qtyRetur
+        // remainingQty = max(0, originalQty - qtyRetur) = max(0, currentQty + qtyRetur - qtyRetur) = max(0, currentQty)
+        // So remainingQty = currentQty = oi.quantity (since oi.quantity is already the current quantity after retur)
+        // Therefore: remaining_value = price_after_discount * quantity
+        return "
+            order_items_with_retur AS (
+                SELECT 
+                    oi.order_id,
+                    oi.id as order_item_id,
+                    oi.quantity as current_qty,
+                    oi.price_after_discount,
+                    -- Remaining quantity is simply the current quantity (oi.quantity is already after retur)
+                    GREATEST(0, oi.quantity) as remaining_qty,
+                    -- Remaining value: price * quantity (matching export calculation)
+                    (oi.price_after_discount * GREATEST(0, oi.quantity)) as remaining_value
+                FROM order_items oi
+            )";
+    }
+    
+    /**
      * Build query untuk sales detail with pagination
      */
     public static function build(array $filters = [], int $perPage = 25, int $page = 1): string
@@ -48,48 +74,9 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
-        // Build retur calculation CTE
+        // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
-            retur_details AS (
-                SELECT 
-                    rpd.order_item_id,
-                    SUM(rpd.qty) as retur_qty
-                FROM retur_penjualan_details rpd
-                INNER JOIN retur_penjualan rp ON rpd.retur_penjualan_id = rp.id
-                WHERE rp.status IN ('draft', 'selesai')
-                GROUP BY rpd.order_item_id
-            ),
-            order_items_with_retur AS (
-                SELECT 
-                    oi.order_id,
-                    oi.id as order_item_id,
-                    oi.quantity,
-                    oi.price_after_discount,
-                    COALESCE(rd.retur_qty, 0) as retur_qty,
-                    CASE 
-                        WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                            COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                        ELSE 1
-                    END as package_qty,
-                    (oi.quantity - COALESCE(rd.retur_qty, 0) / 
-                        CASE 
-                            WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                                COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                            ELSE 1
-                        END
-                    ) as remaining_qty,
-                    (oi.price_after_discount * (oi.quantity - COALESCE(rd.retur_qty, 0) / 
-                        CASE 
-                            WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                                COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                            ELSE 1
-                        END
-                    )) as remaining_value
-                FROM order_items oi
-                LEFT JOIN retur_details rd ON oi.id = rd.order_item_id
-                LEFT JOIN platform_products pp ON oi.platform_product_id = pp.id
-                LEFT JOIN mapping_barang mb ON pp.id = mb.platform_product_id AND mb.is_active = 1
-            ),
+            " . self::buildOrderItemsWithReturCTE() . ",
             orders_with_totals AS (
                 SELECT 
                     o.id as order_id,
@@ -159,47 +146,9 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
-            retur_details AS (
-                SELECT 
-                    rpd.order_item_id,
-                    SUM(rpd.qty) as retur_qty
-                FROM retur_penjualan_details rpd
-                INNER JOIN retur_penjualan rp ON rpd.retur_penjualan_id = rp.id
-                WHERE rp.status IN ('draft', 'selesai')
-                GROUP BY rpd.order_item_id
-            ),
-            order_items_with_retur AS (
-                SELECT 
-                    oi.order_id,
-                    oi.id as order_item_id,
-                    oi.quantity,
-                    oi.price_after_discount,
-                    COALESCE(rd.retur_qty, 0) as retur_qty,
-                    CASE 
-                        WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                            COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                        ELSE 1
-                    END as package_qty,
-                    (oi.quantity - COALESCE(rd.retur_qty, 0) / 
-                        CASE 
-                            WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                                COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                            ELSE 1
-                        END
-                    ) as remaining_qty,
-                    (oi.price_after_discount * (oi.quantity - COALESCE(rd.retur_qty, 0) / 
-                        CASE 
-                            WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                                COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                            ELSE 1
-                        END
-                    )) as remaining_value
-                FROM order_items oi
-                LEFT JOIN retur_details rd ON oi.id = rd.order_item_id
-                LEFT JOIN platform_products pp ON oi.platform_product_id = pp.id
-                LEFT JOIN mapping_barang mb ON pp.id = mb.platform_product_id AND mb.is_active = 1
-            ),
+            " . self::buildOrderItemsWithReturCTE() . ",
             orders_with_totals AS (
                 SELECT 
                     o.id as order_id,
@@ -250,47 +199,9 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
-            retur_details AS (
-                SELECT 
-                    rpd.order_item_id,
-                    SUM(rpd.qty) as retur_qty
-                FROM retur_penjualan_details rpd
-                INNER JOIN retur_penjualan rp ON rpd.retur_penjualan_id = rp.id
-                WHERE rp.status IN ('draft', 'selesai')
-                GROUP BY rpd.order_item_id
-            ),
-            order_items_with_retur AS (
-                SELECT 
-                    oi.order_id,
-                    oi.id as order_item_id,
-                    oi.quantity,
-                    oi.price_after_discount,
-                    COALESCE(rd.retur_qty, 0) as retur_qty,
-                    CASE 
-                        WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                            COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                        ELSE 1
-                    END as package_qty,
-                    (oi.quantity - COALESCE(rd.retur_qty, 0) / 
-                        CASE 
-                            WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                                COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                            ELSE 1
-                        END
-                    ) as remaining_qty,
-                    (oi.price_after_discount * (oi.quantity - COALESCE(rd.retur_qty, 0) / 
-                        CASE 
-                            WHEN pp.id IS NOT NULL AND mb.id IS NOT NULL THEN
-                                COALESCE((SELECT SUM(quantity) FROM mapping_barang WHERE platform_product_id = pp.id AND is_active = 1), 1)
-                            ELSE 1
-                        END
-                    )) as remaining_value
-                FROM order_items oi
-                LEFT JOIN retur_details rd ON oi.id = rd.order_item_id
-                LEFT JOIN platform_products pp ON oi.platform_product_id = pp.id
-                LEFT JOIN mapping_barang mb ON pp.id = mb.platform_product_id AND mb.is_active = 1
-            ),
+            " . self::buildOrderItemsWithReturCTE() . ",
             orders_with_totals AS (
                 SELECT 
                     o.id as order_id,
@@ -309,7 +220,7 @@ class SalesDetailQuery
             ),
             orders_with_retur_count AS (
                 SELECT COUNT(DISTINCT rp.order_id) as total
-                FROM retur_penjualan rp
+                FROM retur_penjualans rp
                 INNER JOIN orders o ON rp.order_id = o.id
                 WHERE rp.status IN ('draft', 'selesai')
                 {$dateFilter}{$platformFilter}
@@ -355,4 +266,3 @@ class SalesDetailQuery
         }
     }
 }
-

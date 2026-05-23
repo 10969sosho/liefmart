@@ -284,7 +284,7 @@
             $barangKeluarItems = $invoice->barangKeluarItems;
             $firstItem = $barangKeluarItems->first();
             $isPKP = false;
-            $logoFile = 'HGN.jpeg'; // Default logo
+            $logoFile = 'PKP.jpeg'; // Default logo
             $taxId = null;
             $mainCategoryId = null;
             
@@ -292,17 +292,17 @@
                 $taxId = $firstItem->warehouseStock->tax_id;
                 
                 if ($taxId == 3) {
-                    // HGN = PKP = PT. HARVEST GLOBAL NIAGA
+                    // PKP = PKP = PT. HARVEST GLOBAL NIAGA
                     $isPKP = true;
-                    $logoFile = 'HGN.jpeg';
+                    $logoFile = 'PKP.jpeg';
                 } elseif ($taxId == 4) {
-                    // LM = Non-PKP = LaMOURAD
+                    // NON PKP = Non-PKP = LaMOURAD
                     $isPKP = false;
-                    $logoFile = 'LM.jpeg';
+                    $logoFile = 'NONPKP.jpeg';
                 } else {
                     // Default untuk tax ID lainnya
                     $isPKP = in_array($taxId, [3, 5, 7]);
-                    $logoFile = $isPKP ? 'HGN.jpeg' : 'LM.jpeg';
+                    $logoFile = $isPKP ? 'PKP.jpeg' : 'NONPKP.jpeg';
                 }
             }
 
@@ -672,7 +672,7 @@
                 <div class="signature-line"></div>
                 <div>
                     @if($taxId == 4)
-                        ( LAMOURAD )
+                        ( NON PKP )
                     @else
                         ( PT. HARVEST GLOBAL NIAGA )
                     @endif
@@ -686,7 +686,7 @@
                 {{ $activeAccount->bank_name }} {{ $activeAccount->account_number }} atas nama {{ $activeAccount->account_name }}
             @else
                 @if($taxId == 4)
-                    DANAMON ********** atas nama LAMOURAD
+                    DANAMON ********** atas nama NON PKP
                 @else
                     DANAMON ********** atas nama PT. HARVEST GLOBAL NIAGA
                 @endif

@@ -67,7 +67,11 @@
                                                 <strong>{{ $version->total_products }}</strong> produk
                                             </td>
                                             <td>
-                                                {{ \Carbon\Carbon::parse($version->created_at)->format('d/m/Y H:i') }}
+                                                @if($version->created_at)
+                                                    {{ \Carbon\Carbon::parse($version->created_at)->format('d/m/Y H:i') }}
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
                                             </td>
                                             <td>
                                                 <a href="{{ route('master.mapping.version-detail', [$platformProduct->id, $version->version]) }}" 

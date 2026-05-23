@@ -131,11 +131,6 @@
             font-weight: 500;
         }
         
-        .platform-tokopedia {
-            background-color: #42b549;
-            color: white;
-        }
-        
         .platform-shopee {
             background-color: #f53d2d;
             color: white;
@@ -143,16 +138,6 @@
         
         .platform-tiktok {
             background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095da;
-            color: white;
-        }
-        
-        .platform-lazada {
-            background-color: #f27e30;
             color: white;
         }
         

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('page-title', 'Preview Import Arus Kas TikTok')
+@section('page-title', 'Preview Import Arus Kas Tiktok Lamourad')
 
 @section('content')
 <div class="container-fluid">
@@ -8,7 +8,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h4 class="card-title">Preview Data Arus Kas TikTok</h4>
+                    <h4 class="card-title">Preview Data Arus Kas Tiktok Lamourad</h4>
                 </div>
 
                 <div class="card-body">

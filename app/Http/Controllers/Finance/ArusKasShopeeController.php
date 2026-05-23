@@ -13,8 +13,34 @@ use App\Models\ImportTemp;
 
 class ArusKasShopeeController extends Controller
 {
+    private function normalizeNumber($value)
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+        $v = trim(str_replace(['Rp', 'rp', ' '], '', (string) $value));
+        $isNegative = false;
+        if (preg_match('/^\(.*\)$/', $v)) {
+            $isNegative = true;
+            $v = trim($v, '()');
+        }
+        if (preg_match('/^-?\d{1,3}(\.\d{3})+(,\d+)?$/', $v)) {
+            $v = str_replace('.', '', $v);
+            $v = str_replace(',', '.', $v);
+        } else {
+            $v = str_replace(',', '', $v);
+        }
+        if (is_numeric($v)) {
+            $num = (float) $v;
+            return $isNegative ? -$num : $num;
+        }
+        return null;
+    }
     /**
-     * Display a listing of the imported Shopee cash flow data
+     * Display a listing of the imported Shopee Lamourad cash flow data
      */
     public function index(Request $request)
     {
@@ -47,14 +73,14 @@ class ArusKasShopeeController extends Controller
      */
     public function preview(Request $request)
     {
-        Log::info('=== SHOPEE PREVIEW START ===');
+        Log::info('=== SHOPEE LAMOURAD PREVIEW START ===');
         
         $request->validate([
             'file' => 'required|mimes:xlsx,xls',
         ]);
 
         $file = $request->file('file');
-        Log::info('Shopee file uploaded: ' . $file->getClientOriginalName());
+        Log::info('Shopee Lamourad file uploaded: ' . $file->getClientOriginalName());
         
         try {
             // Load the spreadsheet
@@ -245,10 +271,11 @@ class ArusKasShopeeController extends Controller
                 } else {
                     // Validate numeric format
                     $pemasukan = $normalizedData['pemasukan'];
-                    if (!is_numeric($pemasukan)) {
+                    $pemasukanNormalized = $this->normalizeNumber($pemasukan);
+                    if ($pemasukanNormalized === null) {
                         $rowIssues[] = 'Format Pemasukan tidak valid: ' . $pemasukan;
                     } else {
-                        $normalizedData['pemasukan'] = (float) $pemasukan;
+                        $normalizedData['pemasukan'] = $pemasukanNormalized;
                     }
                 }
                 
@@ -269,15 +296,15 @@ class ArusKasShopeeController extends Controller
                 } else {
                     // Validate numeric format
                     $saldoAkhir = $normalizedData['saldo akhir'];
-                    if (!is_numeric($saldoAkhir)) {
+                    $saldoNormalized = $this->normalizeNumber($saldoAkhir);
+                    if ($saldoNormalized === null) {
                         if (!$isWithdrawal) {
                             $rowIssues[] = 'Format Saldo Akhir tidak valid: ' . $saldoAkhir;
                         } else {
-                            // For withdrawals, set saldo akhir to 0 if invalid
                             $normalizedData['saldo akhir'] = 0;
                         }
                     } else {
-                        $normalizedData['saldo akhir'] = (float) $saldoAkhir;
+                        $normalizedData['saldo akhir'] = $saldoNormalized;
                     }
                 }
                 

@@ -279,7 +279,7 @@
                                                     $ppn = 0;
                                                 }
                                             } else {
-                                                // Normal case: nominal is DPP
+                                                // Normal case: use nominal from DB directly (DPP)
                                                 $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
                                                 $ppn = 0;
                                                 $grandTotal = $dpp;
@@ -324,13 +324,11 @@
                                             
                                             // Get retur information and calculate amounts
                                             $returNumbers = [];
-                                            $returAmount = 0; // Nominal yang diretur (DPP)
+                                            $returAmount = 0; // Nominal yang diretur (DPP dengan diskon)
+                                            $dppOriginal = 0; // DPP original (sebelum retur) - tetap sama, tidak berubah
                                             
-                                            // Calculate DPP original (sebelum retur)
-                                            // Use invoice->nominal as DPP original since it's already updated with total_amount from offline_sale
-                                            $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
+                                            // Calculate retur amount and DPP original (sebelum retur)
                                             $offlineSale = null;
-                                            
                                             if ($firstItem && $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale) {
                                                 $offlineSale = $firstItem->offlineSaleItem->offlineSale;
                                                 
@@ -339,21 +337,92 @@
                                                     ->where('status', 'selesai')
                                                     ->get();
                                                 
-                                                foreach ($returs as $retur) {
-                                                    $returNumbers[] = $retur->kode_retur;
-                                                    
-                                                    // Calculate retur amount (DPP yang diretur)
-                                                    foreach ($retur->details as $detail) {
-                                                        $offlineSaleItem = $detail->offlineSaleItem;
-                                                        if ($offlineSaleItem) {
-                                                            // Retur amount = unit_price * qty_retur
-                                                            $returAmount += $offlineSaleItem->unit_price * $detail->qty;
+                                                // Calculate DPP Original from quantity original (before retur)
+                                                // Only count each offline_sale_item once (same logic as recalculateNominal)
+                                                $processedSaleItemIds = [];
+                                                foreach ($invoice->barangKeluarItems as $bk) {
+                                                    if ($bk->offlineSaleItem) {
+                                                        $osi = $bk->offlineSaleItem;
+                                                        $saleItemId = $osi->id;
+                                                        
+                                                        // Only count each sale item once
+                                                        if (!in_array($saleItemId, $processedSaleItemIds)) {
+                                                            $currentQty = $osi->quantity;
+                                                            $currentSubtotal = $osi->subtotal ?? 0;
+                                                            
+                                                            // Calculate returned qty from returs
+                                                            $returnedQty = 0;
+                                                            foreach ($returs as $retur) {
+                                                                foreach ($retur->details as $detail) {
+                                                                    if ($detail->offline_sale_item_id == $osi->id) {
+                                                                        $returnedQty += $detail->qty;
+                                                                    }
+                                                                }
+                                                            }
+                                                            
+                                                            // Calculate original quantity (before retur)
+                                                            $originalQty = $currentQty + $returnedQty;
+                                                            
+                                                            // Calculate original subtotal
+                                                            if ($currentQty > 0) {
+                                                                // Calculate subtotal per unit, then multiply by original qty
+                                                                $subtotalPerUnit = $currentSubtotal / $currentQty;
+                                                                $originalSubtotal = $subtotalPerUnit * $originalQty;
+                                                            } else {
+                                                                // If current qty is 0, calculate from unit_price
+                                                                $originalSubtotal = $osi->unit_price * $originalQty;
+                                                            }
+                                                            
+                                                            $dppOriginal += $originalSubtotal;
+                                                            $processedSaleItemIds[] = $saleItemId;
                                                         }
                                                     }
                                                 }
+                                                
+                                                // Calculate retur amount (DPP yang diretur dengan diskon)
+                                                foreach ($returs as $retur) {
+                                                    $returNumbers[] = $retur->kode_retur;
+                                                    
+                                                    foreach ($retur->details as $detail) {
+                                                        $offlineSaleItem = $detail->offlineSaleItem;
+                                                        if ($offlineSaleItem) {
+                                                            $qtyRetur = (float)($detail->qty ?? 0);
+                                                            $basePrice = (float)($offlineSaleItem->unit_price ?? 0);
+                                                            
+                                                            // Start with base total (price × qty retur)
+                                                            $currentTotal = $basePrice * $qtyRetur;
+                                                            
+                                                            // Apply percentage discounts (1-5) in cascading order
+                                                            for($i = 1; $i <= 5; $i++) {
+                                                                $percentField = "discount_percent_" . $i;
+                                                                $discountPercent = (float)($offlineSaleItem->$percentField ?? 0);
+                                                                if($discountPercent > 0) {
+                                                                    $currentTotal = \App\Helpers\NumberFormatter::calculatePercentageDiscount($currentTotal, $discountPercent);
+                                                                }
+                                                            }
+                                                            
+                                                            // Apply nominal discounts (1-5) in cascading order
+                                                            for($i = 1; $i <= 5; $i++) {
+                                                                $amountField = "discount_amount_" . $i;
+                                                                $discountAmount = (float)($offlineSaleItem->$amountField ?? 0);
+                                                                if($discountAmount > 0) {
+                                                                    $currentTotal = \App\Helpers\NumberFormatter::calculateNominalDiscount($currentTotal, $discountAmount * $qtyRetur);
+                                                                }
+                                                            }
+                                                            
+                                                            // Add to retur amount (already includes discounts)
+                                                            $returAmount += \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                // If no offline sale, use nominal from DB directly (DPP)
+                                                // This is for backward compatibility
+                                                $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
                                             }
                                             
-                                            // Round retur amount
+                                            // Round amounts
+                                            $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($dppOriginal);
                                             $returAmount = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmount);
                                             
                                             // NET = DPP setelah retur = DPP original - RETUR
@@ -375,35 +444,25 @@
                                             // Update remaining amount based on net total
                                             $remainingAmount = max(0, $netTotal - $totalPaid);
                                             
-                                            // Update status based on net total
-                                            // Check if there's a partial return
-                                            $hasPartialReturn = $returAmount > 0 && $invoice->status != 'retur_full' && $invoice->nominal > 0;
+                                            $dbStatus = $invoice->status ?? 'unpaid';
+                                            $isTidakBalance = ($totalPaid > $netTotal && $totalPaid > 0 && $dbStatus != 'refunded' && $dbStatus != 'retur_full');
+                                            $isFullyPaid = ($remainingAmount == 0 && $dbStatus != 'refunded' && $dbStatus != 'retur_full');
                                             
-                                            if ($invoice->status == 'retur_full' || $invoice->nominal == 0) {
+                                            // Check if there's a partial return for display
+                                            $hasPartialReturn = $returAmount > 0 && $dbStatus != 'refunded' && $invoice->nominal > 0;
+                                            
+                                            if ($dbStatus == 'refunded' || $dbStatus == 'retur_full') {
                                                 $statusBadgeClass = 'bg-secondary';
                                                 $statusLabel = 'Retur Full';
-                                            } elseif ($totalPaid > $netTotal) {
-                                                // Tidak Balance: pembayaran melebihi net total
-                                                $statusBadgeClass = 'bg-warning text-dark';
-                                                $statusLabel = 'Tidak Balance';
-                                            } elseif ($totalPaid >= $netTotal) {
-                                                // Lunas - check if there's partial return
-                                                if ($hasPartialReturn) {
-                                                    $statusBadgeClass = 'bg-success';
-                                                    $statusLabel = 'Lunas (Retur Sebagian)';
-                                                } else {
-                                                    $statusBadgeClass = 'bg-success';
-                                                    $statusLabel = 'Lunas';
-                                                }
-                                            } elseif ($totalPaid > 0) {
-                                                $statusBadgeClass = 'bg-warning text-dark';
-                                                $statusLabel = 'Belum Lunas';
+                                            } elseif ($isFullyPaid) {
+                                                $statusBadgeClass = 'bg-success';
+                                                $statusLabel = $hasPartialReturn ? 'Lunas (Retur Sebagian)' : 'Lunas';
                                             } else {
-                                                $statusBadgeClass = 'bg-danger';
-                                                $statusLabel = 'Belum Lunas';
+                                                $statusBadgeClass = $totalPaid > 0 ? 'bg-warning text-dark' : 'bg-danger';
+                                                $statusLabel = $hasPartialReturn ? 'Belum Lunas (Retur Sebagian)' : 'Belum Lunas';
                                             }
                                         @endphp
-                                        <tr data-invoice-id="{{ $invoice->id }}">
+                                        <tr data-invoice-id="{{ $invoice->id }}" data-is-fully-paid="{{ $isFullyPaid ? 1 : 0 }}">
                                             <td class="text-center">{{ $invoices->firstItem() + $index }}</td>
                                             <td><span class="badge bg-success">{{ $invoice->invoice_number }}</span></td>
                                             <td>{{ $invoice->tanggal_invoice->format('d/m/Y') }}</td>
@@ -434,6 +493,9 @@
                                             <td class="text-end">{{ \App\Helpers\NumberFormatter::formatInvoiceAmount($remainingAmount) }}</td>
                                             <td class="text-center">
                                                 <span class="badge {{ $statusBadgeClass }}">{{ $statusLabel }}</span>
+                                                @if($isTidakBalance)
+                                                    <br><small class="text-muted">Tidak Balance</small>
+                                                @endif
                                                 @if($invoice->print_count > 0)
                                                 <br><small class="text-muted">Dicetak {{ $invoice->print_count }}x</small>
                                                 @endif
@@ -527,7 +589,7 @@
             $ppn = 0;
         }
     } else {
-        // Normal case: nominal is DPP
+        // Normal case: use nominal from DB directly (DPP)
         $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
         $ppn = 0;
         $grandTotal = $dpp;
@@ -572,11 +634,12 @@
     }
     
     // Calculate net total for modal (same logic as in table)
-    // Use invoice->nominal as DPP original since it's already updated with total_amount from offline_sale
+    // Use nominal from DB directly
     $returAmountModal = 0;
-    $dppOriginalModal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
-    $offlineSaleModal = null;
     
+    // Calculate retur amount (DPP yang diretur dengan diskon)
+    $offlineSaleModal = null;
+    $retursModal = collect();
     if ($firstItem && $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale) {
         $offlineSaleModal = $firstItem->offlineSaleItem->offlineSale;
         
@@ -585,16 +648,80 @@
             ->where('status', 'selesai')
             ->get();
         
+        $dppOriginalModal = 0;
+        $processedSaleItemIds = [];
+        foreach ($invoice->barangKeluarItems as $bk) {
+            if ($bk->offlineSaleItem) {
+                $osi = $bk->offlineSaleItem;
+                $saleItemId = $osi->id;
+                
+                if (!in_array($saleItemId, $processedSaleItemIds)) {
+                    $currentQty = $osi->quantity;
+                    $currentSubtotal = $osi->subtotal ?? 0;
+                    
+                    $returnedQty = 0;
+                    foreach ($retursModal as $retur) {
+                        foreach ($retur->details as $detail) {
+                            if ($detail->offline_sale_item_id == $osi->id) {
+                                $returnedQty += $detail->qty;
+                            }
+                        }
+                    }
+                    
+                    $originalQty = $currentQty + $returnedQty;
+                    
+                    if ($currentQty > 0) {
+                        $subtotalPerUnit = $currentSubtotal / $currentQty;
+                        $originalSubtotal = $subtotalPerUnit * $originalQty;
+                    } else {
+                        $originalSubtotal = $osi->unit_price * $originalQty;
+                    }
+                    
+                    $dppOriginalModal += $originalSubtotal;
+                    $processedSaleItemIds[] = $saleItemId;
+                }
+            }
+        }
+        
         foreach ($retursModal as $retur) {
             foreach ($retur->details as $detail) {
                 $offlineSaleItem = $detail->offlineSaleItem;
                 if ($offlineSaleItem) {
-                    $returAmountModal += $offlineSaleItem->unit_price * $detail->qty;
+                    $qtyRetur = (float)($detail->qty ?? 0);
+                    $basePrice = (float)($offlineSaleItem->unit_price ?? 0);
+                    
+                    // Start with base total (price × qty retur)
+                    $currentTotal = $basePrice * $qtyRetur;
+                    
+                    // Apply percentage discounts (1-5) in cascading order
+                    for($i = 1; $i <= 5; $i++) {
+                        $percentField = "discount_percent_" . $i;
+                        $discountPercent = (float)($offlineSaleItem->$percentField ?? 0);
+                        if($discountPercent > 0) {
+                            $currentTotal = \App\Helpers\NumberFormatter::calculatePercentageDiscount($currentTotal, $discountPercent);
+                        }
+                    }
+                    
+                    // Apply nominal discounts (1-5) in cascading order
+                    for($i = 1; $i <= 5; $i++) {
+                        $amountField = "discount_amount_" . $i;
+                        $discountAmount = (float)($offlineSaleItem->$amountField ?? 0);
+                        if($discountAmount > 0) {
+                            $currentTotal = \App\Helpers\NumberFormatter::calculateNominalDiscount($currentTotal, $discountAmount * $qtyRetur);
+                        }
+                    }
+                    
+                    // Add to retur amount (already includes discounts)
+                    $returAmountModal += \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
                 }
             }
         }
+    } else {
+        $dppOriginalModal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
     }
     
+    // Round amounts
+    $dppOriginalModal = \App\Helpers\NumberFormatter::roundToWholeNumber($dppOriginalModal);
     $returAmountModal = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmountModal);
     $netDPPModal = max(0, $dppOriginalModal - $returAmountModal);
     $netDPPModal = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPPModal);
@@ -609,37 +736,28 @@
     $netTotalModal = $netDPPModal + $netPPNModal;
     $netTotalModal = \App\Helpers\NumberFormatter::roundToWholeNumber($netTotalModal);
     
+    $remainingAmount = max(0, $netTotalModal - $totalPaid);
+    
     // Check if there's payment adjustment needed (tidak balance)
     $isTidakBalance = $totalPaid > $netTotalModal;
     $paymentAdjustmentNeeded = $isTidakBalance ? ($totalPaid - $netTotalModal) : 0;
     
-    // Get status badge class
-    // Check if retur full (status = 'retur_full' or nominal = 0)
-    // Check if there's a partial return
-    $hasPartialReturnModal = $returAmountModal > 0 && $invoice->status != 'retur_full' && $invoice->nominal > 0;
+    $dbStatusModal = $invoice->status ?? 'unpaid';
+    $isTidakBalance = ($totalPaid > $netTotalModal && $totalPaid > 0 && $dbStatusModal != 'refunded' && $dbStatusModal != 'retur_full');
+    $isFullyPaidModal = ($remainingAmount == 0 && $dbStatusModal != 'refunded' && $dbStatusModal != 'retur_full');
     
-    if ($invoice->status == 'retur_full' || $invoice->nominal == 0) {
+    // Check if there's a partial return for display
+    $hasPartialReturnModal = $returAmountModal > 0 && $dbStatusModal != 'refunded' && $invoice->nominal > 0;
+    
+    if ($dbStatusModal == 'refunded' || $dbStatusModal == 'retur_full') {
         $statusBadgeClass = 'bg-secondary';
         $statusLabel = 'Retur Full';
-    } elseif ($totalPaid > $netTotalModal) {
-        // Tidak Balance: pembayaran melebihi net total
-        $statusBadgeClass = 'bg-warning text-dark';
-        $statusLabel = 'Tidak Balance';
-    } elseif ($totalPaid >= $netTotalModal) {
-        // Lunas - check if there's partial return
-        if ($hasPartialReturnModal) {
-            $statusBadgeClass = 'bg-success';
-            $statusLabel = 'Lunas (Retur Sebagian)';
-        } else {
-            $statusBadgeClass = 'bg-success';
-            $statusLabel = 'Lunas';
-        }
-    } elseif ($totalPaid > 0) {
-        $statusBadgeClass = 'bg-warning text-dark';
-        $statusLabel = 'Belum Lunas';
+    } elseif ($isFullyPaidModal) {
+        $statusBadgeClass = 'bg-success';
+        $statusLabel = $hasPartialReturnModal ? 'Lunas (Retur Sebagian)' : 'Lunas';
     } else {
-        $statusBadgeClass = 'bg-danger';
-        $statusLabel = 'Belum Lunas';
+        $statusBadgeClass = $totalPaid > 0 ? 'bg-warning text-dark' : 'bg-danger';
+        $statusLabel = $hasPartialReturnModal ? 'Belum Lunas (Retur Sebagian)' : 'Belum Lunas';
     }
 @endphp
 
@@ -664,7 +782,7 @@
                         <div class="col-12 mb-2">
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Total Tagihan:</span>
-                                <span class="fw-bold">Rp {{ number_format($grandTotal, 0, ',', '.') }}</span>
+                                <span class="fw-bold">Rp {{ number_format($netTotalModal, 0, ',', '.') }}</span>
                             </div>
                         </div>
                         <div class="col-12">
@@ -772,7 +890,7 @@
                                 </div>
                                 <div class="mb-2">
                                     <small class="text-muted d-block">Total Invoice</small>
-                                    <strong>Rp {{ number_format($grandTotal, 0, ',', '.') }}</strong>
+                                    <strong>Rp {{ number_format($netTotalModal, 0, ',', '.') }}</strong>
                                 </div>
                                 <div class="mb-2">
                                     <small class="text-muted d-block">Status Cetak</small>
@@ -1208,10 +1326,7 @@
             
             // Get invoice status for conditional items
             const row = button.closest('tr');
-            const statusCell = row.querySelector('td:nth-last-child(2)');
-            const statusBadge = statusCell.querySelector('.badge');
-            const statusText = statusBadge ? statusBadge.textContent.trim() : '';
-            const isFullyPaid = statusText === 'Lunas';
+            const isFullyPaid = row?.dataset?.isFullyPaid === '1';
             
             // Check print status
             const printInfo = row.querySelector('td:nth-last-child(2)');

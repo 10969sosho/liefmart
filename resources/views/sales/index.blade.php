@@ -37,7 +37,7 @@
                                     <td>{{ $order->order_date->format('d/m/Y') }}</td>
                                     <td>{{ $order->customer_name }}</td>
                                     <td>
-                                        <span class="badge badge-{{ $order->platform == 'Shopee' ? 'warning' : ($order->platform == 'Tokopedia' ? 'success' : 'primary') }}">
+                                        <span class="badge badge-{{ $order->platform == 'Shopee' ? 'warning' : 'primary' }}">
                                             {{ $order->platform }}
                                         </span>
                                     </td>

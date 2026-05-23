@@ -26,71 +26,56 @@
                         </div>
                     </div>
 
-                    <div class="row">
+                    <div class="row g-4">
                         <div class="col-md-3">
-                            <div class="card mb-4">
-                                <div class="card-body text-center">
-                                    <img src="{{ asset('images/logo/shopee.png') }}" alt="Shopee" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Shopee Lamourad</h5>
-                                    <a href="{{ route('sales.platform', ['platform' => 'shopee']) }}" class="btn btn-primary">Pilih</a>
+                            <div class="card h-100 mb-4">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3 d-flex align-items-center justify-content-center" style="height: 80px;">
+                                        <img src="{{ asset('images/logo/shopee.png') }}" alt="Shopee Lamourad" class="img-fluid" style="max-height: 80px;">
+                                    </div>
+                                    <h5 class="card-title mb-3">Shopee Lamourad</h5>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('sales.platform', ['platform' => 'shopee']) }}" class="btn btn-primary w-100">Pilih</a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="card mb-4">
-                                <div class="card-body text-center">
-                                    <img src="{{ asset('images/logo/tokopedia.png') }}" alt="Tokopedia" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Tokopedia</h5>
-                                    <a href="{{ route('sales.platform', ['platform' => 'tokopedia']) }}" class="btn btn-primary">Pilih</a>
+                            <div class="card h-100 mb-4">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3 d-flex align-items-center justify-content-center" style="height: 80px;">
+                                        <img src="{{ asset('images/logo/shopee.png') }}" alt="Shopee Liefmarket" class="img-fluid" style="max-height: 80px;">
+                                    </div>
+                                    <h5 class="card-title mb-3">Shopee Liefmarket</h5>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('sales.platform', ['platform' => 'shopee2']) }}" class="btn btn-primary w-100">Pilih</a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="card mb-4">
-                                <div class="card-body text-center">
-                                    <img src="{{ asset('images/logo/tiktok.png') }}" alt="TikTok" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Tiktok Lamourad</h5>
-                                    <a href="{{ route('sales.platform', ['platform' => 'tiktok']) }}" class="btn btn-primary">Pilih</a>
+                            <div class="card h-100 mb-4">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3 d-flex align-items-center justify-content-center" style="height: 80px;">
+                                        <img src="{{ asset('images/logo/tiktok.png') }}" alt="Tiktok Lamourad" class="img-fluid" style="max-height: 80px;">
+                                    </div>
+                                    <h5 class="card-title mb-3">Tiktok Lamourad</h5>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('sales.platform', ['platform' => 'tiktok']) }}" class="btn btn-primary w-100">Pilih</a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="card mb-4">
-                                <div class="card-body text-center">
-                                    <img src="{{ asset('images/logo/blibli.png') }}" alt="Blibli" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Blibli</h5>
-                                    <a href="{{ route('sales.platform', ['platform' => 'blibli']) }}" class="btn btn-primary">Pilih</a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Additional Platform Cards -->
-                    <div class="row mt-4">
-                        <div class="col-md-3">
-                            <div class="card mb-4">
-                                <div class="card-body text-center">
-                                    <img src="{{ asset('images/logo/lazada.png') }}" alt="Lazada" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Lazada Lamourad</h5>
-                                    <a href="{{ route('sales.platform', ['platform' => 'lazada']) }}" class="btn btn-primary">Pilih</a>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card mb-4">
-                                <div class="card-body text-center">
-                                    <img src="{{ asset('images/logo/tiktok.png') }}" alt="TikTok2" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Tiktok Trubleu</h5>
-                                    <a href="{{ route('sales.platform', ['platform' => 'tiktok2']) }}" class="btn btn-primary">Pilih</a>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card mb-4">
-                                <div class="card-body text-center">
-                                    <img src="{{ asset('images/logo/shopee.png') }}" alt="Shopee2" class="img-fluid mb-3" style="max-height: 80px;">
-                                    <h5 class="card-title">Shopee Trubleu</h5>
-                                    <a href="{{ route('sales.platform', ['platform' => 'shopee2']) }}" class="btn btn-primary">Pilih</a>
+                            <div class="card h-100 mb-4">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-3 d-flex align-items-center justify-content-center" style="height: 80px;">
+                                        <img src="{{ asset('images/logo/tiktok.png') }}" alt="Tiktok Liefmarket" class="img-fluid" style="max-height: 80px;">
+                                    </div>
+                                    <h5 class="card-title mb-3">Tiktok Liefmarket</h5>
+                                    <div class="mt-auto">
+                                        <a href="{{ route('sales.platform', ['platform' => 'tiktok2']) }}" class="btn btn-primary w-100">Pilih</a>
+                                    </div>
                                 </div>
                             </div>
                         </div>

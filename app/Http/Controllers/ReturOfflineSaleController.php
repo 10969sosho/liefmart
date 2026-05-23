@@ -82,10 +82,13 @@ class ReturOfflineSaleController extends Controller
     public function create()
     {
         // Display a list of offline sales to choose from with eager loaded relations
+        // Limit to offline sales from the last 3 months to avoid timeout and memory issues
         $offlineSaleList = OfflineSale::withoutGlobalScope('mainCategory')
             ->with(['customerInfo'])
             ->whereHas('items')
+            ->where('sale_date', '>=', now()->subMonths(3))
             ->orderBy('sale_date', 'desc')
+            ->limit(1000)
             ->get();
 
         return view('retur.offline.create', compact('offlineSaleList'));
@@ -205,8 +208,12 @@ class ReturOfflineSaleController extends Controller
      */
     public function show($id)
     {
-        $returOfflineSale = ReturOfflineSale::with(['offlineSale', 'user', 'details.product', 'details.offlineSaleItem'])
-            ->findOrFail($id);
+        $returOfflineSale = ReturOfflineSale::with([
+            'offlineSale', 
+            'user', 
+            'details.product', 
+            'details.offlineSaleItem.barangKeluar.warehouseStock'
+        ])->findOrFail($id);
 
         return view('retur.offline.show', compact('returOfflineSale'));
     }
@@ -458,15 +465,32 @@ class ReturOfflineSaleController extends Controller
             DB::beginTransaction();
             \Log::info('Reversing completed retur offline sale ID: ' . $id);
 
+            $offlineSale = $returOfflineSale->offlineSale;
+
             // Process each detail item to reverse changes
             foreach ($returOfflineSale->details as $detail) {
                 // Get the offline sale item and restore its quantity
                 $offlineSaleItem = OfflineSaleItem::findOrFail($detail->offline_sale_item_id);
-                \Log::info('Restoring offline sale item ID: ' . $offlineSaleItem->id . ' qty from ' . $offlineSaleItem->quantity . ' to ' . ($offlineSaleItem->quantity + $detail->qty));
+                $oldQuantity = $offlineSaleItem->quantity;
+                $newQuantity = $offlineSaleItem->quantity + floatval($detail->qty);
                 
-                // Restore the offline sale item quantity (add back the returned quantity)
+                \Log::info('Restoring offline sale item ID: ' . $offlineSaleItem->id . ' qty from ' . $oldQuantity . ' to ' . $newQuantity);
+                
+                // Recalculate subtotal with restored quantity
+                $newSubtotal = $this->recalculateSubtotal($offlineSaleItem, $newQuantity);
+                
+                // Restore the offline sale item quantity and subtotal
                 $offlineSaleItem->update([
-                    'quantity' => $offlineSaleItem->quantity + floatval($detail->qty)
+                    'quantity' => $newQuantity,
+                    'subtotal' => $newSubtotal
+                ]);
+                
+                \Log::info('Updated offline sale item', [
+                    'offline_sale_item_id' => $offlineSaleItem->id,
+                    'old_quantity' => $oldQuantity,
+                    'new_quantity' => $newQuantity,
+                    'old_subtotal' => $offlineSaleItem->subtotal,
+                    'new_subtotal' => $newSubtotal
                 ]);
                 
                 // Remove stock that was added during return (only for BAGUS and RUSAK conditions)
@@ -476,6 +500,82 @@ class ReturOfflineSaleController extends Controller
                     $this->removeReturnedStock($detail->product_id, floatval($detail->qty), true, $returOfflineSale->id);
                 }
                 // For HILANG condition, no stock was added, so nothing to remove
+            }
+
+            // Recalculate and restore invoice nominal
+            if ($offlineSale) {
+                $invoices = $offlineSale->getInvoices();
+                
+                foreach ($invoices as $invoice) {
+                    \Log::info('Restoring invoice for reversed retur', [
+                        'invoice_id' => $invoice->id,
+                        'invoice_number' => $invoice->invoice_number,
+                        'old_nominal' => $invoice->nominal,
+                        'old_status' => $invoice->status
+                    ]);
+                    
+                    // Recalculate nominal based on restored subtotals (DPP)
+                    $newNominalDPP = 0;
+                    foreach ($invoice->barangKeluarItems as $bk) {
+                        if ($bk->offlineSaleItem) {
+                            $bk->offlineSaleItem->refresh();
+                            $newNominalDPP += $bk->offlineSaleItem->subtotal ?? 0;
+                        }
+                    }
+                    
+                    // Get tax_id from first item
+                    $firstItem = $invoice->barangKeluarItems()->with('warehouseStock')->first();
+                    $taxId = $firstItem && $firstItem->warehouseStock && $firstItem->warehouseStock->tax_id 
+                        ? $firstItem->warehouseStock->tax_id 
+                        : null;
+                    
+                    // Calculate grand total (nominal + PPN)
+                    $dpp = \App\Helpers\NumberFormatter::calculateDPP($newNominalDPP);
+                    $grandTotal = $dpp;
+                    
+                    if ($taxId == 3) {
+                        // PKP: Calculate PPN
+                        $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                        $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                        $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+                    } else {
+                        // Non-PKP: Just round DPP
+                        $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+                    }
+                    
+                    // Update invoice with recalculated nominal
+                    // Remove partial_refund status and restore to normal
+                    // Check if invoice has payments to determine status
+                    $totalPaid = $invoice->payments->sum('amount');
+                    $newStatus = null;
+                    
+                    if ($totalPaid >= $grandTotal) {
+                        $newStatus = 'paid';
+                    } elseif ($totalPaid > 0) {
+                        $newStatus = 'partial';
+                    } else {
+                        $newStatus = null; // unpaid/default
+                    }
+                    
+                    $updateData = [
+                        'nominal' => $grandTotal,
+                        'status' => $newStatus, // Restore to appropriate status
+                        'notes' => null, // Clear notes
+                        'outstanding' => 0 // Reset outstanding
+                    ];
+                    
+                    $invoice->update($updateData);
+                    $invoice->refresh();
+                    
+                    \Log::info('Invoice restored for reversed retur', [
+                        'invoice_id' => $invoice->id,
+                        'invoice_number' => $invoice->invoice_number,
+                        'new_nominal_dpp' => $newNominalDPP,
+                        'new_nominal_grand_total' => $grandTotal,
+                        'tax_id' => $taxId,
+                        'new_status' => $invoice->status
+                    ]);
+                }
             }
 
             // Update status to 'dibatalkan'
@@ -488,7 +588,7 @@ class ReturOfflineSaleController extends Controller
             \Log::info('Successfully reversed retur offline sale ID: ' . $id);
 
             return redirect()->route('retur-offline.show', $id)
-                ->with('success', 'Retur penjualan offline berhasil dibatalkan. Semua perubahan telah dikembalikan ke kondisi semula.');
+                ->with('success', 'Retur penjualan offline berhasil dibatalkan. Semua perubahan telah dikembalikan ke kondisi semula (sales, invoice, dan warehouse stock).');
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('Error reversing retur offline sale: ' . $e->getMessage());
@@ -672,7 +772,7 @@ class ReturOfflineSaleController extends Controller
             'offlineSale.customerInfo',
             'user',
             'details.product',
-            'details.offlineSaleItem'
+            'details.offlineSaleItem.barangKeluar.warehouseStock'
         ])->findOrFail($id);
 
         // Only allow printing of completed returns

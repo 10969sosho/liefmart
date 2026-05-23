@@ -65,7 +65,7 @@ class InternalProductSalesQuery
                     p.sku as product_sku,
                     o.id as order_id,
                     (oiwr.quantity - (oiwr.retur_qty / COALESCE(mwpq.package_qty, 1))) * mwpq.mapping_qty as internal_qty,
-                    (oiwr.quantity - (oiwr.retur_qty / COALESCE(mwpq.package_qty, 1))) * oiwr.price_after_discount as internal_value
+                    (oiwr.quantity - (oiwr.retur_qty / COALESCE(mwpq.package_qty, 1))) * mwpq.mapping_qty * (oiwr.price_after_discount / COALESCE(mwpq.package_qty, 1)) as internal_value
                 FROM orders o
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 INNER JOIN mapping_with_package_qty mwpq ON oiwr.platform_product_id = mwpq.platform_product_id
@@ -217,7 +217,7 @@ class InternalProductSalesQuery
                     mwpq.product_id,
                     o.id as order_id,
                     (oiwr.quantity - (oiwr.retur_qty / COALESCE(mwpq.package_qty, 1))) * mwpq.mapping_qty as internal_qty,
-                    (oiwr.quantity - (oiwr.retur_qty / COALESCE(mwpq.package_qty, 1))) * oiwr.price_after_discount as internal_value
+                    (oiwr.quantity - (oiwr.retur_qty / COALESCE(mwpq.package_qty, 1))) * mwpq.mapping_qty * (oiwr.price_after_discount / COALESCE(mwpq.package_qty, 1)) as internal_value
                 FROM orders o
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 INNER JOIN mapping_with_package_qty mwpq ON oiwr.platform_product_id = mwpq.platform_product_id

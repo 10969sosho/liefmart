@@ -15,7 +15,7 @@ return new class extends Migration
     {
         Schema::create('import_temps', function (Blueprint $table) {
             $table->id();
-            $table->string('import_type'); // 'blibli', 'tiktok', 'shopee', etc.
+            $table->string('import_type'); // 'tiktok', 'shopee', etc.
             $table->string('session_id');
             $table->json('data'); // Array of import data
             $table->json('issues')->nullable(); // Array of issues

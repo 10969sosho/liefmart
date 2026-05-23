@@ -217,7 +217,7 @@ class StockExport implements FromCollection, WithHeadings, WithMapping, WithStyl
                 
                 // Style free items with a light blue background (dinonaktifkan)
                 // foreach ($this->freeItemRows as $row) {
-                //     $event->sheet->getStyle('A'.$row.':T'.$row)->getFill()
+                //     $event->sheet->getStyle('A'.$row.':U'.$row)->getFill()
                 //         ->setFillType(Fill::FILL_SOLID)
                 //         ->getStartColor()->setRGB('D6F5FF');
                 // }

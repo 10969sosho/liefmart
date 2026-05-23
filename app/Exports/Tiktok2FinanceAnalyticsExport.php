@@ -8,17 +8,23 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
 use Illuminate\Http\Request;
 
-class Tiktok2FinanceAnalyticsExport implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnWidths
+class Tiktok2FinanceAnalyticsExport extends DefaultValueBinder implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnWidths, WithColumnFormatting, WithCustomValueBinder
 {
     protected $request;
 
-    public function __construct(Request $request = null)
+    public function __construct(?Request $request = null)
     {
         $this->request = $request;
     }
@@ -71,6 +77,8 @@ class Tiktok2FinanceAnalyticsExport implements FromCollection, WithHeadings, Wit
             'No Order',
             'No Invoice',
             'Nominal Harga',
+            'DPP',
+            'PPN',
             'Biaya Admin',
             'Affiliate Commission',
             'Seller Shipping Fee',
@@ -95,12 +103,41 @@ class Tiktok2FinanceAnalyticsExport implements FromCollection, WithHeadings, Wit
 
     public function map($transaction): array
     {
+        // Determine tax status
+        $taxId = null;
+        if (strpos($transaction->no_invoice, 'HPNSDA-OLK/01') !== false) {
+            $taxId = 1; // PKP - Coffee
+        } elseif (strpos($transaction->no_invoice, 'HPNSDA-OLK/02') !== false) {
+            $taxId = 2; // Non PKP - Coffee
+        } elseif (strpos($transaction->no_invoice, 'AMP/01') !== false) {
+            $taxId = 3; // PKP - Skincare
+        } elseif (strpos($transaction->no_invoice, 'AMP/02') !== false) {
+            $taxId = 4; // Non PKP - Skincare
+        } else {
+            // Extract last two digits if possible
+            if (preg_match('/\/(\d{2})/', $transaction->no_invoice, $matches)) {
+                $taxId = (int)$matches[1];
+            }
+        }
+        $isPKP = in_array($taxId, [1, 3, 5, 7]);
+        
+        $dpp = $transaction->nominal_harga;
+        $ppn = 0;
+        
+        if ($isPKP && $dpp > 0) {
+            $dppVal = $dpp / 1.11;
+            $dpp = round($dppVal, 2);
+            $ppn = round($transaction->nominal_harga - $dpp, 2);
+        }
+
         return [
             $transaction->tanggal_order ? $transaction->tanggal_order->format('Y-m-d') : '',
             $transaction->hari_order,
             $transaction->no_order,
             $transaction->no_invoice,
             $transaction->nominal_harga,
+            $dpp,
+            $ppn,
             $transaction->nominal_diskon1,
             $transaction->nominal_diskon2,
             $transaction->nominal_diskon3,
@@ -171,6 +208,25 @@ class Tiktok2FinanceAnalyticsExport implements FromCollection, WithHeadings, Wit
             'V' => 18, // Persentase Diskon 5
             'W' => 18, // Persentase Diskon 6
             'X' => 18, // Total Persentase
+        ];
+    }
+
+    public function bindValue(Cell $cell, $value)
+    {
+        // Column C is "No Order" and Column D is "No Invoice" - force these to be text
+        if (in_array($cell->getColumn(), ['C', 'D'])) {
+            $cell->setValueExplicit($value, DataType::TYPE_STRING);
+            return true;
+        }
+        
+        return parent::bindValue($cell, $value);
+    }
+
+    public function columnFormats(): array
+    {
+        return [
+            'C' => NumberFormat::FORMAT_TEXT, // No Order
+            'D' => NumberFormat::FORMAT_TEXT, // No Invoice
         ];
     }
 }

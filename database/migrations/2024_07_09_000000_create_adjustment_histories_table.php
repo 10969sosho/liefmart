@@ -10,7 +10,7 @@ return new class extends Migration {
         Schema::create('adjustment_histories', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('transaction_id')->nullable();
-            $table->string('platform')->nullable(); // shopee, blibli, tiktok, tokopedia, etc
+            $table->string('platform')->nullable(); // shopee, tiktok, etc
             $table->decimal('old_value', 15, 2)->nullable();
             $table->decimal('new_value', 15, 2)->nullable();
             $table->text('description')->nullable();

@@ -44,7 +44,7 @@ class CosmeticProductStructureSeeder extends Seeder
      */
     private function getOrCreateBrands(int $kosmetikCategoryId): array
     {
-        $brandNames = ['Blibli Kosmetik', 'Shopee Kosmetik', 'Tokopedia Kosmetik', 'TikTok Kosmetik', 'Offline Kosmetik'];
+        $brandNames = ['Shopee Kosmetik', 'TikTok Kosmetik', 'Offline Kosmetik'];
         $brands = [];
 
         foreach ($brandNames as $brandName) {

@@ -8,9 +8,9 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\WarehouseStock;
 use App\Models\ShopeeFinancialTransaction;
-use App\Models\TokopediaFinancialTransaction;
+use App\Models\Shopee2FinancialTransaction;
 use App\Models\TiktokFinancialTransaction;
-use App\Models\BlibliFinancialTransaction;
+use App\Models\Tiktok2FinancialTransaction;
 use App\Models\OfflineSale;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -30,24 +30,24 @@ class DashboardController extends Controller
         
         // Get platform-wise sales
         $shopeeSales = $this->getPlatformSales('shopee', $currentMonth);
-        $tokopediaSales = $this->getPlatformSales('tokopedia', $currentMonth);
+        $shopee2Sales = $this->getPlatformSales('shopee2', $currentMonth);
         $tiktokSales = $this->getPlatformSales('tiktok', $currentMonth);
-        $blibliSales = $this->getPlatformSales('blibli', $currentMonth);
+        $tiktok2Sales = $this->getPlatformSales('tiktok2', $currentMonth);
         $offlineSales = $this->getOfflineSales($currentMonth);
         
         // Calculate growth percentages
         $shopeeGrowth = $this->calculateGrowth('shopee', $currentMonth, $previousMonth);
-        $tokopediaGrowth = $this->calculateGrowth('tokopedia', $currentMonth, $previousMonth);
+        $shopee2Growth = $this->calculateGrowth('shopee2', $currentMonth, $previousMonth);
         $tiktokGrowth = $this->calculateGrowth('tiktok', $currentMonth, $previousMonth);
-        $blibliGrowth = $this->calculateGrowth('blibli', $currentMonth, $previousMonth);
+        $tiktok2Growth = $this->calculateGrowth('tiktok2', $currentMonth, $previousMonth);
         $offlineGrowth = $this->calculateOfflineGrowth($currentMonth, $previousMonth);
         
         // Calculate platform distribution percentages
-        $totalSales = $shopeeSales + $tokopediaSales + $tiktokSales + $blibliSales + $offlineSales;
+        $totalSales = $shopeeSales + $shopee2Sales + $tiktokSales + $tiktok2Sales + $offlineSales;
         $shopeePercentage = $totalSales > 0 ? round(($shopeeSales / $totalSales) * 100, 1) : 0;
-        $tokopediaPercentage = $totalSales > 0 ? round(($tokopediaSales / $totalSales) * 100, 1) : 0;
+        $shopee2Percentage = $totalSales > 0 ? round(($shopee2Sales / $totalSales) * 100, 1) : 0;
         $tiktokPercentage = $totalSales > 0 ? round(($tiktokSales / $totalSales) * 100, 1) : 0;
-        $blibliPercentage = $totalSales > 0 ? round(($blibliSales / $totalSales) * 100, 1) : 0;
+        $tiktok2Percentage = $totalSales > 0 ? round(($tiktok2Sales / $totalSales) * 100, 1) : 0;
         $offlinePercentage = $totalSales > 0 ? round(($offlineSales / $totalSales) * 100, 1) : 0;
         
         // Get chart data
@@ -61,26 +61,26 @@ class DashboardController extends Controller
         
         return view('dashboard', compact(
             'shopeeSales',
-            'tokopediaSales',
+            'shopee2Sales',
             'tiktokSales',
-            'blibliSales',
+            'tiktok2Sales',
             'offlineSales',
             'shopeeGrowth',
-            'tokopediaGrowth',
+            'shopee2Growth',
             'tiktokGrowth',
-            'blibliGrowth',
+            'tiktok2Growth',
             'offlineGrowth',
             'shopeePercentage',
-            'tokopediaPercentage',
+            'shopee2Percentage',
             'tiktokPercentage',
-            'blibliPercentage',
+            'tiktok2Percentage',
             'offlinePercentage',
             'chartData',
             'recentTransactions',
             'lowStockProducts'
         ));
     }
-    
+
     /**
      * Get sales for a specific platform
      */
@@ -88,9 +88,9 @@ class DashboardController extends Controller
     {
         $model = match($platform) {
             'shopee' => ShopeeFinancialTransaction::class,
-            'tokopedia' => TokopediaFinancialTransaction::class,
+            'shopee2' => Shopee2FinancialTransaction::class,
             'tiktok' => TiktokFinancialTransaction::class,
-            'blibli' => BlibliFinancialTransaction::class,
+            'tiktok2' => Tiktok2FinancialTransaction::class,
             default => null
         };
         
@@ -131,13 +131,13 @@ class DashboardController extends Controller
             return ShopeeFinancialTransaction::whereMonth('tanggal_order', $month->month)
                     ->whereYear('tanggal_order', $month->year)
                     ->sum('nominal_fix') +
-                   TokopediaFinancialTransaction::whereMonth('tanggal_order', $month->month)
+                   Shopee2FinancialTransaction::whereMonth('tanggal_order', $month->month)
                     ->whereYear('tanggal_order', $month->year)
                     ->sum('nominal_fix') +
                    TiktokFinancialTransaction::whereMonth('tanggal_order', $month->month)
                     ->whereYear('tanggal_order', $month->year)
                     ->sum('nominal_fix') +
-                   BlibliFinancialTransaction::whereMonth('tanggal_order', $month->month)
+                   Tiktok2FinancialTransaction::whereMonth('tanggal_order', $month->month)
                     ->whereYear('tanggal_order', $month->year)
                     ->sum('nominal_fix') +
                    OfflineSale::whereMonth('sale_date', $month->month)
@@ -157,28 +157,28 @@ class DashboardController extends Controller
     private function getRecentTransactions()
     {
         $shopeeTransactions = ShopeeFinancialTransaction::select('id', 'nominal_fix as amount', 'tanggal_order as created_at')
-            ->selectRaw("'Shopee' as platform, 'Sale' as type")
+            ->selectRaw("'Shopee Lamourad' as platform, 'Sale' as type")
             ->latest('tanggal_order')
             ->limit(5);
-            
-        $tokopediaTransactions = TokopediaFinancialTransaction::select('id', 'nominal_fix as amount', 'tanggal_order as created_at')
-            ->selectRaw("'Tokopedia' as platform, 'Sale' as type")
+
+        $shopee2Transactions = Shopee2FinancialTransaction::select('id', 'nominal_fix as amount', 'tanggal_order as created_at')
+            ->selectRaw("'Shopee Liefmarket' as platform, 'Sale' as type")
             ->latest('tanggal_order')
             ->limit(5);
             
         $tiktokTransactions = TiktokFinancialTransaction::select('id', 'nominal_fix as amount', 'tanggal_order as created_at')
-            ->selectRaw("'TikTok' as platform, 'Sale' as type")
+            ->selectRaw("'Tiktok Lamourad' as platform, 'Sale' as type")
+            ->latest('tanggal_order')
+            ->limit(5);
+
+        $tiktok2Transactions = Tiktok2FinancialTransaction::select('id', 'nominal_fix as amount', 'tanggal_order as created_at')
+            ->selectRaw("'Tiktok Liefmarket' as platform, 'Sale' as type")
             ->latest('tanggal_order')
             ->limit(5);
             
-        $blibliTransactions = BlibliFinancialTransaction::select('id', 'nominal_fix as amount', 'tanggal_order as created_at')
-            ->selectRaw("'Blibli' as platform, 'Sale' as type")
-            ->latest('tanggal_order')
-            ->limit(5);
-            
-        return $shopeeTransactions->union($tokopediaTransactions)
+        return $shopeeTransactions->union($shopee2Transactions)
                                 ->union($tiktokTransactions)
-                                ->union($blibliTransactions)
+                                ->union($tiktok2Transactions)
                                 ->orderBy('created_at', 'desc')
                                 ->limit(5)
                                 ->get();

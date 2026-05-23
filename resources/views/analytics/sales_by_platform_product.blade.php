@@ -155,11 +155,6 @@
             font-weight: 500;
         }
         
-        .platform-tokopedia {
-            background-color: #42b549;
-            color: white;
-        }
-        
         .platform-shopee {
             background-color: #f53d2d;
             color: white;
@@ -167,16 +162,6 @@
         
         .platform-tiktok {
             background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095da;
-            color: white;
-        }
-        
-        .platform-lazada {
-            background-color: #f27e30;
             color: white;
         }
         
@@ -438,20 +423,20 @@
                     </div>
                 </div>
                 
-                <!-- Info about data filtering -->
                 <div class="alert alert-info mb-4">
                     <h5 class="alert-heading"><i class="bi bi-info-circle-fill me-2"></i>Informasi Data</h5>
                     <p class="mb-0">
-                        Data yang ditampilkan mencakup <strong>semua transaksi</strong> dari 4 platform:
+                        Data yang ditampilkan mencakup <strong>semua transaksi</strong> dari platform:
                         <span class="platform-badge platform-shopee">Shopee</span>
-                        <span class="platform-badge platform-tokopedia">Tokopedia</span>
                         <span class="platform-badge platform-tiktok">TikTok</span>
-                        <span class="platform-badge platform-blibli">Blibli</span>
                     </p>
                     <hr>
                     <p class="mb-0">
-                        <strong>Catatan:</strong> Untuk transaksi yang belum memiliki catatan pembayaran, nilai <strong>Saldo Masuk</strong> 
-                        dihitung berdasarkan harga produk.
+                        <strong>Catatan:</strong> 
+                        <ul class="mb-0">
+                            <li>Untuk transaksi yang belum memiliki catatan pembayaran, nilai <strong>Saldo Masuk</strong> dihitung berdasarkan harga produk.</li>
+                            <li><strong>Jumlah Masuk Pembayaran</strong> dihitung secara proporsional per produk berdasarkan harga produk. Misalnya, jika Order berisi Produk A (Rp 70.000) dan Produk B (Rp 50.000), dan total saldo masuk Rp 100.000, maka Produk A mendapat Rp 58.333 (58.33%) dan Produk B mendapat Rp 41.667 (41.67%).</li>
+                        </ul>
                     </p>
                 </div>
                 
@@ -503,11 +488,14 @@
                             <strong>Keterangan Kolom:</strong>
                         </p>
                         <ul>
-                            <li><strong>Jumlah Masuk Pembayaran:</strong> Uang yang masuk ke rekening dari penjualan (dari finance)</li>
-                            <li><strong>Jumlah Masuk Pembayaran - PPN:</strong> Jumlah masuk pembayaran ÷ 1.11</li>
+                            <li><strong>Jumlah Masuk Pembayaran (per Produk):</strong> Uang yang masuk ke rekening dari penjualan dibagi secara proporsional berdasarkan harga produk (dari finance)</li>
+                            <li><strong>Jumlah Masuk Pembayaran - PPN (per Produk):</strong> Jumlah masuk pembayaran per produk ÷ 1.11</li>
                             <li><strong>Harga Modal Total (COGS):</strong> Total harga beli setiap produk dalam 1 no order</li>
-                            <li><strong>Gross Profit Total:</strong> Jumlah masuk pembayaran-PPN - harga modal total</li>
-                            <li><strong>Margin per pcs:</strong> (Gross profit total ÷ jumlah masuk pembayaran-PPN) × 100%</li>
+                            <li><strong>Gross Profit per Produk (%):</strong> (Gross profit per produk ÷ jumlah masuk pembayaran-PPN per produk) × 100%</li>
+                            <li><strong>Margin per Produk (Rp):</strong> Jumlah masuk pembayaran-PPN per produk - harga modal total</li>
+                            <li><strong>Margin per Produk (%):</strong> (Margin per produk ÷ jumlah masuk pembayaran-PPN per produk) × 100%</li>
+                            <li><strong>Gross Profit per Order (Rp):</strong> Total semua gross profit produk dalam 1 order</li>
+                            <li><strong>Margin per Order (%):</strong> (Total margin per order ÷ total jumlah masuk pembayaran-PPN per order) × 100%</li>
                         </ul>
                     </div>
                     
@@ -516,30 +504,31 @@
                         <table class="table table-bordered table-striped table-hover">
                             <thead class="table-dark">
                                 <tr>
-                                    <th style="width: 10%;">Tanggal</th>
-                                    <th style="width: 12%;">No Pesanan</th>
-                                    <th style="width: 12%;">No Invoice</th>
-                                    <th style="width: 20%;">Nama Produk (Platform)</th>
-                                    <th style="width: 15%;">Variasi (Platform)</th>
-                                    <th class="text-end" style="width: 8%;">Jumlah QTY (Platform)</th>
-                                    <th class="text-end" style="width: 10%;">Jumlah Masuk Pembayaran (Rp)</th>
-                                    <th class="text-end" style="width: 10%;">Jumlah Masuk Pembayaran - PPN (Rp)</th>
-                                    <th class="text-end" style="width: 10%;">Harga Modal Total (COGS) (Rp)</th>
-                                    <th class="text-end" style="width: 10%;">Gross Profit Total (Rp)</th>
-                                    <th class="text-end" style="width: 8%;">Margin per pcs (%)</th>
+                                    <th style="width: 4%;">Tanggal</th>
+                                    <th style="width: 6%;">No Pesanan</th>
+                                    <th style="width: 6%;">No Invoice</th>
+                                    <th style="width: 40%; min-width: 400px;">Nama Produk (Platform)</th>
+                                    <th style="width: 7%;">Variasi (Platform)</th>
+                                    <th class="text-end" style="width: 3%;">QTY</th>
+                                    <th class="text-end" style="width: 5%;">Jumlah Masuk Pembayaran per Produk (Rp)</th>
+                                    <th class="text-end" style="width: 5%;">Jumlah Masuk Pembayaran - PPN per Produk (Rp)</th>
+                                    <th class="text-end" style="width: 5%;">Harga Modal Total (COGS) (Rp)</th>
+                                    <th class="text-end" style="width: 4%;">Gross Profit per Produk (%)</th>
+                                    <th class="text-end" style="width: 5%;">Margin per Produk (Rp)</th>
+                                    <th class="text-end" style="width: 4%;">Margin per Produk (%)</th>
+                                    <th class="text-end" style="width: 5%;">Gross Profit per Order (Rp)</th>
+                                    <th class="text-end" style="width: 5%;">Margin per Order (%)</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach($platformProductRows as $row)
                                     @php
                                         $rowClass = '';
-                                        if($row['gross_profit'] < 0) {
+                                        $grossProfitPerProduct = $row['gross_profit_per_product_rp'] ?? 0;
+                                        if($grossProfitPerProduct < 0) {
                                             $rowClass = 'table-danger';
                                         }
-                                        if($row['price'] == 0) {
-                                            $rowClass = 'table-warning';
-                                        }
-                                        if($row['revenue'] == 0) {
+                                        if(($row['revenue'] ?? 0) == 0) {
                                             $rowClass = 'table-warning';
                                         }
                                     @endphp
@@ -557,18 +546,23 @@
                                         </td>
                                         <td>{{ $row['product_variant'] ?? '-' }}</td>
                                         <td class="text-end">{{ number_format($row['quantity'], 0) }}</td>
-                                        <td class="text-end">{{ number_format($row['revenue'], 0, ',', '.') }}</td>
-                                        <td class="text-end">{{ number_format($row['revenue'] / 1.11, 0, ',', '.') }}</td>
-                                        <td class="text-end">{{ number_format($row['capital'], 0, ',', '.') }}</td>
-                                        <td class="text-end fw-bold {{ $row['gross_profit'] < 0 ? 'text-danger' : 'text-success' }}">
-                                            {{ number_format($row['gross_profit'], 0, ',', '.') }}
+                                        <td class="text-end">{{ number_format($row['revenue'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end">{{ number_format($row['revenue_without_ppn'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end">{{ number_format($row['capital'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="text-end">
+                                            {{ number_format($row['gross_profit_per_product_percent'] ?? 0, 1) }}%
+                                        </td>
+                                        <td class="text-end fw-bold {{ ($row['margin_per_product_rp'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">
+                                            {{ number_format($row['margin_per_product_rp'] ?? 0, 0, ',', '.') }}
                                         </td>
                                         <td class="text-end">
-                                            @php
-                                                $paymentWithoutPPN = $row['revenue'] / 1.11;
-                                                $marginPercent = $paymentWithoutPPN > 0 ? ($row['gross_profit'] / $paymentWithoutPPN) * 100 : 0;
-                                            @endphp
-                                            {{ number_format($marginPercent, 1) }}%
+                                            {{ number_format($row['margin_per_product_percent'] ?? 0, 1) }}%
+                                        </td>
+                                        <td class="text-end fw-bold">
+                                            {{ number_format($row['gross_profit_per_order_rp'] ?? 0, 0, ',', '.') }}
+                                        </td>
+                                        <td class="text-end fw-bold">
+                                            {{ number_format($row['margin_per_order_percent'] ?? 0, 1) }}%
                                         </td>
                                     </tr>
                                 @endforeach
@@ -580,16 +574,18 @@
                                     </td>
                                     <td class="text-end"><strong>{{ number_format($summary['total_quantity']) }}</strong></td>
                                     <td class="text-end"><strong>{{ number_format($summary['total_revenue'], 0, ',', '.') }}</strong></td>
-                                    <td class="text-end"><strong>{{ number_format($summary['total_revenue'] / 1.11, 0, ',', '.') }}</strong></td>
+                                    <td class="text-end"><strong>{{ number_format($summary['total_revenue_without_ppn'], 0, ',', '.') }}</strong></td>
                                     <td class="text-end"><strong>{{ number_format($summary['total_capital'], 0, ',', '.') }}</strong></td>
-                                    <td class="text-end"><strong>{{ number_format($summary['total_gross_profit'], 0, ',', '.') }}</strong></td>
                                     <td class="text-end">
                                         @php
-                                            $totalPaymentWithoutPPN = $summary['total_revenue'] / 1.11;
-                                            $totalMarginPercent = $totalPaymentWithoutPPN > 0 ? ($summary['total_gross_profit'] / $totalPaymentWithoutPPN) * 100 : 0;
+                                            $totalGrossProfitPercent = $summary['total_revenue_without_ppn'] > 0 ? ($summary['total_gross_profit'] / $summary['total_revenue_without_ppn']) * 100 : 0;
                                         @endphp
-                                        <strong>{{ number_format($totalMarginPercent, 1) }}%</strong>
+                                        <strong>{{ number_format($totalGrossProfitPercent, 1) }}%</strong>
                                     </td>
+                                    <td class="text-end"><strong>{{ number_format($summary['total_gross_profit'], 0, ',', '.') }}</strong></td>
+                                    <td class="text-end"><strong>{{ number_format($totalGrossProfitPercent, 1) }}%</strong></td>
+                                    <td class="text-end"><strong>{{ number_format($summary['total_gross_profit'], 0, ',', '.') }}</strong></td>
+                                    <td class="text-end"><strong>{{ number_format($totalGrossProfitPercent, 1) }}%</strong></td>
                                 </tr>
                             </tfoot>
                         </table>

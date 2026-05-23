@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('page-title', 'Import Arus Kas TikTok')
+@section('page-title', 'Import Arus Kas Tiktok Lamourad')
 
 @section('content')
 <div class="container-fluid">
@@ -8,7 +8,7 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold">Import Data Arus Kas TikTok</h5>
+                    <h5 class="mb-0 fw-bold">Import Data Arus Kas Tiktok Lamourad</h5>
                     <a href="{{ route('finance.aruskastiktok.index') }}" class="btn btn-sm btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Kembali ke Daftar
                     </a>
@@ -84,7 +84,7 @@
                                 <div class="row">
                                     <div class="col-md-7">
                                         <div class="form-group mb-3">
-                                            <label for="file" class="form-label fw-medium">File Excel Arus Kas TikTok</label>
+                                            <label for="file" class="form-label fw-medium">File Excel Arus Kas Tiktok Lamourad</label>
                                             <input type="file" name="file" id="file" class="form-control @error('file') is-invalid @enderror" required accept=".xlsx,.xls">
                                             @error('file')
                                                 <div class="invalid-feedback">{{ $message }}</div>

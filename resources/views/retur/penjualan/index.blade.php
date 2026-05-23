@@ -312,6 +312,7 @@
                     </div>
 
                     <div class="mt-4">
+                        @if($returPenjualans->hasPages())
                         <nav aria-label="Pagination Navigation">
                             <ul class="pagination justify-content-center">
                                 {{-- Previous Page Link --}}
@@ -323,29 +324,73 @@
                                     </li>
                                 @else
                                     <li class="page-item">
-                                        <a class="page-link" href="{{ $returPenjualans->previousPageUrl() }}" rel="prev">
+                                        <a class="page-link" href="{{ $returPenjualans->appends(request()->query())->previousPageUrl() }}" rel="prev">
                                             <i class="fas fa-chevron-left"></i> Previous
                                         </a>
                                     </li>
                                 @endif
 
-                                {{-- Pagination Elements --}}
-                                @foreach ($returPenjualans->getUrlRange(1, $returPenjualans->lastPage()) as $page => $url)
-                                    @if ($page == $returPenjualans->currentPage())
+                                @php
+                                    $currentPage = $returPenjualans->currentPage();
+                                    $lastPage = $returPenjualans->lastPage();
+                                    $onEachSide = 2;
+                                    
+                                    // Calculate start and end page numbers
+                                    $start = max(1, $currentPage - $onEachSide);
+                                    $end = min($lastPage, $currentPage + $onEachSide);
+                                    
+                                    // Adjust if we're near the beginning
+                                    if ($start <= 3) {
+                                        $end = min($lastPage, $start + ($onEachSide * 2) + 1);
+                                    }
+                                    
+                                    // Adjust if we're near the end
+                                    if ($end >= $lastPage - 2) {
+                                        $start = max(1, $end - ($onEachSide * 2) - 1);
+                                    }
+                                @endphp
+
+                                {{-- First Page --}}
+                                @if ($start > 1)
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ $returPenjualans->appends(request()->query())->url(1) }}">1</a>
+                                    </li>
+                                    @if ($start > 2)
+                                        <li class="page-item disabled">
+                                            <span class="page-link pagination-ellipsis">...</span>
+                                        </li>
+                                    @endif
+                                @endif
+
+                                {{-- Page Numbers --}}
+                                @for ($page = $start; $page <= $end; $page++)
+                                    @if ($page == $currentPage)
                                         <li class="page-item active">
                                             <span class="page-link">{{ $page }}</span>
                                         </li>
                                     @else
                                         <li class="page-item">
-                                            <a class="page-link" href="{{ $url }}">{{ $page }}</a>
+                                            <a class="page-link" href="{{ $returPenjualans->appends(request()->query())->url($page) }}">{{ $page }}</a>
                                         </li>
                                     @endif
-                                @endforeach
+                                @endfor
+
+                                {{-- Last Page --}}
+                                @if ($end < $lastPage)
+                                    @if ($end < $lastPage - 1)
+                                        <li class="page-item disabled">
+                                            <span class="page-link pagination-ellipsis">...</span>
+                                        </li>
+                                    @endif
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ $returPenjualans->appends(request()->query())->url($lastPage) }}">{{ $lastPage }}</a>
+                                    </li>
+                                @endif
 
                                 {{-- Next Page Link --}}
                                 @if ($returPenjualans->hasMorePages())
                                     <li class="page-item">
-                                        <a class="page-link" href="{{ $returPenjualans->nextPageUrl() }}" rel="next">
+                                        <a class="page-link" href="{{ $returPenjualans->appends(request()->query())->nextPageUrl() }}" rel="next">
                                             Next <i class="fas fa-chevron-right"></i>
                                         </a>
                                     </li>
@@ -358,11 +403,12 @@
                                 @endif
                             </ul>
                         </nav>
+                        @endif
                         
                         {{-- Pagination Info --}}
                         <div class="text-center mt-3">
                             <small class="text-muted">
-                                Showing {{ $returPenjualans->firstItem() }} to {{ $returPenjualans->lastItem() }} of {{ $returPenjualans->total() }} results
+                                Showing {{ $returPenjualans->firstItem() ?? 0 }} to {{ $returPenjualans->lastItem() ?? 0 }} of {{ $returPenjualans->total() }} results
                             </small>
                         </div>
                     </div>
@@ -407,6 +453,7 @@
     /* Custom Pagination Styling */
     .pagination {
         margin-bottom: 0;
+        flex-wrap: wrap;
     }
     
     .page-link {
@@ -418,6 +465,8 @@
         border-radius: 0.375rem;
         transition: all 0.15s ease-in-out;
         font-weight: 500;
+        min-width: 40px;
+        text-align: center;
     }
     
     .page-link:hover {
@@ -441,15 +490,36 @@
         background-color: #fff;
         border-color: #dee2e6;
         cursor: not-allowed;
+        opacity: 0.6;
     }
     
     .page-item.disabled .page-link:hover {
         transform: none;
         box-shadow: none;
+        background-color: #fff;
+        border-color: #dee2e6;
+    }
+    
+    .page-item.disabled .page-link:not(:hover) {
+        cursor: default;
     }
     
     .pagination .page-link i {
         font-size: 0.875rem;
+    }
+    
+    /* Ellipsis styling */
+    .pagination-ellipsis {
+        border: none !important;
+        background: transparent !important;
+        padding: 0.5rem 0.25rem !important;
+        cursor: default !important;
+    }
+    
+    .pagination-ellipsis:hover {
+        transform: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
     }
     
     /* Filter section styling */

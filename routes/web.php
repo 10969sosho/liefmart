@@ -4,12 +4,10 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MappingBarangController;
 use App\Http\Controllers\PenerimaanController;
 use App\Http\Controllers\SalesController;
-use App\Http\Controllers\TokopediaController;
 use App\Http\Controllers\ShopeeController;
 use App\Http\Controllers\Shopee2Controller;
 use App\Http\Controllers\TiktokController;
 use App\Http\Controllers\Tiktok2Controller;
-use App\Http\Controllers\LazadaController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\HomeController;
@@ -17,10 +15,8 @@ use App\Http\Controllers\WarehouseStockController;
 
 use App\Http\Controllers\Finance\PembayaranShopeeController;
 use App\Http\Controllers\Finance\PembayaranShopee2Controller;
-use App\Http\Controllers\Finance\PembayaranTokopediaController;
 use App\Http\Controllers\Finance\PembayaranTiktokController;
 use App\Http\Controllers\Finance\PembayaranTiktok2Controller;
-use App\Http\Controllers\Finance\PembayaranBlibliController;
 use App\Http\Controllers\Finance\ArusKasShopee2Controller;
 use App\Http\Controllers\Finance\ArusKasTiktok2Controller;
 use App\Http\Controllers\Finance\ManualController;
@@ -147,6 +143,9 @@ Route::prefix('penerimaan')->middleware(['auth', 'main.category', 'prevent-back-
     Route::post('/{id}/update-header', [PenerimaanController::class, 'updateHeader'])->name('penerimaan.update-header')->middleware('permission:warehouse.edit');
     Route::post('/{id}/clear-details', [PenerimaanController::class, 'clearDetails'])->name('penerimaan.clear-details')->middleware('permission:warehouse.edit');
     Route::post('/{id}/finalize-update', [PenerimaanController::class, 'finalizePenerimaanUpdate'])->name('penerimaan.finalize-update')->middleware('permission:warehouse.edit');
+    
+    // Price history API route
+    Route::get('/price-history/{productId}', [PenerimaanController::class, 'getPriceHistory'])->name('penerimaan.price-history')->middleware('permission:warehouse.view');
 });
 Route::prefix('warehouse')->middleware(['auth', 'main.category', 'prevent-back-history', 'under.construction'])->group(function () {
     // Pemindahan barang dari Unlocated ke Gudang A
@@ -243,13 +242,7 @@ Route::prefix('sales')->middleware(['auth', 'main.category', 'prevent-back-histo
         Route::post('/process-import', [Shopee2Controller::class, 'processImport'])
               ->name('sales.shopee2.process-import');
     });
-    // Tokopedia specific routes
-    Route::prefix('tokopedia')->group(function () {
-        Route::get('/import-excel', [TokopediaController::class, 'importExcel'])->name('sales.tokopedia.import-excel');
-        Route::post('/preview-import', [TokopediaController::class, 'previewImport'])->name('sales.tokopedia.preview-import');
-        Route::get('/preview-import', [TokopediaController::class, 'showPreview'])->name('sales.tokopedia.show-preview');
-        Route::post('/process-import', [TokopediaController::class, 'processImport'])->name('sales.tokopedia.process-import');
-    });
+
     // TikTok specific routes
     Route::prefix('tiktok')->group(function () {
         // Sales routes
@@ -299,32 +292,6 @@ Route::prefix('sales')->middleware(['auth', 'main.category', 'prevent-back-histo
         Route::post('/lock/{id}', [PembayaranTiktok2Controller::class, 'lock'])->name('sales.tiktok2.lock');
         Route::post('/unlock/{id}', [PembayaranTiktok2Controller::class, 'unlock'])->name('sales.tiktok2.unlock');
     });
-    
-    // Lazada specific routes
-    Route::prefix('lazada')->group(function () {
-        Route::get('/', [LazadaController::class, 'platform'])->name('sales.lazada.platform');
-        Route::get('/import', [LazadaController::class, 'import'])->name('sales.lazada.import');
-        Route::post('/import/preview', [LazadaController::class, 'previewImport'])->name('sales.lazada.preview-import');
-        Route::post('/import/process', [LazadaController::class, 'processImport'])->name('sales.lazada.import.process');
-        Route::get('/manual', [LazadaController::class, 'manual'])->name('sales.lazada.manual');
-        Route::post('/manual/store', [LazadaController::class, 'storeManual'])->name('sales.lazada.manual.store');
-        Route::get('/index', [LazadaController::class, 'index'])->name('sales.lazada.index');
-        Route::get('/platform-product', [LazadaController::class, 'platformProduct'])->name('sales.lazada.platform-product');
-        Route::post('/platform-product', [LazadaController::class, 'storePlatformProduct'])->name('sales.lazada.platform-product.store');
-        Route::get('/mapping', [LazadaController::class, 'mapping'])->name('sales.lazada.mapping');
-        Route::post('/mapping', [LazadaController::class, 'storeMapping'])->name('sales.lazada.mapping.store');
-        Route::delete('/mapping/{id}', [LazadaController::class, 'deleteMapping'])->name('sales.lazada.mapping.delete');
-    });
-    
-    // Lazada Financial Transactions Routes
-    Route::prefix('lazada')->group(function () {
-        Route::get('/financial', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'index'])->name('finance.lazada.index');
-        Route::get('/financial/import', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'import'])->name('finance.lazada.import');
-        Route::post('/financial/preview', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'preview'])->name('finance.lazada.preview');
-        Route::post('/financial/process', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'process'])->name('finance.lazada.process');
-        Route::get('/financial/{transaction}', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'show'])->name('finance.lazada.show');
-        Route::delete('/financial/{transaction}', [App\Http\Controllers\Finance\LazadaFinanceController::class, 'destroy'])->name('finance.lazada.destroy');
-    });
 });
 
 Route::prefix('master')->middleware(['auth', 'main.category', 'prevent-back-history', 'under.construction', 'permission:master.view'])->group(function () {
@@ -362,6 +329,8 @@ Route::prefix('master')->middleware(['auth', 'main.category', 'prevent-back-hist
 
         // Route untuk index mapping (daftar mapping)
         Route::get('/', [MappingBarangController::class, 'index'])->name('index');
+
+        Route::get('/export/excel', [MappingBarangController::class, 'exportExcel'])->name('export.excel');
 
         // Route untuk halaman tambah mapping
         Route::get('/create', [MappingBarangController::class, 'create'])->name('create');
@@ -434,28 +403,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::get('/export/excel', [PembayaranShopee2Controller::class, 'exportExcel'])->name('export.excel');
         Route::get('/export/pdf', [PembayaranShopee2Controller::class, 'exportPdf'])->name('export.pdf');
     });
-    
-    // Tokopedia Finance Routes
-    Route::prefix('tokopedia')->name('tokopedia.')->group(function () {
-        Route::get('/', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'index'])->name('index');
-        Route::get('/import', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'importForm'])->name('import');
-        Route::post('/import/preview', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'preview'])->name('import-preview');
-        Route::get('/import/preview', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'preview'])->name('import-preview-get');
-        Route::post('/import/process', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'importProcess'])->name('import-process');
-        Route::get('/{id}/edit', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'edit'])->name('edit');
-        Route::put('/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'update'])->name('update');
-        Route::delete('/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'destroy'])->name('destroy');
-        Route::get('/manual', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'manual'])->name('manual');
-        Route::post('/manual-store', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'storeManual'])->name('manual-store');
-        Route::get('/print-invoice/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'printInvoice'])->name('print-invoice');
-        Route::get('/history/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'history'])->name('history');
-        Route::post('/lock/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'lock'])->name('lock');
-        Route::post('/unlock/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'unlock'])->name('unlock');
-        Route::post('/adjust/{id}', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'adjust'])->name('adjust');
-        Route::get('/export/excel', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'exportExcel'])->name('export.excel');
-        Route::get('/export/pdf', [App\Http\Controllers\Finance\PembayaranTokopediaController::class, 'exportPdf'])->name('export.pdf');
-    });
-    
+
     // TikTok Finance Routes
     Route::prefix('tiktok')->name('tiktok.')->group(function () {
         Route::get('/', [PembayaranTiktokController::class, 'index'])->name('index');
@@ -498,30 +446,9 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::get('/export/pdf', [PembayaranTiktok2Controller::class, 'exportPdf'])->name('export.pdf');
         Route::post('/sync-order-dates', [PembayaranTiktok2Controller::class, 'syncOrderDates'])->name('sync-order-dates');
         Route::get('/export/cash-flow', [PembayaranTiktok2Controller::class, 'exportCashFlow'])->name('export.cash-flow');
+        Route::post('/clear-skipped-reasons', [PembayaranTiktok2Controller::class, 'clearSkippedReasons'])->name('clear-skipped-reasons');
     });
-    
-    // Blibli Finance Routes
-    Route::prefix('blibli')->name('blibli.')->group(function () {
-        Route::get('/', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'index'])->name('index');
-        Route::get('/import', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'importForm'])->name('import');
-        Route::post('/import/preview', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'preview'])->name('import-preview');
-        Route::get('/import/preview', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'preview'])->name('import-preview-get');
-        Route::post('/import/process', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'importProcess'])->name('import-process');
-        Route::get('/manual', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'manual'])->name('manual');
-        Route::post('/manual-store', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'storeManual'])->name('manual-store');
-        Route::get('/edit/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'edit'])->name('edit');
-        Route::put('/update/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'update'])->name('update');
-        Route::delete('/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'delete'])->name('destroy');
-        Route::post('/adjust/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'adjust'])->name('adjust');
-        Route::get('/preview', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'preview'])->name('preview');
-        Route::get('/print-invoice/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'printInvoice'])->name('print-invoice');
-        Route::get('/history/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'history'])->name('history');
-        Route::post('/lock/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'lock'])->name('lock');
-        Route::post('/unlock/{id}', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'unlock'])->name('unlock');
-        Route::get('/export/excel', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'exportExcel'])->name('export.excel');
-        Route::get('/export/pdf', [App\Http\Controllers\Finance\PembayaranBlibliController::class, 'exportPdf'])->name('export.pdf');
-    });
-    
+
     // Arus Kas Shopee
     Route::prefix('aruskasshopee')->name('aruskasshopee.')->group(function () {
         Route::get('/', [App\Http\Controllers\Finance\ArusKasShopeeController::class, 'index'])->name('index');
@@ -529,15 +456,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::post('/preview', [App\Http\Controllers\Finance\ArusKasShopeeController::class, 'preview'])->name('preview');
         Route::post('/process', [App\Http\Controllers\Finance\ArusKasShopeeController::class, 'process'])->name('process');
     });
-    
-    // Arus Kas Tokopedia
-    Route::prefix('aruskastokopedia')->name('aruskastokopedia.')->group(function () {
-        Route::get('/', [App\Http\Controllers\Finance\ArusKasTokopediaController::class, 'index'])->name('index');
-        Route::get('/import', [App\Http\Controllers\Finance\ArusKasTokopediaController::class, 'import'])->name('import');
-        Route::post('/preview', [App\Http\Controllers\Finance\ArusKasTokopediaController::class, 'preview'])->name('preview');
-        Route::post('/process', [App\Http\Controllers\Finance\ArusKasTokopediaController::class, 'process'])->name('process');
-    });
-    
+
     // Arus Kas Tiktok
     Route::prefix('aruskastiktok')->name('aruskastiktok.')->group(function () {
         Route::get('/', [App\Http\Controllers\Finance\ArusKasTiktokController::class, 'index'])->name('index');
@@ -561,20 +480,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::post('/preview', [ArusKasTiktok2Controller::class, 'preview'])->name('preview');
         Route::post('/process', [ArusKasTiktok2Controller::class, 'process'])->name('process');
     });
-    
-    // Arus Kas Blibli - Direct routes here instead of loading from separate file
-    Route::prefix('aruskasblibli')->name('aruskasblibli.')->group(function () {
-        Route::get('/', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'index'])->name('index');
-        Route::get('/create', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'create'])->name('create');
-        Route::post('/', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'store'])->name('store');
-        Route::get('/{transaction}/edit', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'edit'])->name('edit');
-        Route::put('/{transaction}', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'update'])->name('update');
-        Route::delete('/{transaction}', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'destroy'])->name('destroy');
-        Route::get('/import', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'import'])->name('import');
-        Route::post('/preview', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'preview'])->name('preview');
-        Route::post('/process', [App\Http\Controllers\Finance\ArusKasBlibliController::class, 'process'])->name('process');
-    });
-    
+
     // Offline
     Route::prefix('offline')->name('offline.')->group(function () {
         Route::get('/', [App\Http\Controllers\Finance\FinanceOfflineController::class, 'index'])->name('index');
@@ -619,19 +525,27 @@ Route::prefix('analytics')
         Route::get('/daily-sales-report', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'dailySalesReport'])->name('daily-sales-report');
         Route::get('/discount-analysis-report', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'discountAnalysisReport'])->name('discount-analysis-report');
         Route::get('/sales-by-platform', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'salesByPlatformReport'])->name('sales-by-platform');
+        Route::get('/sales-export-mapped', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'salesExportMapped'])->name('sales-export-mapped');
+        Route::get('/sales-export-mapped/export', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'exportSalesMapped'])->name('sales-export-mapped.export');
         Route::get('/sales-detail-report', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'salesDetailReport'])->name('sales-detail-report');
         Route::get('/internal-product-sales', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'internalProductSalesReport'])->name('internal-product-sales');
+        Route::get('/internal-product-sales/export', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'exportInternalProductSales'])->name('internal-product-sales.export');
         Route::get('/sales-by-day-of-week', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'salesByDayOfWeekReport'])->name('sales-by-day-of-week');
         Route::get('/sales-by-date-number', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'salesByDateNumberReport'])->name('sales-by-date-number');
         Route::get('/sales-by-status-day', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'salesByStatusAndDayReport'])->name('sales-by-status-day');
         Route::get('/monthly-sales-summary', [App\Http\Controllers\Analytics\SalesAnalyticsController::class, 'monthlySalesSummaryReport'])->name('monthly-sales-summary');
         Route::get('/sales-by-master-product', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'salesByMasterProductReport'])->name('sales-by-master-product');
         Route::get('/sales-by-master-product-special', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'salesByMasterProductSpecialReport'])->name('sales-by-master-product-special');
+        Route::get('/sales-by-master-product/table', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'salesByMasterProductTable'])->name('sales-by-master-product.table');
+        Route::get('/sales-by-master-product/modal', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'salesByMasterProductModal'])->name('sales-by-master-product.modal');
+        Route::get('/sales-by-master-product-special/table', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'salesByMasterProductSpecialTable'])->name('sales-by-master-product-special.table');
+        Route::get('/sales-by-master-product-special/modal', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'salesByMasterProductSpecialModal'])->name('sales-by-master-product-special.modal');
         Route::get('/sales-by-master-product/subbrands', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'getSubBrands'])->name('get-subbrands');
         Route::get('/sales-by-master-product/product-types', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'getProductTypes'])->name('get-product-types');
         Route::get('/sales-by-master-product/product-sizes', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'getProductSizes'])->name('get-product-sizes');
         Route::get('/sales-by-master-product/product-variants', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'getProductVariants'])->name('get-product-variants');
         Route::get('/sales-by-master-product/product-categories', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'getProductCategories'])->name('get-product-categories');
+        Route::get('/get-brands', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'getBrands'])->name('get-brands');
         Route::get('/sales-by-platform-product', [App\Http\Controllers\Analytics\GrossProfitAnalyticsController::class, 'salesByPlatformProductReport'])->name('sales-by-platform-product');
         Route::get('/produk-platform-terlaris', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'produkPlatformTerlaris'])->name('produk-platform-terlaris');
         Route::get('/produk-internal-terlaris', [App\Http\Controllers\Analytics\ProductAnalyticsController::class, 'produkInternalTerlaris'])->name('produk-internal-terlaris');
@@ -652,12 +566,12 @@ Route::prefix('analytics')
         Route::prefix('finance')->name('finance.')->group(function () {
             Route::get('/shopee', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'shopeeAnalytics'])->name('shopee');
             Route::get('/shopee/export', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'exportShopeeAnalytics'])->name('shopee.export');
-            Route::get('/tokopedia', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'tokopediaAnalytics'])->name('tokopedia');
-            Route::get('/tokopedia/export', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'exportTokopediaAnalytics'])->name('tokopedia.export');
+            Route::get('/shopee2', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'shopee2Analytics'])->name('shopee2');
+            Route::get('/shopee2/export', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'exportShopee2Analytics'])->name('shopee2.export');
             Route::get('/tiktok', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'tiktokAnalytics'])->name('tiktok');
             Route::get('/tiktok/export', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'exportTiktokAnalytics'])->name('tiktok.export');
-            Route::get('/blibli', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'blibliAnalytics'])->name('blibli');
-            Route::get('/blibli/export', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'exportBlibliAnalytics'])->name('blibli.export');
+            Route::get('/tiktok2', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'tiktok2Analytics'])->name('tiktok2');
+            Route::get('/tiktok2/export', [App\Http\Controllers\Analytics\FinanceAnalyticsController::class, 'exportTiktok2Analytics'])->name('tiktok2.export');
         });
         
         // Offline Sales Analytics
@@ -687,9 +601,12 @@ Route::prefix('retur-pembelian')
     Route::get('/create', [App\Http\Controllers\ReturPembelianController::class, 'create'])->name('create');
     Route::post('/store', [App\Http\Controllers\ReturPembelianController::class, 'store'])->name('store');
     Route::get('/export', [App\Http\Controllers\ReturPembelianController::class, 'export'])->name('export');
+    Route::get('/get-penerimaan/{id}', [App\Http\Controllers\ReturPembelianController::class, 'getPenerimaan'])->name('get-penerimaan');
+    Route::get('/{id}/print', [App\Http\Controllers\ReturPembelianController::class, 'print'])->name('print');
+    Route::get('/{id}/edit', [App\Http\Controllers\ReturPembelianController::class, 'edit'])->name('edit');
+    Route::put('/{id}', [App\Http\Controllers\ReturPembelianController::class, 'update'])->name('update');
     Route::get('/{id}', [App\Http\Controllers\ReturPembelianController::class, 'show'])->name('show');
     Route::delete('/{id}', [App\Http\Controllers\ReturPembelianController::class, 'destroy'])->name('destroy');
-    Route::get('/get-penerimaan/{id}', [App\Http\Controllers\ReturPembelianController::class, 'getPenerimaan'])->name('get-penerimaan');
 });
 
 // Retur Penjualan Routes
@@ -699,6 +616,7 @@ Route::prefix('retur-penjualan')
     ->group(function () {
     Route::get('/', [App\Http\Controllers\ReturPenjualanController::class, 'index'])->name('index');
     Route::get('/create', [App\Http\Controllers\ReturPenjualanController::class, 'create'])->name('create');
+    Route::get('/search-orders', [App\Http\Controllers\ReturPenjualanController::class, 'searchOrders'])->name('search-orders');
     Route::post('/store', [App\Http\Controllers\ReturPenjualanController::class, 'store'])->name('store');
     Route::get('/get-order/{id}', [App\Http\Controllers\ReturPenjualanController::class, 'getOrder'])->name('get-order');
     Route::get('/export', [App\Http\Controllers\ReturPenjualanController::class, 'export'])->name('export');
@@ -756,6 +674,15 @@ Route::middleware(['auth', 'prevent-back-history', 'under.construction', 'permis
     Route::resource('product-types', App\Http\Controllers\Master\ProductTypeController::class);
     Route::resource('product-sizes', App\Http\Controllers\Master\ProductSizeController::class);
     Route::resource('product-variants', App\Http\Controllers\Master\ProductVariantController::class);
+    Route::get('products/initial-price', [App\Http\Controllers\Master\ProductInitialPriceVersionController::class, 'index'])
+        ->name('products.initial-price.index');
+    Route::get('products/{product}/initial-price', [App\Http\Controllers\Master\ProductInitialPriceVersionController::class, 'show'])
+        ->name('products.initial-price.show');
+    Route::post('products/{product}/initial-price', [App\Http\Controllers\Master\ProductInitialPriceVersionController::class, 'store'])
+        ->name('products.initial-price.store');
+    Route::get('products/export/{format}', [App\Http\Controllers\Master\ProductController::class, 'export'])
+        ->where('format', 'xlsx|csv|pdf')
+        ->name('products.export');
     Route::resource('products', App\Http\Controllers\Master\ProductController::class);
 
     // AJAX routes for cascading dropdowns
@@ -772,17 +699,6 @@ Route::prefix('api')->group(function () {
     Route::get('/check-order', [SalesController::class, 'checkOrderExists']);
     Route::get('/tax-categories', [PenerimaanController::class, 'getTaxCategories']);
     Route::get('/products', [PenerimaanController::class, 'getProducts']);
-});
-
-// Blibli Routes
-Route::prefix('sales/blibli')->name('sales.blibli.')->middleware(['auth', 'prevent-back-history', 'permission:sales.blibli'])->group(function () {
-    Route::get('/import-excel', [\App\Http\Controllers\BlibliController::class, 'importExcel'])->name('import-excel');
-    Route::post('/preview-import', [\App\Http\Controllers\BlibliController::class, 'previewImport'])->name('preview-import');
-    Route::get('/preview-import', [\App\Http\Controllers\BlibliController::class, 'showPreviewImport'])->name('show-preview-import');
-    Route::post('/process-import', [\App\Http\Controllers\BlibliController::class, 'processImport'])->name('process-import');
-    
-    // Print routes for Blibli orders (outside under.construction middleware)
-    Route::get('/orders/{id}/print', [SalesController::class, 'printOrder'])->name('order.print');
 });
 
 // Table fixed scrollbar demo route

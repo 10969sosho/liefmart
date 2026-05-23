@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'Laravel') }}</title>
+    <title>@yield('title', config('app.name', 'Laravel'))</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -40,7 +40,7 @@
             --text-color: #1F2937;
             --text-muted: #6B7280;
             --card-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.1), 0 2px 4px -1px rgba(99, 102, 241, 0.06);
-            --sidebar-width: 260px;
+            --sidebar-width: 300px;
             --header-height: 60px;
             --sidebar-bg: #FFFFFF;
             --sidebar-hover: rgba(99, 102, 241, 0.1);
@@ -69,6 +69,34 @@
             z-index: 999;
             color: var(--text-color);
             overflow-y: auto;
+        }
+        
+        .sidebar.resizing {
+            transition: none;
+        }
+        
+        .sidebar-resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 4px;
+            height: 100%;
+            cursor: col-resize;
+            background: transparent;
+            z-index: 1000;
+            transition: background 0.2s ease;
+        }
+        
+        .sidebar-resizer:hover {
+            background: rgba(99, 102, 241, 0.3);
+        }
+        
+        .sidebar-resizer.dragging {
+            background: rgba(99, 102, 241, 0.5);
+        }
+        
+        .content.resizing {
+            transition: none;
         }
         
         .content {
@@ -217,6 +245,10 @@
             
             .content.shifted {
                 margin-left: var(--sidebar-width);
+            }
+            
+            .sidebar-resizer {
+                display: none;
             }
         }
         
@@ -562,6 +594,7 @@
 </head>
 <body>
     <div class="sidebar" id="sidebar">
+        <div class="sidebar-resizer" id="sidebarResizer"></div>
         @include('components.sidebar')
     </div>
     
@@ -632,6 +665,69 @@
                 sidebarToggleBtn.addEventListener('click', function() {
                     document.getElementById('sidebar').classList.toggle('show');
                     document.getElementById('content').classList.toggle('shifted');
+                });
+            }
+            
+            // Sidebar Resizer - Drag to resize
+            const sidebarResizer = document.getElementById('sidebarResizer');
+            const sidebar = document.getElementById('sidebar');
+            const content = document.getElementById('content');
+            
+            if (sidebarResizer && sidebar && content) {
+                // Load saved sidebar width from localStorage
+                const savedWidth = localStorage.getItem('sidebarWidth');
+                if (savedWidth) {
+                    const width = parseInt(savedWidth);
+                    if (width >= 200 && width <= 500) {
+                        document.documentElement.style.setProperty('--sidebar-width', width + 'px');
+                    }
+                }
+                
+                let isResizing = false;
+                let startX = 0;
+                let startWidth = 0;
+                
+                sidebarResizer.addEventListener('mousedown', function(e) {
+                    isResizing = true;
+                    startX = e.clientX;
+                    startWidth = parseInt(window.getComputedStyle(sidebar).width, 10);
+                    
+                    sidebar.classList.add('resizing');
+                    content.classList.add('resizing');
+                    sidebarResizer.classList.add('dragging');
+                    
+                    document.body.style.cursor = 'col-resize';
+                    document.body.style.userSelect = 'none';
+                    
+                    e.preventDefault();
+                });
+                
+                document.addEventListener('mousemove', function(e) {
+                    if (!isResizing) return;
+                    
+                    const diff = e.clientX - startX;
+                    let newWidth = startWidth + diff;
+                    
+                    // Min width: 200px, Max width: 500px
+                    newWidth = Math.max(200, Math.min(500, newWidth));
+                    
+                    document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
+                });
+                
+                document.addEventListener('mouseup', function() {
+                    if (isResizing) {
+                        isResizing = false;
+                        sidebar.classList.remove('resizing');
+                        content.classList.remove('resizing');
+                        sidebarResizer.classList.remove('dragging');
+                        
+                        document.body.style.cursor = '';
+                        document.body.style.userSelect = '';
+                        
+                        // Save width to localStorage
+                        const currentWidth = parseInt(window.getComputedStyle(sidebar).width, 10);
+                        localStorage.setItem('sidebarWidth', currentWidth);
+                    }
                 });
             }
             

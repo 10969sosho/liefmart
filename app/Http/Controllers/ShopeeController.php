@@ -17,7 +17,7 @@ class ShopeeController extends Controller
      */
     public function __construct()
     {
-        $routeParam = 'shopee';
+        $routeParam = 'shopee lamourad';
         $this->platform = $this->getPlatformByRouteParam($routeParam);
     }
     
@@ -44,20 +44,20 @@ class ShopeeController extends Controller
         }
         
         // 4. Jika masih tidak ditemukan, cari berdasarkan variasi nama yang mungkin
-        // Coba cari dengan "lamourad" untuk shopee (bukan shopee2)
+        // Coba cari dengan "lamourad" untuk shopee (bukan shopee liefmarket)
         if (!$platform) {
             $platform = Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee%lamourad%'])->first();
         }
         
-        // 5. Jika masih tidak ditemukan, cari shopee tanpa angka (untuk membedakan dari shopee2)
+        // 5. Jika masih tidak ditemukan, cari shopee tanpa angka (untuk membedakan dari shopee liefmarket)
         if (!$platform) {
             $platform = Platform::whereRaw('LOWER(name) = ?', ['shopee'])->first();
         }
         
-        // 6. Jika masih tidak ditemukan, cari dengan LIKE tapi hindari shopee2
+        // 6. Jika masih tidak ditemukan, cari dengan LIKE tapi hindari shopee liefmarket
         if (!$platform) {
             $platform = Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee%'])
-                ->whereRaw('LOWER(name) NOT LIKE ?', ['%shopee2%'])
+                ->whereRaw('LOWER(name) NOT LIKE ?', ['%shopee liefmarket%'])
                 ->whereRaw('LOWER(name) NOT LIKE ?', ['%troublue%'])
                 ->first();
         }
@@ -71,7 +71,7 @@ class ShopeeController extends Controller
     }
     
     /**
-     * Tampilkan halaman import Excel Shopee
+     * Tampilkan halaman import Excel Shopee Lamourad
      */
     public function importExcel()
     {
@@ -83,7 +83,7 @@ class ShopeeController extends Controller
      */
     public function previewImport(Request $request)
     {
-        \Log::info('---------- MULAI PROSES IMPORT SHOPEE ----------');
+        \Log::info('---------- MULAI PROSES IMPORT SHOPEE LAMOURAD ----------');
         
         // Validasi file yang diupload
         try {
@@ -203,7 +203,7 @@ class ShopeeController extends Controller
             $duplicateOrdersInDatabase = $import->getDuplicateOrdersInDatabase();
             
             if (!empty($duplicateOrders)) {
-                \Log::info('Duplicate orders found: ' . count($duplicateOrders));
+                \Log::info('Duplicate orders found: ' . $duplicateOrders);
             }
             if (!empty($duplicateOrdersInFile)) {
                 \Log::info('Duplicate orders in file: ' . count($duplicateOrdersInFile));

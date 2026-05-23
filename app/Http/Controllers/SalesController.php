@@ -184,11 +184,12 @@ class SalesController extends Controller
             $query->whereDate('tanggal', '<=', $request->date_end);
         }
         
-        // Filter by platform
-        if ($request->filled('platform')) {
-            $platform = $this->resolvePlatform($request->platform);
-            if ($platform) {
-                $query->where('platform_id', $platform->id);
+        // Filter by platform - menggunakan ID platform langsung
+        if ($request->filled('platform') && $request->platform != '') {
+            $platformId = $request->platform;
+            // Validasi bahwa platform_id adalah numeric
+            if (is_numeric($platformId)) {
+                $query->where('platform_id', $platformId);
             }
         }
         
@@ -213,8 +214,12 @@ class SalesController extends Controller
         // Fetch paginated orders
         $orders = $query->orderBy('created_at', 'desc')->paginate(20);
         
+        // Get all platforms for filter dropdown
+        $platforms = Platform::whereIn('name', ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'])->orderBy('name')->get();
+        
         return view('sales.list', [
             'orders' => $orders,
+            'platforms' => $platforms,
         ]);
     }
     
@@ -224,13 +229,8 @@ class SalesController extends Controller
     public function platform($platform)
     {
         // Validasi platform yang diminta
-        if (!in_array($platform, ['shopee', 'shopee2', 'tokopedia', 'tiktok', 'tiktok2', 'blibli', 'lazada'])) {
+        if (!in_array($platform, ['shopee', 'shopee2', 'tiktok', 'tiktok2'])) {
             return redirect()->route('sales.online')->with('error', 'Platform tidak valid.');
-        }
-
-        // Untuk Tokopedia, gunakan view khusus
-        if ($platform === 'tokopedia') {
-            return view('sales.tokopedia.platform');
         }
 
         // Untuk Shopee, gunakan view khusus
@@ -251,16 +251,6 @@ class SalesController extends Controller
         // Untuk Tiktok2, gunakan view khusus
         if ($platform === 'tiktok2') {
             return view('sales.tiktok2.platform');
-        }
-
-        // Untuk Blibli, gunakan view khusus
-        if ($platform === 'blibli') {
-            return view('sales.blibli.platform');
-        }
-
-        // Untuk Lazada, gunakan view khusus
-        if ($platform === 'lazada') {
-            return view('sales.lazada.platform');
         }
 
         // Untuk platform lainnya, gunakan view umum
@@ -358,7 +348,7 @@ class SalesController extends Controller
     public function onlineInput($platform)
     {
         // Validasi platform yang diminta
-        if (!in_array($platform, ['shopee', 'shopee2', 'tokopedia', 'tiktok', 'tiktok2', 'blibli', 'lazada'])) {
+        if (!in_array($platform, ['shopee', 'shopee2', 'tiktok', 'tiktok2'])) {
             return redirect()->route('sales.online')->with('error', 'Platform tidak valid.');
         }
 
@@ -440,7 +430,7 @@ class SalesController extends Controller
     {
         // Validasi data input
         $validated = $request->validate([
-            'platform' => 'required|string|in:shopee,shopee2,tokopedia,tiktok,tiktok2,blibli,lazada',
+            'platform' => 'required|string|in:shopee,shopee2,tiktok,tiktok2',
             'no_order' => 'required|string|max:100',
             'order_date' => 'required|date',
             'day_status' => 'nullable|string|max:255', // Support multiple values separated by comma
@@ -719,7 +709,7 @@ class SalesController extends Controller
     {
         // Validasi input
         $request->validate([
-            'platform' => 'required|string|in:shopee,shopee2,tokopedia,tiktok,tiktok2,blibli,lazada',
+            'platform' => 'required|string|in:shopee,shopee2,tiktok,tiktok2',
             'order_number' => 'required|string',
         ]);
         
@@ -806,7 +796,7 @@ class SalesController extends Controller
      */
     public function printOrder($id)
     {
-        // Skip global scope untuk memastikan order Blibli bisa dicetak
+        // Skip global scope to ensure order can be printed
         $order = Order::withoutGlobalScope('mainCategory')->with([
             'platform',
             'orderItems',

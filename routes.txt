@@ -1,0 +1,21 @@
+
+   Exception 
+
+  Platform tidak ditemukan di database. Pastikan ada platform yang terdaftar.
+
+  at app/Http/Controllers/ShopeeController.php:67
+     63▕         }
+     64▕         
+     65▕         // 5. Jika benar-benar tidak ada platform di database
+     66▕         if (!$platform) {
+  ➜  67▕             throw new \Exception('Platform tidak ditemukan di database. Pastikan ada platform yang terdaftar.');
+     68▕         }
+     69▕         
+     70▕         return $platform;
+     71▕     }
+
+  1   app/Http/Controllers/ShopeeController.php:21
+      App\Http\Controllers\ShopeeController::getPlatformByRouteParam("shopee")
+
+  2   [internal]:0
+      App\Http\Controllers\ShopeeController::__construct()

@@ -4,6 +4,34 @@
     <div class="container-fluid animate__animated animate__fadeIn animate__faster">
         <!-- Basic form setup - no TomSelect -->
         <script>
+            // Global parseJsonResponse function
+            async function parseJsonResponse(response) {
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        let message = data.message || `HTTP error! Status: ${response.status}`;
+                        if (data.errors && typeof data.errors === 'object') {
+                            const firstKey = Object.keys(data.errors)[0];
+                            const firstError = firstKey ? data.errors[firstKey] : null;
+                            if (Array.isArray(firstError) && firstError[0]) {
+                                message = firstError[0];
+                            } else if (typeof firstError === 'string' && firstError) {
+                                message = firstError;
+                            }
+                        }
+                        throw new Error(message);
+                    }
+                    return data;
+                }
+
+                const status = response.status;
+                if (status === 419 || status === 401 || status === 403) {
+                    throw new Error('Sesi login habis atau tidak valid. Silakan refresh halaman lalu login ulang.');
+                }
+                throw new Error(`Respon server bukan JSON (HTTP ${status}). Silakan refresh halaman lalu coba lagi.`);
+            }
+
             // Global object to provide compatibility with any existing code
             window.barangTomSelect = {
                 on: function() { return this; },
@@ -131,11 +159,13 @@
                     barangSelect.innerHTML = '<option value="" selected disabled>Loading...</option>';
                     
                     // Fetch products from API
-                    fetch(`/api/products?main_category_id=${mainCategoryId}`)
-                        .then(response => {
-                            if (!response.ok) throw new Error('API response error');
-                            return response.json();
-                        })
+                    fetch(`/api/products?main_category_id=${mainCategoryId}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                        .then(parseJsonResponse)
                         .then(data => {
                             // Clear the select
                             barangSelect.innerHTML = '<option value="" selected disabled>-- Pilih Barang --</option>';
@@ -186,11 +216,13 @@
                     taxCategorySelect.innerHTML = '<option value="" selected disabled>Loading...</option>';
                     
                     // Fetch tax categories from API
-                    fetch(`/api/tax-categories?main_category_id=${mainCategoryId}`)
-                        .then(response => {
-                            if (!response.ok) throw new Error('API response error');
-                            return response.json();
-                        })
+                    fetch(`/api/tax-categories?main_category_id=${mainCategoryId}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                        .then(parseJsonResponse)
                         .then(data => {
                             // Clear the select
                             taxCategorySelect.innerHTML = '<option value="" selected disabled>-- Pilih Kategori Pajak --</option>';
@@ -198,7 +230,7 @@
                             if (data.success && data.tax_categories) {
                                 // Filter categories based on main category
                                 let categories = data.tax_categories;
-                                if (mainCategoryId == 2) { // KOSMETIK - only show HGN and LM
+                                if (mainCategoryId == 2) { // KOSMETIK - only show PKP and NON PKP
                                     categories = categories.filter(cat => cat.id == 3 || cat.id == 4);
                                 }
                                 
@@ -711,6 +743,7 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+
             // Reset function for tax category dropdown
             window.resetTaxCategorySelect = function() {
                 const mainCategoryId = document.getElementById('main_category_id')?.value;
@@ -723,15 +756,20 @@
                 taxCategorySelect.disabled = true;
                 
                 // Load tax categories
-                fetch(`/api/tax-categories?main_category_id=${mainCategoryId}`)
-                    .then(response => response.json())
+                fetch(`/api/tax-categories?main_category_id=${mainCategoryId}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                    .then(parseJsonResponse)
                     .then(data => {
                         taxCategorySelect.innerHTML = '<option value="" disabled selected>-- Pilih Kategori Pajak --</option>';
                         
                         if (data.success && data.tax_categories) {
                             // Filter categories based on main category
                             let categories = data.tax_categories;
-                            if (mainCategoryId == 2) { // KOSMETIK - only show HGN and LM
+                            if (mainCategoryId == 2) { // KOSMETIK - only show PKP and NON PKP
                                 categories = categories.filter(cat => cat.id == 3 || cat.id == 4);
                             }
                             
@@ -787,8 +825,13 @@
                     barangSelect.innerHTML = '<option value="" selected disabled>Loading...</option>';
                     
                     // Fetch products before initializing TomSelect
-                    fetch(`/api/products?main_category_id=${mainCategoryId}`)
-                        .then(response => response.json())
+                    fetch(`/api/products?main_category_id=${mainCategoryId}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                        .then(parseJsonResponse)
                         .then(data => {
                             // Clear select element
                             barangSelect.innerHTML = '';
@@ -927,8 +970,13 @@
                                             barangSelect.disabled = true;
                                             barangSelect.innerHTML = '<option value="" disabled selected>Loading...</option>';
                                             
-                                            fetch(`/api/products?main_category_id=${mainCategoryId}`)
-                                                .then(response => response.json())
+                                            fetch(`/api/products?main_category_id=${mainCategoryId}`, {
+                                                headers: {
+                                                    'Accept': 'application/json',
+                                                    'X-Requested-With': 'XMLHttpRequest'
+                                                }
+                                            })
+                                                .then(parseJsonResponse)
                                                 .then(data => {
                                                     // Clear select element
                                                     barangSelect.innerHTML = '';
@@ -1092,14 +1140,13 @@
             
             // Add item function
             function addItem() {
-                const barangSelect = document.getElementById('barang_id');
                 const qtyInput = document.getElementById('qty');
                 const satuanSelect = document.getElementById('satuan_id');
                 const hargaInput = document.getElementById('harga_hpp');
                 const isFreeCheckbox = document.getElementById('is_free');
                 
-                // Validation
-                if (!barangSelect.value) {
+                // Validation - use TomSelect for barang
+                if (!window.barangTomSelect || !window.barangTomSelect.getValue()) {
                     alert('Pilih barang terlebih dahulu');
                     return;
                 }
@@ -1127,10 +1174,10 @@
                     }
                 }
                 
-                // Get selected product info
-                const selectedOption = barangSelect.options[barangSelect.selectedIndex];
-                const productName = selectedOption.textContent;
-                const productId = barangSelect.value;
+                // Get selected product info using TomSelect
+                const productId = window.barangTomSelect.getValue();
+                const barangItem = window.barangTomSelect.getItem(productId);
+                const productName = barangItem ? barangItem.textContent : '';
                 const satuanName = satuanSelect.options[satuanSelect.selectedIndex].textContent;
                 
                 // Parse values safely - handle null/empty/NaN
@@ -1235,7 +1282,9 @@
                 tabelDetailBarang.querySelector('tbody').appendChild(newRow);
                 
                 // Clear form
-                barangSelect.value = '';
+                if (window.barangTomSelect) {
+                    window.barangTomSelect.clear();
+                }
                 qtyInput.value = '';
                 satuanSelect.value = '';
                 hargaInput.value = '';
@@ -1352,12 +1401,14 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
                         body: JSON.stringify(headerData)
                     });
                     
-                    const headerResult = await headerResponse.json();
+                    const headerResult = await parseJsonResponse(headerResponse);
                     
                     if (!headerResult.success) {
                         throw new Error(headerResult.message || 'Gagal mengupdate header penerimaan');
@@ -1368,12 +1419,14 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
                         body: JSON.stringify({})
                     });
                     
-                    const clearResult = await clearResponse.json();
+                    const clearResult = await parseJsonResponse(clearResponse);
                     
                     if (!clearResult.success) {
                         throw new Error(clearResult.message || 'Gagal membersihkan detail penerimaan');
@@ -1405,12 +1458,14 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
                         body: JSON.stringify(detailsData)
                     });
                     
-                    const detailsResult = await detailsResponse.json();
+                    const detailsResult = await parseJsonResponse(detailsResponse);
                     
                     if (!detailsResult.success) {
                         throw new Error(detailsResult.message || 'Gagal menyimpan detail penerimaan');
@@ -1421,19 +1476,21 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
                         body: JSON.stringify({ old_data: headerResult.old_data })
                     });
                     
-                    const finalizeResult = await finalizeResponse.json();
+                    const finalizeResult = await parseJsonResponse(finalizeResponse);
                     
                     if (!finalizeResult.success) {
                         throw new Error(finalizeResult.message || 'Gagal finalisasi update penerimaan');
                     }
                     
-                    // Success - redirect
-                    window.location.href = '{{ route("penerimaan.index") }}';
+                    // Success - redirect with success flag
+                    window.location.href = '{{ route("penerimaan.index") }}?success=1';
                     
                 } catch (error) {
                     console.error('Error:', error);

@@ -6,10 +6,11 @@ use App\Models\Order;
 use App\Models\ReturPenjualan;
 use App\Models\ReturOfflineSale;
 use App\Models\ShopeeFinancialTransaction;
-use App\Models\TokopediaFinancialTransaction;
+use App\Models\Shopee2FinancialTransaction;
+use App\Models\Tiktok2FinancialTransaction;
 use App\Models\TiktokFinancialTransaction;
-use App\Models\BlibliFinancialTransaction;
 use App\Models\FinanceOffline;
+use App\Models\MappingBarang;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -32,17 +33,27 @@ class ReturFinanceService
             $refundAmount = $this->calculateReturRefundAmount($returPenjualan);
         }
         
-        // Get original order total
-        $originalOrderTotal = $this->getOriginalOrderTotal($order);
+        // Determine platform
+        $platform = strtolower($order->platform->name ?? '');
+        
+        // Get original order total (Current Total in Finance)
+        // We prioritize getting this from the existing Financial Transaction to ensure consistency
+        // especially since OrderItem quantities might have been reduced by the return process
+        $originalOrderTotal = $this->getCurrentFinanceTotal($order, $platform);
+        
+        // Fallback if no transaction found (e.g. not yet generated)
+        if ($originalOrderTotal <= 0) {
+             // If we can't find it in finance, we reconstruct it from current items + refund amount
+             // This assumes order items have already been reduced by the return
+             $currentItemsTotal = $this->getOriginalOrderTotal($order); 
+             $originalOrderTotal = $currentItemsTotal + $refundAmount;
+        }
         
         Log::info("Processing retur finance for order {$order->order_number}", [
             'refund_amount' => $refundAmount,
-            'original_total' => $originalOrderTotal,
+            'original_total_from_finance' => $originalOrderTotal,
             'additional_deduction' => $additionalDeduction
         ]);
-        
-        // Determine platform and handle accordingly
-        $platform = strtolower($order->platform->name ?? '');
         
         if ($refundAmount >= $originalOrderTotal && $additionalDeduction == 0) {
             // SCENARIO 1: Full refund - remove payment and move to unpaid
@@ -89,6 +100,34 @@ class ReturFinanceService
     }
     
     /**
+     * Get current total from financial transaction
+     */
+    private function getCurrentFinanceTotal(Order $order, string $platform): float
+    {
+        $transaction = null;
+        switch ($platform) {
+            case 'shopee':
+                $transaction = ShopeeFinancialTransaction::where('order_id', $order->id)->first();
+                break;
+            case 'shopee2':
+                $transaction = Shopee2FinancialTransaction::where('order_id', $order->id)->first();
+                break;
+            case 'tiktok':
+                $transaction = TiktokFinancialTransaction::where('order_id', $order->id)->first();
+                break;
+            case 'tiktok2':
+                $transaction = Tiktok2FinancialTransaction::where('order_id', $order->id)->first();
+                break;
+        }
+        
+        if ($transaction) {
+            return (float) $transaction->nominal_harga;
+        }
+        
+        return 0.0;
+    }
+
+    /**
      * Handle full refund - remove financial transaction and move to unpaid
      */
     private function handleFullRefund(Order $order, string $platform)
@@ -101,14 +140,14 @@ class ReturFinanceService
                 case 'shopee':
                     ShopeeFinancialTransaction::where('order_id', $order->id)->delete();
                     break;
-                case 'tokopedia':
-                    TokopediaFinancialTransaction::where('order_id', $order->id)->delete();
+                case 'shopee2':
+                    Shopee2FinancialTransaction::where('order_id', $order->id)->delete();
                     break;
                 case 'tiktok':
                     TiktokFinancialTransaction::where('order_id', $order->id)->delete();
                     break;
-                case 'blibli':
-                    BlibliFinancialTransaction::where('order_id', $order->id)->delete();
+                case 'tiktok2':
+                    Tiktok2FinancialTransaction::where('order_id', $order->id)->delete();
                     break;
             }
             
@@ -130,38 +169,103 @@ class ReturFinanceService
         try {
             DB::beginTransaction();
             
-            // Calculate outstanding (negative for additional deduction)
-            $outstanding = -$additionalDeduction;
+            // Calculate adjusted values after return
+            $adjustedNominalHarga = max(0, $originalTotal - $refundAmount);
             
-            // Update existing financial transaction
-            $updateData = [
-                'nominal_harga' => 0, // Set price to 0 since refunded
-                'nominal_fix' => 0,   // Set final amount to 0
-                'saldo_masuk' => -$additionalDeduction, // Negative cash flow for deduction
+            // Get existing transaction to preserve discounts
+            $existingTransaction = null;
+            switch ($platform) {
+                case 'shopee':
+                    $existingTransaction = ShopeeFinancialTransaction::where('order_id', $order->id)->first();
+                    break;
+                case 'shopee2':
+                    $existingTransaction = Shopee2FinancialTransaction::where('order_id', $order->id)->first();
+                    break;
+                case 'tiktok':
+                    $existingTransaction = TiktokFinancialTransaction::where('order_id', $order->id)->first();
+                    break;
+                case 'tiktok2':
+                    $existingTransaction = Tiktok2FinancialTransaction::where('order_id', $order->id)->first();
+                    break;
+            }
+            
+            if (!$existingTransaction) {
+                Log::warning("No existing transaction found for order {$order->order_number} during partial refund");
+                DB::rollBack();
+                return;
+            }
+            
+            // Calculate total discounts from existing transaction with recalculation based on percentages
+            $totalDiscounts = 0;
+            $discountUpdates = [];
+            
+            for ($i = 1; $i <= 12; $i++) {
+                $nominalCol = "nominal_diskon{$i}";
+                $percentCol = "persentase_diskon{$i}";
+                
+                // Check if percentage exists and is valid
+                if (isset($existingTransaction->$percentCol) && $existingTransaction->$percentCol > 0) {
+                    // Recalculate nominal discount based on new adjusted price
+                    // Discount is negative, so we negate the result
+                    $newDiscount = -abs($adjustedNominalHarga * ($existingTransaction->$percentCol / 100));
+                    $discountUpdates[$nominalCol] = $newDiscount;
+                    $totalDiscounts += $newDiscount;
+                } else {
+                    // If no percentage, keep the original nominal (assuming fixed amount like voucher)
+                    // Or should we adjust proportionally? 
+                    // For now, let's keep it but ensure it doesn't exceed the price if it's a deduction
+                    $currentDiscount = $existingTransaction->$nominalCol ?? 0;
+                    $totalDiscounts += $currentDiscount;
+                }
+            }
+            
+            // Calculate adjusted nominal_fix (adjusted price - discounts + adjustment)
+            // Note: totalDiscounts is already negative
+            $adjustedNominalFix = max(0, $adjustedNominalHarga + $totalDiscounts - $additionalDeduction);
+            
+            // Calculate outstanding
+            $outstanding = $adjustedNominalFix - ($existingTransaction->saldo_masuk ?? 0);
+            
+            // Calculate adjusted quantity
+            $adjustedQty = $this->calculateAdjustedQuantity($order);
+            
+            // Update existing financial transaction with adjusted values
+            $updateData = array_merge($discountUpdates, [
+                'nominal_harga' => $adjustedNominalHarga,
+                'nominal_fix' => $adjustedNominalFix,
+                'qty' => $adjustedQty,
                 'outstanding' => $outstanding,
-                'adjustment' => -$additionalDeduction,
-                'adjustment_description' => "Retur dengan potongan tambahan: Rp " . number_format($additionalDeduction, 0, ',', '.')
-            ];
+                'adjustment' => ($existingTransaction->adjustment ?? 0) - $additionalDeduction,
+                'adjustment_description' => ($existingTransaction->adjustment_description ?? '') . 
+                    ($existingTransaction->adjustment_description ? ' | ' : '') .
+                    "Retur sebagian: Rp " . number_format($refundAmount, 0, ',', '.') . 
+                    ($additionalDeduction > 0 ? " dengan potongan tambahan: Rp " . number_format($additionalDeduction, 0, ',', '.') : '')
+            ]);
             
             switch ($platform) {
                 case 'shopee':
                     ShopeeFinancialTransaction::where('order_id', $order->id)->update($updateData);
                     break;
-                case 'tokopedia':
-                    TokopediaFinancialTransaction::where('order_id', $order->id)->update($updateData);
+                case 'shopee2':
+                    Shopee2FinancialTransaction::where('order_id', $order->id)->update($updateData);
                     break;
                 case 'tiktok':
                     TiktokFinancialTransaction::where('order_id', $order->id)->update($updateData);
                     break;
-                case 'blibli':
-                    BlibliFinancialTransaction::where('order_id', $order->id)->update($updateData);
+                case 'tiktok2':
+                    Tiktok2FinancialTransaction::where('order_id', $order->id)->update($updateData);
                     break;
             }
             
             Log::info("Updated financial transaction for partial refund", [
                 'order' => $order->order_number,
+                'original_total' => $originalTotal,
+                'refund_amount' => $refundAmount,
+                'adjusted_nominal_harga' => $adjustedNominalHarga,
+                'adjusted_nominal_fix' => $adjustedNominalFix,
+                'adjusted_qty' => $adjustedQty,
                 'outstanding' => $outstanding,
-                'adjustment' => -$additionalDeduction
+                'adjustment' => $updateData['adjustment']
             ]);
             
             DB::commit();
@@ -170,6 +274,26 @@ class ReturFinanceService
             Log::error("Error handling partial refund: " . $e->getMessage());
             throw $e;
         }
+    }
+    
+    /**
+     * Calculate adjusted quantity after returns
+     */
+    private function calculateAdjustedQuantity(Order $order): float
+    {
+        if (!$order->relationLoaded('orderItems')) {
+            $order->load('orderItems.platformProduct.mappingBarang');
+        }
+        
+        $totalAdjustedQty = 0;
+        
+        foreach ($order->orderItems as $item) {
+            // Current quantity (already reduced by returns)
+            $currentQty = (float)($item->quantity ?? 0);
+            $totalAdjustedQty += $currentQty;
+        }
+        
+        return $totalAdjustedQty;
     }
     
     /**
@@ -187,11 +311,11 @@ class ReturFinanceService
                 // Recalculate nominal based on updated subtotals
                 $newNominal = $this->recalculateInvoiceNominal($invoice);
                 
-                // Set invoice values to 0 and mark as retur_full
+                // Set invoice values to 0 and mark as refunded (retur full)
                 $invoice->update([
                     'nominal' => 0,
                     'outstanding' => 0,
-                    'status' => 'retur_full',
+                    'status' => 'refunded', // Use 'refunded' to match database enum
                     'notes' => 'Retur penuh - invoice dibatalkan'
                 ]);
             }
@@ -217,6 +341,12 @@ class ReturFinanceService
             // Get invoices related to this sale
             $invoices = $offlineSale->getInvoices();
             
+            // Get all returs for this sale
+            $returs = \App\Models\ReturOfflineSale::where('offline_sale_id', $offlineSale->id)
+                ->where('status', 'selesai')
+                ->with('details.offlineSaleItem')
+                ->get();
+            
             foreach ($invoices as $invoice) {
                 $oldNominal = $invoice->nominal;
                 
@@ -226,8 +356,15 @@ class ReturFinanceService
                     'old_nominal' => $oldNominal
                 ]);
                 
-                // Recalculate nominal based on updated subtotals (DPP)
-                $newNominalDPP = $this->recalculateInvoiceNominal($invoice);
+                // Calculate DPP Original (before retur) - tetap sama, tidak berubah
+                $dppOriginal = $this->calculateDPPOriginal($invoice, $returs);
+                
+                // Calculate retur amount (DPP yang diretur dengan diskon)
+                $returAmount = $this->calculateReturAmountForInvoice($invoice, $returs);
+                
+                // Calculate NET DPP = DPP Original - Retur Amount
+                $netDPP = max(0, $dppOriginal - $returAmount);
+                $netDPP = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPP);
                 
                 // Get tax_id from first item - refresh to get latest data
                 $firstItem = $invoice->barangKeluarItems()->with('warehouseStock')->first();
@@ -235,21 +372,20 @@ class ReturFinanceService
                     ? $firstItem->warehouseStock->tax_id 
                     : null;
                 
-                // Calculate grand total (nominal + PPN)
-                $dpp = \App\Helpers\NumberFormatter::calculateDPP($newNominalDPP);
-                $grandTotal = $dpp;
+                // Calculate grand total from NET DPP (NET DPP + PPN)
+                $grandTotal = $netDPP;
                 
                 if ($taxId == 3) {
-                    // PKP: Calculate PPN
-                    $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
-                    $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
-                    $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+                    // PKP: Calculate PPN from NET DPP
+                    $netDPP11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($netDPP);
+                    $netPPN = \App\Helpers\NumberFormatter::calculatePPN($netDPP11_12);
+                    $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($netDPP, $netPPN);
                 } else {
-                    // Non-PKP: Just round DPP
-                    $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+                    // Non-PKP: Just round NET DPP
+                    $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPP);
                 }
                 
-                // Update invoice with grand total (nominal + PPN)
+                // Update invoice with grand total (NET DPP + PPN)
                 // Set status as 'partial_refund' to indicate nominal already includes PPN
                 $updateData = [
                     'nominal' => $grandTotal,
@@ -272,7 +408,9 @@ class ReturFinanceService
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
                     'old_nominal' => $oldNominal,
-                    'new_nominal_dpp' => $newNominalDPP,
+                    'dpp_original' => $dppOriginal,
+                    'retur_amount' => $returAmount,
+                    'net_dpp' => $netDPP,
                     'new_nominal_grand_total' => $grandTotal,
                     'tax_id' => $taxId,
                     'status' => $invoice->status
@@ -302,7 +440,24 @@ class ReturFinanceService
         foreach ($returPenjualan->details as $detail) {
             $orderItem = $detail->orderItem;
             if ($orderItem) {
-                $itemRefund = $orderItem->price_after_discount * $detail->qty;
+                // Calculate price per individual unit handling package/mapping
+                $pricePerUnit = $orderItem->price_after_discount;
+                
+                $platformProduct = $orderItem->platformProduct;
+                if ($platformProduct) {
+                     $orderCreatedAt = $orderItem->order->created_at ?? $orderItem->created_at;
+                     $mappings = MappingBarang::getMappingsForOrderCreatedAt($platformProduct->id, $orderCreatedAt);
+                     
+                     if ($mappings->count() > 0) {
+                         $packageQuantity = $mappings->sum('quantity');
+                         if ($packageQuantity > 0) {
+                             $pricePerUnit = $orderItem->price_after_discount / $packageQuantity;
+                         }
+                     }
+                }
+                
+                // detail->qty is in individual units
+                $itemRefund = $pricePerUnit * $detail->qty;
                 $totalRefund += $itemRefund;
             }
         }
@@ -373,5 +528,120 @@ class ReturFinanceService
         ]);
         
         return $totalNominal;
+    }
+    
+    /**
+     * Calculate DPP Original (before retur) - tetap sama, tidak berubah
+     * Menghitung dari quantity original (current qty + returned qty)
+     */
+    private function calculateDPPOriginal(FinanceOffline $invoice, $returs): float
+    {
+        $dppOriginal = 0;
+        
+        foreach ($invoice->barangKeluarItems as $bk) {
+            if ($bk->offlineSaleItem) {
+                $osi = $bk->offlineSaleItem;
+                $currentQty = $osi->quantity;
+                $currentSubtotal = $osi->subtotal ?? 0;
+                
+                // Calculate returned qty from returs
+                $returnedQty = 0;
+                foreach ($returs as $retur) {
+                    foreach ($retur->details as $detail) {
+                        if ($detail->offline_sale_item_id == $osi->id) {
+                            $returnedQty += $detail->qty;
+                        }
+                    }
+                }
+                
+                // Calculate original quantity (before retur)
+                $originalQty = $currentQty + $returnedQty;
+                
+                // Calculate original subtotal
+                if ($currentQty > 0) {
+                    // Calculate subtotal per unit, then multiply by original qty
+                    $subtotalPerUnit = $currentSubtotal / $currentQty;
+                    $originalSubtotal = $subtotalPerUnit * $originalQty;
+                } else {
+                    // If current qty is 0, calculate from unit_price
+                    $originalSubtotal = $osi->unit_price * $originalQty;
+                }
+                
+                $dppOriginal += $originalSubtotal;
+            }
+        }
+        
+        $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($dppOriginal);
+        
+        Log::info("Calculated DPP Original", [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'dpp_original' => $dppOriginal
+        ]);
+        
+        return $dppOriginal;
+    }
+    
+    /**
+     * Calculate retur amount for invoice (DPP yang diretur dengan diskon)
+     */
+    private function calculateReturAmountForInvoice(FinanceOffline $invoice, $returs): float
+    {
+        $returAmount = 0;
+        
+        foreach ($returs as $retur) {
+            foreach ($retur->details as $detail) {
+                $offlineSaleItem = $detail->offlineSaleItem;
+                if ($offlineSaleItem) {
+                    // Check if this item belongs to this invoice
+                    $belongsToInvoice = false;
+                    foreach ($invoice->barangKeluarItems as $bk) {
+                        if ($bk->offlineSaleItem && $bk->offlineSaleItem->id == $offlineSaleItem->id) {
+                            $belongsToInvoice = true;
+                            break;
+                        }
+                    }
+                    
+                    if ($belongsToInvoice) {
+                        $qtyRetur = (float)($detail->qty ?? 0);
+                        $basePrice = (float)($offlineSaleItem->unit_price ?? 0);
+                        
+                        // Start with base total (price × qty retur)
+                        $currentTotal = $basePrice * $qtyRetur;
+                        
+                        // Apply percentage discounts (1-5) in cascading order
+                        for($i = 1; $i <= 5; $i++) {
+                            $percentField = "discount_percent_" . $i;
+                            $discountPercent = (float)($offlineSaleItem->$percentField ?? 0);
+                            if($discountPercent > 0) {
+                                $currentTotal = \App\Helpers\NumberFormatter::calculatePercentageDiscount($currentTotal, $discountPercent);
+                            }
+                        }
+                        
+                        // Apply nominal discounts (1-5) in cascading order
+                        for($i = 1; $i <= 5; $i++) {
+                            $amountField = "discount_amount_" . $i;
+                            $discountAmount = (float)($offlineSaleItem->$amountField ?? 0);
+                            if($discountAmount > 0) {
+                                $currentTotal = \App\Helpers\NumberFormatter::calculateNominalDiscount($currentTotal, $discountAmount * $qtyRetur);
+                            }
+                        }
+                        
+                        // Add to retur amount (already includes discounts)
+                        $returAmount += \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+                    }
+                }
+            }
+        }
+        
+        $returAmount = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmount);
+        
+        Log::info("Calculated retur amount for invoice", [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'retur_amount' => $returAmount
+        ]);
+        
+        return $returAmount;
     }
 }

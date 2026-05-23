@@ -71,6 +71,8 @@ class Shopee2FinanceAnalyticsExport implements FromCollection, WithHeadings, Wit
             'No Order',
             'No Invoice',
             'Nominal Harga',
+            'DPP',
+            'PPN',
             'Diskon 1',
             'Diskon 2',
             'Diskon 3',
@@ -101,12 +103,41 @@ class Shopee2FinanceAnalyticsExport implements FromCollection, WithHeadings, Wit
 
     public function map($transaction): array
     {
+        // Determine tax status
+        $taxId = null;
+        if (strpos($transaction->no_invoice, 'HPNSDA-OLK/01') !== false) {
+            $taxId = 1; // PKP - Coffee
+        } elseif (strpos($transaction->no_invoice, 'HPNSDA-OLK/02') !== false) {
+            $taxId = 2; // Non PKP - Coffee
+        } elseif (strpos($transaction->no_invoice, 'AMP/01') !== false) {
+            $taxId = 3; // PKP - Skincare
+        } elseif (strpos($transaction->no_invoice, 'AMP/02') !== false) {
+            $taxId = 4; // Non PKP - Skincare
+        } else {
+            // Extract last two digits if possible
+            if (preg_match('/\/(\d{2})/', $transaction->no_invoice, $matches)) {
+                $taxId = (int)$matches[1];
+            }
+        }
+        $isPKP = in_array($taxId, [1, 3, 5, 7]);
+        
+        $dpp = $transaction->nominal_harga;
+        $ppn = 0;
+        
+        if ($isPKP && $dpp > 0) {
+            $dppVal = $dpp / 1.11;
+            $dpp = round($dppVal, 2);
+            $ppn = round($transaction->nominal_harga - $dpp, 2);
+        }
+
         return [
             $transaction->tanggal_order ? $transaction->tanggal_order->format('Y-m-d') : '',
             $transaction->hari_order,
             $transaction->no_order,
             $transaction->no_invoice,
             $transaction->nominal_harga,
+            $dpp,
+            $ppn,
             $transaction->nominal_diskon1,
             $transaction->nominal_diskon2,
             $transaction->nominal_diskon3,

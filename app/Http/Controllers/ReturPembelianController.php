@@ -77,9 +77,12 @@ class ReturPembelianController extends Controller
     public function create()
     {
         // Display a list of penerimaan (PO) to choose from with eager loaded relations
+        // Limit to penerimaan from the last 6 months to avoid timeout and memory issues
         $penerimaanList = Penerimaan::with(['mainCategory', 'lokasi'])
             ->where('status', 'Located')
+            ->where('tanggal_penerimaan', '>=', now()->subMonths(6))
             ->orderBy('tanggal_penerimaan', 'desc')
+            ->limit(1000)
             ->get();
 
         return view('retur.pembelian.create', compact('penerimaanList'));
@@ -99,12 +102,13 @@ class ReturPembelianController extends Controller
             'mainCategory',
             'taxCategory',
             'lokasi'
-        ])->where('penerimaan.id', $id)->firstOrFail();
+        ])->where('id', $id)->firstOrFail();
         
         // Get available stock quantities for each product from warehouse_stock
         foreach ($penerimaan->details as $detail) {
             // Get all warehouse stock records for this penerimaan detail with qty > 0
-            $stocks = WarehouseStock::where('warehouse_stock.penerimaan_detail_id', $detail->id)
+            $stocks = WarehouseStock::withoutGlobalScopes()
+                ->where('warehouse_stock.penerimaan_detail_id', $detail->id)
                 ->where('warehouse_stock.qty', '>', 0)
                 ->orderBy('warehouse_stock.created_at', 'asc')
                 ->get();
@@ -192,7 +196,7 @@ class ReturPembelianController extends Controller
             ]);
             
             // Verify penerimaan exists
-            $penerimaan = Penerimaan::where('penerimaan.id', $request->penerimaan_id)->first();
+            $penerimaan = Penerimaan::where('id', $request->penerimaan_id)->first();
             if (!$penerimaan) {
                 \Log::error('ReturPembelianController@store - Penerimaan not found', ['penerimaan_id' => $request->penerimaan_id]);
                 throw new \Exception('Penerimaan dengan ID tersebut tidak ditemukan.');
@@ -203,7 +207,7 @@ class ReturPembelianController extends Controller
             \Log::info('Generated kode retur: ' . $kodeRetur);
             
             // Get all PO products
-            $poProductDetails = PenerimaanDetail::where('penerimaan_detail.penerimaan_id', $request->penerimaan_id)->get();
+            $poProductDetails = PenerimaanDetail::where('penerimaan_id', $request->penerimaan_id)->get();
             $totalPoProductsCount = $poProductDetails->count();
             
             // Count total PO quantity for each product
@@ -269,7 +273,7 @@ class ReturPembelianController extends Controller
             // Process each detail item (only valid ones)
             foreach ($validDetails as $index => $detail) {
                 // Verify penerimaan detail exists
-                $penerimaanDetail = PenerimaanDetail::where('penerimaan_detail.id', $detail['penerimaan_detail_id'])->first();
+                $penerimaanDetail = PenerimaanDetail::where('id', $detail['penerimaan_detail_id'])->first();
                 if (!$penerimaanDetail) {
                     \Log::error('ReturPembelianController@store - PenerimaanDetail not found', [
                         'penerimaan_detail_id' => $detail['penerimaan_detail_id']
@@ -334,10 +338,245 @@ class ReturPembelianController extends Controller
      */
     public function show($id)
     {
-        $returPembelian = ReturPembelian::with(['penerimaan', 'user', 'details.product', 'details.satuan', 'details.penerimaanDetail'])
-            ->where('retur_pembelians.id', $id)->firstOrFail();
+        $returPembelian = ReturPembelian::with(['penerimaan.taxCategory', 'user', 'details.product', 'details.satuan', 'details.penerimaanDetail'])
+            ->where('id', $id)->firstOrFail();
 
         return view('retur.pembelian.show', compact('returPembelian'));
+    }
+
+    /**
+     * Print the retur pembelian invoice.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function print($id)
+    {
+        $returPembelian = ReturPembelian::with([
+            'penerimaan.taxCategory',
+            'penerimaan.mainCategory',
+            'penerimaan.lokasi',
+            'user',
+            'details.product',
+            'details.satuan',
+            'details.penerimaanDetail'
+        ])->where('id', $id)->firstOrFail();
+
+        return view('retur.pembelian.print', compact('returPembelian'));
+    }
+
+    /**
+     * Show the form for editing the specified retur pembelian.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function edit($id)
+    {
+        $returPembelian = ReturPembelian::with([
+            'penerimaan.mainCategory',
+            'penerimaan.lokasi',
+            'details.penerimaanDetail.product',
+            'details.penerimaanDetail.satuan',
+            'details.product',
+            'details.satuan'
+        ])->where('id', $id)->firstOrFail();
+
+        // Calculate available stock for each retur detail
+        foreach ($returPembelian->details as $returDetail) {
+            if ($returDetail->penerimaanDetail) {
+                $penerimaanDetail = $returDetail->penerimaanDetail;
+                $currentReturQty = $returDetail->qty;
+                
+                // Get available warehouse stock for this specific penerimaan_detail_id and product_id
+                $availableStock = WarehouseStock::withoutGlobalScopes()
+                    ->where('warehouse_stock.penerimaan_detail_id', $penerimaanDetail->id)
+                    ->where('warehouse_stock.product_id', $penerimaanDetail->product_id)
+                    ->where('warehouse_stock.qty', '>', 0)
+                    ->sum('warehouse_stock.qty');
+                
+                // Add back the current return qty since we're editing (this qty will be restored)
+                $returDetail->available_stock = $availableStock + $currentReturQty;
+            }
+        }
+
+        return view('retur.pembelian.edit', compact('returPembelian'));
+    }
+
+    /**
+     * Update the specified retur pembelian in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function update(Request $request, $id)
+    {
+        \Log::info('ReturPembelianController@update - Start', ['request' => $request->all(), 'id' => $id]);
+        
+        $returPembelian = ReturPembelian::with('details')->where('id', $id)->firstOrFail();
+
+        // Validasi field-field utama
+        $baseValidator = \Validator::make($request->all(), [
+            'tanggal_retur' => 'required|date',
+            'catatan' => 'nullable|string',
+            'details' => 'required|array',
+        ]);
+        
+        if ($baseValidator->fails()) {
+            \Log::error('ReturPembelianController@update - Base validation failed', ['errors' => $baseValidator->errors()->toArray()]);
+            return back()->withErrors($baseValidator)->withInput();
+        }
+        
+        // Filter hanya detail dengan qty > 0
+        $validDetails = [];
+        $anyValidItem = false;
+        
+        if (isset($request->details) && is_array($request->details)) {
+            foreach ($request->details as $index => $detail) {
+                if (isset($detail['qty']) && floatval($detail['qty']) > 0) {
+                    $validDetails[$index] = $detail;
+                    $anyValidItem = true;
+                }
+            }
+        }
+        
+        if (!$anyValidItem) {
+            \Log::error('ReturPembelianController@update - No valid items with qty > 0');
+            return back()->with('error', 'Anda harus memasukkan jumlah retur minimal 1 barang.')->withInput();
+        }
+        
+        // Validasi detail-detail yang valid saja
+        $detailRules = [];
+        
+        foreach ($validDetails as $index => $detail) {
+            $detailRules["details.{$index}.penerimaan_detail_id"] = 'required|exists:penerimaan_detail,id';
+            $detailRules["details.{$index}.product_id"] = 'required|exists:products,id';
+            $detailRules["details.{$index}.qty"] = 'required|numeric|min:0.01';
+            $detailRules["details.{$index}.satuan_id"] = 'required|exists:satuans,id';
+            $detailRules["details.{$index}.alasan"] = 'required|string';
+        }
+        
+        $detailValidator = \Validator::make($request->all(), $detailRules);
+        
+        if ($detailValidator->fails()) {
+            \Log::error('ReturPembelianController@update - Detail validation failed', ['errors' => $detailValidator->errors()->toArray()]);
+            return back()->withErrors($detailValidator)->withInput();
+        }
+
+        try {
+            DB::beginTransaction();
+            
+            // Restore stock from old details
+            foreach ($returPembelian->details as $oldDetail) {
+                $this->restoreStock($oldDetail->product_id, $oldDetail->qty, $oldDetail->penerimaan_detail_id);
+            }
+            
+            // Delete old details
+            $returPembelian->details()->delete();
+            
+            // Update header
+            $returPembelian->update([
+                'tanggal_retur' => $request->tanggal_retur,
+                'catatan' => $request->catatan,
+            ]);
+            
+            // Get all PO products to determine retur type
+            $poProductDetails = PenerimaanDetail::where('penerimaan_id', $returPembelian->penerimaan_id)->get();
+            $totalPoProductsCount = $poProductDetails->count();
+            
+            // Count total PO quantity for each product
+            $poTotalQtyPerProduct = [];
+            foreach ($poProductDetails as $poDetail) {
+                if (!isset($poTotalQtyPerProduct[$poDetail->product_id])) {
+                    $poTotalQtyPerProduct[$poDetail->product_id] = 0;
+                }
+                $poTotalQtyPerProduct[$poDetail->product_id] += $poDetail->qty;
+            }
+            
+            // Count return quantities for each product
+            $returQtyPerProduct = [];
+            $returProductCount = 0;
+            $allProductsFullyReturned = true;
+            
+            foreach ($validDetails as $detail) {
+                $productId = $detail['product_id'];
+                if (!isset($returQtyPerProduct[$productId])) {
+                    $returQtyPerProduct[$productId] = 0;
+                    $returProductCount++;
+                }
+                $returQtyPerProduct[$productId] += floatval($detail['qty']);
+            }
+            
+            // Check if any product is not fully returned
+            foreach ($poTotalQtyPerProduct as $productId => $totalQty) {
+                $returQty = $returQtyPerProduct[$productId] ?? 0;
+                if ($returQty < $totalQty) {
+                    $allProductsFullyReturned = false;
+                    break;
+                }
+            }
+            
+            // Determine retur type
+            $tipeRetur = ($returProductCount == $totalPoProductsCount && $allProductsFullyReturned) 
+                ? ReturPembelian::TIPE_FULL 
+                : ReturPembelian::TIPE_SEBAGIAN;
+            
+            $returPembelian->update(['tipe_retur' => $tipeRetur]);
+            
+            // Create new details and reduce stock
+            foreach ($validDetails as $detail) {
+                $penerimaanDetail = PenerimaanDetail::where('id', $detail['penerimaan_detail_id'])->first();
+                if (!$penerimaanDetail) {
+                    throw new \Exception('Detail penerimaan dengan ID ' . $detail['penerimaan_detail_id'] . ' tidak ditemukan.');
+                }
+
+                // Get available warehouse stock for this detail
+                $warehouseStock = WarehouseStock::withoutGlobalScopes()
+                    ->where('warehouse_stock.penerimaan_detail_id', $detail['penerimaan_detail_id'])
+                    ->where('warehouse_stock.product_id', $detail['product_id'])
+                    ->where('warehouse_stock.qty', '>', 0)
+                    ->orderBy('warehouse_stock.created_at', 'asc')
+                    ->first();
+                
+                if (!$warehouseStock || $warehouseStock->qty < $detail['qty']) {
+                    throw new \Exception('Stok tidak cukup untuk produk ' . ($penerimaanDetail->product->name ?? 'N/A'));
+                }
+
+                // Create detail record
+                ReturPembelianDetail::create([
+                    'retur_pembelian_id' => $returPembelian->id,
+                    'penerimaan_detail_id' => $detail['penerimaan_detail_id'],
+                    'product_id' => $detail['product_id'],
+                    'qty' => $detail['qty'],
+                    'satuan_id' => $detail['satuan_id'],
+                    'alasan' => $detail['alasan'] ?? null,
+                ]);
+                
+                // Reduce stock
+                $this->reduceStock(
+                    $detail['product_id'], 
+                    $detail['qty'], 
+                    $detail['penerimaan_detail_id'], 
+                    $warehouseStock->id, 
+                    $returPembelian->id, 
+                    $returPembelian->tanggal_retur
+                );
+            }
+            
+            DB::commit();
+            \Log::info('Retur Pembelian update successfully committed');
+
+            return redirect()->route('retur-pembelian.show', $returPembelian->id)
+                ->with('success', 'Retur pembelian berhasil diperbarui.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error updating Retur Pembelian: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+            return back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage())->withInput();
+        }
     }
 
     /**
@@ -348,7 +587,7 @@ class ReturPembelianController extends Controller
      */
     public function destroy($id)
     {
-        $returPembelian = ReturPembelian::with('details')->where('retur_pembelians.id', $id)->firstOrFail();
+        $returPembelian = ReturPembelian::with('details')->where('id', $id)->firstOrFail();
 
         try {
             DB::beginTransaction();
@@ -403,7 +642,7 @@ class ReturPembelianController extends Controller
         ]);
         
         // Get the product to verify it exists
-        $product = Product::where('products.id', $productId)->first();
+        $product = Product::where('id', $productId)->first();
         if (!$product) {
             \Log::error('reduceStock - Product not found', ['product_id' => $productId]);
             throw new \Exception("Produk dengan ID {$productId} tidak ditemukan.");
@@ -411,7 +650,8 @@ class ReturPembelianController extends Controller
         
         // If a specific warehouse stock ID is provided, use that one
         if ($warehouseStockId) {
-            $stock = WarehouseStock::where('warehouse_stock.id', $warehouseStockId)
+            $stock = WarehouseStock::withoutGlobalScopes()
+                ->where('warehouse_stock.id', $warehouseStockId)
                 ->where('warehouse_stock.product_id', $productId)
                 ->where('warehouse_stock.penerimaan_detail_id', $penerimaanDetailId)
                 ->where('warehouse_stock.qty', '>', 0)
@@ -456,7 +696,8 @@ class ReturPembelianController extends Controller
         
         // If no specific ID provided, fall back to the original FIFO method
         // Get warehouse stock connected to the penerimaan_detail_id
-        $warehouseStocks = WarehouseStock::where('warehouse_stock.product_id', $productId)
+        $warehouseStocks = WarehouseStock::withoutGlobalScopes()
+            ->where('warehouse_stock.product_id', $productId)
             ->where('warehouse_stock.penerimaan_detail_id', $penerimaanDetailId)
             ->where('warehouse_stock.qty', '>', 0)
             ->orderBy('warehouse_stock.created_at', 'asc')    // FIFO berdasarkan tanggal penerimaan
@@ -550,7 +791,8 @@ class ReturPembelianController extends Controller
         
         // Find the oldest warehouse stock entry for this product and penerimaan_detail_id
         // Or create a new one if none exists
-        $warehouseStock = WarehouseStock::where('warehouse_stock.product_id', $productId)
+        $warehouseStock = WarehouseStock::withoutGlobalScopes()
+            ->where('warehouse_stock.product_id', $productId)
             ->where('warehouse_stock.penerimaan_detail_id', $penerimaanDetailId)
             ->orderBy('warehouse_stock.created_at', 'asc')
             ->first();
@@ -639,7 +881,29 @@ class ReturPembelianController extends Controller
         $exportData = [];
         foreach ($returPembelians as $retur) {
             foreach ($retur->details as $detail) {
-                $hargaHpp = $detail->penerimaanDetail ? $detail->penerimaanDetail->harga_hpp : 0;
+                // Calculate harga per unit after tiered discounts
+                $hargaHpp = 0;
+                if ($detail->penerimaanDetail) {
+                    $penerimaanDetail = $detail->penerimaanDetail;
+                    if ($penerimaanDetail->qty > 0 && $penerimaanDetail->subtotal > 0) {
+                        $hargaHpp = $penerimaanDetail->subtotal / $penerimaanDetail->qty;
+                    } else {
+                        // Fallback: calculate from harga_hpp with discounts
+                        $hargaHpp = $penerimaanDetail->harga_hpp;
+                        for ($i = 1; $i <= 5; $i++) {
+                            $diskonPersen = $penerimaanDetail->{"diskon_persen_$i"} ?? 0;
+                            if ($diskonPersen > 0) {
+                                $hargaHpp = $hargaHpp * (1 - $diskonPersen / 100);
+                            }
+                        }
+                        for ($i = 1; $i <= 5; $i++) {
+                            $diskonNominal = $penerimaanDetail->{"diskon_nominal_$i"} ?? 0;
+                            if ($diskonNominal > 0 && $penerimaanDetail->qty > 0) {
+                                $hargaHpp = $hargaHpp - ($diskonNominal / $penerimaanDetail->qty);
+                            }
+                        }
+                    }
+                }
                 $totalNominal = $hargaHpp * $detail->qty;
                 
                 $exportData[] = [

@@ -103,7 +103,7 @@ public function shopeeFinancialTransactions()
      */
     public function tiktokFinancialTransactions()
     {
-        return $this->hasMany('App\Models\TiktokFinancialTransaction');
+        return $this->hasMany(TiktokFinancialTransaction::class);
     }
     
     /**
@@ -114,30 +114,6 @@ public function shopeeFinancialTransactions()
         return $this->hasMany(Tiktok2FinancialTransaction::class);
     }
     
-    /**
-     * Relation to Tokopedia financial transactions
-     */
-    public function tokopediaFinancialTransactions()
-    {
-        return $this->hasMany('App\Models\TokopediaFinancialTransaction');
-    }
-    
-    /**
-     * Relation to Blibli financial transactions
-     */
-    public function blibliFinancialTransactions()
-    {
-        return $this->hasMany('App\Models\BlibliFinancialTransaction');
-    }
-    
-    /**
-     * Relation to Lazada financial transactions
-     */
-    public function lazadaFinancialTransactions()
-    {
-        return $this->hasMany(LazadaFinancialTransaction::class);
-    }
-
     /**
      * Relation to retur penjualan (sales returns)
      */
@@ -193,6 +169,87 @@ public function shopeeFinancialTransactions()
         
         // If total returned quantity equals or exceeds original quantity, this is fully returned
         return $totalReturnedQuantity >= $totalOriginalQuantity && $totalReturnedQuantity > 0;
+    }
+    
+    /**
+     * Calculate adjusted total value after returns
+     * Returns the total value of remaining items (original - returned)
+     */
+    public function getAdjustedTotalValue(): float
+    {
+        if (!$this->relationLoaded('orderItems')) {
+            $this->load('orderItems.platformProduct.mappingBarang');
+        }
+        
+        $totalValue = 0;
+        
+        foreach ($this->orderItems as $item) {
+            // Current quantity (already reduced by returns)
+            $currentQty = (float)($item->quantity ?? 0);
+            $price = (float)($item->price_after_discount ?? 0);
+            
+            $totalValue += $currentQty * $price;
+        }
+        
+        return $totalValue;
+    }
+    
+    /**
+     * Calculate adjusted total quantity after returns
+     * Returns the total quantity of remaining items
+     */
+    public function getAdjustedTotalQuantity(): float
+    {
+        if (!$this->relationLoaded('orderItems')) {
+            $this->load('orderItems');
+        }
+        
+        $totalQty = 0;
+        
+        foreach ($this->orderItems as $item) {
+            // Current quantity (already reduced by returns)
+            $currentQty = (float)($item->quantity ?? 0);
+            $totalQty += $currentQty;
+        }
+        
+        return $totalQty;
+    }
+    
+    /**
+     * Calculate returned total value
+     * Returns the total value of returned items
+     */
+    public function getReturnedTotalValue(): float
+    {
+        if (!$this->relationLoaded('orderItems')) {
+            $this->load('orderItems.platformProduct.mappingBarang');
+        }
+        
+        $returnedValue = 0;
+        
+        foreach ($this->orderItems as $item) {
+            // Calculate returned quantity for this item
+            $returnedQuantityIndividual = \App\Models\ReturPenjualanDetail::where('order_item_id', $item->id)
+                ->whereHas('returPenjualan', function($q) { 
+                    $q->whereIn('status', ['draft', 'selesai']); 
+                })
+                ->sum('qty');
+            
+            // Convert individual retur quantity back to package quantity
+            $packageQuantity = 1;
+            if ($item->platformProduct && $item->platformProduct->mappingBarang && $item->platformProduct->mappingBarang->count() > 0) {
+                $packageQuantity = $item->platformProduct->mappingBarang
+                    ->where('is_active', true)
+                    ->sum('quantity');
+            }
+            
+            $returnedQuantity = $packageQuantity > 0 ? $returnedQuantityIndividual / $packageQuantity : $returnedQuantityIndividual;
+            $price = (float)($item->price_after_discount ?? 0);
+            
+            $returnedValue += $returnedQuantity * $price;
+        }
+        
+        return $returnedValue;
     }
 
     /**

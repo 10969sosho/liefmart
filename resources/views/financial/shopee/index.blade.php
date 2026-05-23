@@ -5,8 +5,8 @@
     <!-- Page Header -->
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
-            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platform }}</h1>
-            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platform }}</p>
+            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platformLabel }}</h1>
+            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platformLabel }}</p>
         </div>
         <div class="col-md-6 text-end">
             <div class="btn-group shadow-sm" role="group">
@@ -45,7 +45,7 @@
     </div>
     @endif
 
-    @if(session('skipped_reasons'))
+    @if(session('shopee_skipped_reasons'))
     <div class="alert alert-warning shadow-sm" role="alert">
         <div class="d-flex align-items-center mb-2">
             <i class="fas fa-exclamation-triangle me-2"></i>
@@ -56,7 +56,7 @@
         </div>
         <div class="collapse" id="skippedReasons">
             <ul class="mb-0 ps-4">
-                @foreach(session('skipped_reasons') as $reason)
+                @foreach(session('shopee_skipped_reasons') as $reason)
                     <li>{{ $reason }}</li>
                 @endforeach
             </ul>
@@ -246,7 +246,7 @@
                                         <span class="badge bg-danger">Belum Bayar</span>
                                     </td>
                                     <td class="text-center">
-                                        <a href="{{ route('finance.shopee.manual', ['order_id' => $order->id]) }}" class="btn btn-sm btn-primary">
+                                        <a href="{{ route('finance.'.$platform.'.manual', ['order_id' => $order->id]) }}" class="btn btn-sm btn-primary">
                                             <i class="fas fa-plus-circle me-1"></i> Input Pembayaran
                                         </a>
                                     </td>
@@ -513,10 +513,12 @@
                                     </div>
                                 </td>
                                 <td class="text-end fw-bold">
-                                    @if($transaction->outstanding > 0)
+                                    @if(abs($transaction->outstanding) <= 0.01)
+                                        <span class="badge bg-success text-white">Lunas</span>
+                                    @elseif($transaction->outstanding > 0)
                                         <span class="badge bg-danger text-white">Rp {{ number_format($transaction->outstanding, 0, ',', '.') }}</span>
                                     @else
-                                        <span class="badge bg-success text-white">Lunas</span>
+                                        <span class="badge bg-warning text-dark">Rp {{ number_format($transaction->outstanding, 0, ',', '.') }}</span>
                                     @endif
                                 </td>
                                 <td class="text-end pe-3">

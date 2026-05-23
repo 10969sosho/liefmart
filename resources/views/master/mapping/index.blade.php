@@ -122,9 +122,7 @@
     }
     
     .platform-shopee { background: #fbbf24; color: #92400e; }
-    .platform-tokopedia { background: #10b981; color: #064e3b; }
     .platform-tiktok { background: #3b82f6; color: #1e3a8a; }
-    .platform-blibli { background: #8b5cf6; color: #4c1d95; }
     
     .product-variant {
         color: #6b7280;
@@ -369,9 +367,14 @@
             <h2 class="mb-1" style="color: #1f2937; font-weight: 700;">Mapping Produk</h2>
             <p class="text-muted mb-0">Kelola mapping produk platform dengan produk master</p>
         </div>
-        <a href="{{ route('master.mapping.create') }}" class="btn btn-primary" style="background: #7c3aed; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 500;">
-            <i class="fas fa-plus me-2"></i> Tambah Mapping
-        </a>
+        <div class="d-flex gap-2">
+            <a href="{{ route('master.mapping.export.excel', request()->query()) }}" class="btn btn-success" style="border: none; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 500;">
+                <i class="fas fa-file-excel me-2"></i> Export All
+            </a>
+            <a href="{{ route('master.mapping.create') }}" class="btn btn-primary" style="background: #7c3aed; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 500;">
+                <i class="fas fa-plus me-2"></i> Tambah Mapping
+            </a>
+        </div>
     </div>
 
     <!-- Simple Statistics -->
@@ -532,7 +535,10 @@
                                         
                                         @if($hasMapping)
                                             <span class="badge bg-success" style="cursor: pointer;" 
-                                                  onclick="showMappingDetail({{ $platformProduct->id }}, '{{ $platformProduct->platform_product_name }}', {{ $mappingCount }})">
+                                                  data-name="{{ $platformProduct->platform_product_name }}"
+                                                  data-id="{{ $platformProduct->id }}"
+                                                  data-count="{{ $mappingCount }}"
+                                                  onclick="handleShowMappingDetail(this)">
                                                 <i class="fas fa-check"></i> Sudah Mapping ({{ $mappingCount }})
                                             </span>
                                         @else
@@ -548,7 +554,10 @@
                                                     $activeMapping = $platformProduct->mappingBarang->where('is_active', true)->first();
                                                 @endphp
                                                 <button type="button" class="btn btn-sm btn-outline-info" 
-                                                        onclick="showMappingDetail({{ $platformProduct->id }}, '{{ $platformProduct->platform_product_name }}', {{ $mappingCount }})"
+                                                        data-name="{{ $platformProduct->platform_product_name }}"
+                                                        data-id="{{ $platformProduct->id }}"
+                                                        data-count="{{ $mappingCount }}"
+                                                        onclick="handleShowMappingDetail(this)"
                                                         title="Lihat Detail Mapping">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
@@ -690,6 +699,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    // Function to handle show mapping detail click
+    window.handleShowMappingDetail = function(element) {
+        const id = element.getAttribute('data-id');
+        const name = element.getAttribute('data-name');
+        const count = element.getAttribute('data-count');
+        showMappingDetail(id, name, count);
+    };
+
     // Function to show mapping detail
     window.showMappingDetail = function(platformProductId, platformProductName, mappingCount) {
         // Update modal title

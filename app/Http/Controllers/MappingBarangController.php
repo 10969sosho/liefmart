@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\MappingBarangExport;
+use App\Models\User;
 use App\Models\MappingBarang;
 use App\Models\Platform;
 use App\Models\PlatformProduct;
 use App\Models\Product;
 use App\Models\MappingBarangHistory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
 
 class MappingBarangController extends Controller
 {
@@ -62,13 +67,16 @@ class MappingBarangController extends Controller
         }
     
         // Ambil semua platform untuk dropdown filter - bypass scope dan pastikan tidak ada duplikat
-        $platforms = Platform::withoutGlobalScopes()->distinct()->get();
+        $platforms = Platform::withoutGlobalScopes()
+            ->whereIn('name', ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'])
+            ->distinct()
+            ->get();
     
         // Debug: Cek data di database - bypass scope
         $totalPlatformProducts = PlatformProduct::withoutGlobalScopes()->count();
         $totalPlatforms = Platform::withoutGlobalScopes()->count();
         
-        \Log::info('Database Debug', [
+        Log::info('Database Debug', [
             'total_platform_products' => $totalPlatformProducts,
             'total_platforms' => $totalPlatforms,
             'platforms_list' => Platform::withoutGlobalScopes()->pluck('name')->toArray()
@@ -79,7 +87,7 @@ class MappingBarangController extends Controller
 
         // Debug: Log data untuk troubleshooting
         $normalizedSearch = $search ? preg_replace('/[\s\+\-]+/', ' ', trim($search)) : null;
-        \Log::info('MappingBarangController Debug', [
+        Log::info('MappingBarangController Debug', [
             'platform' => $platform,
             'search' => $search,
             'normalized_search' => $normalizedSearch,
@@ -96,7 +104,7 @@ class MappingBarangController extends Controller
                 ->where('is_active', true)
                 ->with('platformProduct')
                 ->first();
-            \Log::info('Debug: Check mapping for platform_product_id 4642', [
+            Log::info('Debug: Check mapping for platform_product_id 4642', [
                 'mapping_exists' => $testMapping !== null,
                 'mapping_id' => $testMapping ? $testMapping->id : null,
                 'platform_product_name' => $testMapping && $testMapping->platformProduct ? $testMapping->platformProduct->platform_product_name : null,
@@ -105,7 +113,7 @@ class MappingBarangController extends Controller
         }
 
         // Debug: Pastikan data yang dikirim ke view benar
-        \Log::info('View Data Debug', [
+        Log::info('View Data Debug', [
             'platformProducts_type' => gettype($platformProducts),
             'platformProducts_count' => is_countable($platformProducts) ? count($platformProducts) : 'Not countable',
             'platformProducts_class' => get_class($platformProducts),
@@ -120,6 +128,13 @@ class MappingBarangController extends Controller
             'search' => $search,
             'variant' => $variant,
         ]);
+    }
+
+    public function exportExcel(Request $request)
+    {
+        $filename = 'mapping-produk-' . now()->format('Y-m-d_His') . '.xlsx';
+
+        return Excel::download(new MappingBarangExport($request), $filename);
     }
 
     /**
@@ -155,14 +170,16 @@ class MappingBarangController extends Controller
         public function destroyAll($platformProductId)
     {
         // Check if user has permission to edit/delete mapping
-        if (!auth()->user()->canEdit()) {
+        /** @var User $user */
+        $user = auth()->user();
+        if (!$user->canEdit()) {
             return redirect()->route('master.mapping.index')
                 ->with('error', 'Anda tidak memiliki izin untuk menghapus data.');
         }
 
         try {
             // Start a database transaction
-            \DB::beginTransaction();
+            DB::beginTransaction();
             
             // Verifikasi platform product exists
             $platformProduct = PlatformProduct::findOrFail($platformProductId);
@@ -171,7 +188,7 @@ class MappingBarangController extends Controller
             $productName = $platformProduct->platform_product_name;
             
             // Log the deletion attempt
-            \Log::info('Attempting to delete mapping and platform product', [
+            Log::info('Attempting to delete mapping and platform product', [
                 'platform_product_id' => $platformProductId,
                 'product_name' => $productName,
                 'user_id' => auth()->id(),
@@ -180,23 +197,23 @@ class MappingBarangController extends Controller
             
             // Hapus semua mapping yang terkait
             $mappingsDeleted = MappingBarang::where('platform_product_id', $platformProductId)->delete();
-            \Log::info('Mappings deleted', ['count' => $mappingsDeleted]);
+            Log::info('Mappings deleted', ['count' => $mappingsDeleted]);
             
             // Hapus juga platform product itu sendiri
             $platformProduct->delete();
-            \Log::info('Platform product deleted', ['id' => $platformProductId]);
+            Log::info('Platform product deleted', ['id' => $platformProductId]);
             
             // Commit the transaction
-            \DB::commit();
+            DB::commit();
             
             return redirect()->route('master.mapping.index')
                 ->with('success', 'Semua mapping untuk produk ' . $productName . ' berhasil dihapus.');
         } catch (\Exception $e) {
             // Rollback the transaction if something goes wrong
-            \DB::rollBack();
+            DB::rollBack();
             
             // Log the error
-            \Log::error('Error deleting mapping', [
+            Log::error('Error deleting mapping', [
                 'platform_product_id' => $platformProductId,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -239,7 +256,7 @@ public function create(Request $request)
 public function store(Request $request)
 {
     // Log incoming request data for debugging
-    \Log::info('Mapping store request data', [
+    Log::info('Mapping store request data', [
         'platform_id' => $request->platform_id,
         'platform_product_name' => $request->platform_product_name,
         'variant' => $request->variant,
@@ -261,9 +278,9 @@ public function store(Request $request)
             'quantity' => 'required|array',
             'quantity.*' => 'required|numeric|min:0.01',
         ]);
-        \Log::info('Validation passed successfully');
+        Log::info('Validation passed successfully');
     } catch (\Illuminate\Validation\ValidationException $e) {
-        \Log::error('Validation failed', [
+        Log::error('Validation failed', [
             'errors' => $e->errors(),
             'request_data' => $request->all()
         ]);
@@ -273,7 +290,7 @@ public function store(Request $request)
     $transactionCommitted = false; // Flag untuk track apakah transaction sudah di-commit
     try {
         // Mulai transaksi database
-        \DB::beginTransaction();
+        DB::beginTransaction();
         
         // Cek apakah platform product sudah ada
         // Handle variant null/empty string properly - trim untuk menghindari masalah spasi
@@ -305,7 +322,7 @@ public function store(Request $request)
         }
         
         // Debug log dengan informasi lebih detail
-        \Log::info('Store mapping debug', [
+        Log::info('Store mapping debug', [
             'platform_id' => $request->platform_id,
             'platform_product_name' => $request->platform_product_name,
             'variant_request' => $request->variant,
@@ -321,7 +338,7 @@ public function store(Request $request)
             $hasPreviewData = session('preview_data') !== null;
             $fromAutoCreate = $request->has('from_auto_create') && $request->from_auto_create == '1';
             
-            \Log::info('Platform product already has active mapping', [
+            Log::info('Platform product already has active mapping', [
                 'platform_product_id' => $platformProduct->id,
                 'existing_mappings_count' => $existingMappings->count(),
                 'has_preview_data' => $hasPreviewData,
@@ -331,7 +348,7 @@ public function store(Request $request)
             // Jika ini dari auto-create, cek apakah perlu update atau buat versi baru
             // Prioritas: from_auto_create lebih tinggi dari preview_data
             if ($fromAutoCreate) {
-                \Log::info('[AUTO-MAPPING] Processing auto-create mapping with existing active mapping', [
+                Log::info('[AUTO-MAPPING] Processing auto-create mapping with existing active mapping', [
                     'platform_product_id' => $platformProduct->id,
                     'platform_product_name' => $platformProduct->platform_product_name,
                     'variant' => $platformProduct->variant,
@@ -345,14 +362,14 @@ public function store(Request $request)
                 // Cukup cek satu mapping karena semua mapping share platform_product_id yang sama
                 $hasUsedMappings = $existingMappings->isNotEmpty() && $existingMappings->first()->hasBeenUsedInSales();
                 
-                \Log::info('[AUTO-MAPPING] Check if mapping used in sales', [
+                Log::info('[AUTO-MAPPING] Check if mapping used in sales', [
                     'platform_product_id' => $platformProduct->id,
                     'has_used_mappings' => $hasUsedMappings
                 ]);
                 
                 if ($hasUsedMappings) {
                     // Sudah digunakan dalam penjualan, buat versi baru
-                    \Log::info('[AUTO-MAPPING] Creating new version (mapping used in sales)', [
+                    Log::info('[AUTO-MAPPING] Creating new version (mapping used in sales)', [
                         'platform_product_id' => $platformProduct->id,
                         'platform_product_name' => $platformProduct->platform_product_name,
                         'variant' => $platformProduct->variant,
@@ -411,7 +428,7 @@ public function store(Request $request)
                             'quantity' => $request->quantity[$index]
                         ];
                         
-                        \Log::info('[AUTO-MAPPING] New version mapping created', [
+                        Log::info('[AUTO-MAPPING] New version mapping created', [
                             'mapping_id' => $mapping->id,
                             'platform_product_id' => $platformProduct->id,
                             'product_id' => $productId,
@@ -420,10 +437,10 @@ public function store(Request $request)
                         ]);
                     }
                     
-                    \DB::commit();
+                    DB::commit();
                     $transactionCommitted = true;
                     
-                    \Log::info('[AUTO-MAPPING] ✅ Successfully created new version from auto-create', [
+                    Log::info('[AUTO-MAPPING] ✅ Successfully created new version from auto-create', [
                         'platform_product_id' => $platformProduct->id,
                         'platform_product_name' => $platformProduct->platform_product_name,
                         'variant' => $platformProduct->variant,
@@ -459,7 +476,7 @@ public function store(Request $request)
                         if ($key !== false) {
                             unset($unmappedProducts[$key]);
                             session(['unmapped_products' => array_values($unmappedProducts)]);
-                            \Log::info('[AUTO-MAPPING] Removed from unmapped list', ['product' => $fullProductName]);
+                            Log::info('[AUTO-MAPPING] Removed from unmapped list', ['product' => $fullProductName]);
                         }
                         
                         $platformId = $request->platform_id;
@@ -476,7 +493,7 @@ public function store(Request $request)
                         ->with('success', 'Mapping berhasil diperbarui dengan versi baru (v' . ($latestVersion + 1) . ') karena mapping sebelumnya sudah digunakan dalam penjualan.');
                 } else {
                     // Belum digunakan dalam penjualan, update langsung mapping yang ada
-                    \Log::info('[AUTO-MAPPING] Updating existing mapping (not used in sales)', [
+                    Log::info('[AUTO-MAPPING] Updating existing mapping (not used in sales)', [
                         'platform_product_id' => $platformProduct->id,
                         'platform_product_name' => $platformProduct->platform_product_name,
                         'variant' => $platformProduct->variant,
@@ -493,7 +510,7 @@ public function store(Request $request)
                         ->get();
                     
                     if ($deletedMappings->isNotEmpty()) {
-                        \Log::info('[AUTO-MAPPING] Deleting mappings not in new request', [
+                        Log::info('[AUTO-MAPPING] Deleting mappings not in new request', [
                             'deleted_mappings' => $deletedMappings->map(function($m) {
                                 return ['id' => $m->id, 'product_id' => $m->product_id, 'quantity' => $m->quantity];
                             })->toArray()
@@ -527,7 +544,7 @@ public function store(Request $request)
                                 'new_quantity' => $request->quantity[$index]
                             ];
                             
-                            \Log::info('[AUTO-MAPPING] Mapping updated', [
+                            Log::info('[AUTO-MAPPING] Mapping updated', [
                                 'mapping_id' => $mapping->id,
                                 'product_id' => $productId,
                                 'old_quantity' => $oldQuantity,
@@ -551,7 +568,7 @@ public function store(Request $request)
                                 'quantity' => $request->quantity[$index]
                             ];
                             
-                            \Log::info('[AUTO-MAPPING] New mapping added', [
+                            Log::info('[AUTO-MAPPING] New mapping added', [
                                 'mapping_id' => $mapping->id,
                                 'product_id' => $productId,
                                 'quantity' => $request->quantity[$index]
@@ -559,16 +576,16 @@ public function store(Request $request)
                         }
                     }
                     
-                    \Log::info('[AUTO-MAPPING] About to commit transaction', [
+                    Log::info('[AUTO-MAPPING] About to commit transaction', [
                         'platform_product_id' => $platformProduct->id,
                         'created_mappings_count' => count($createdMappings),
                         'updated_mappings_count' => count($updatedMappings)
                     ]);
                     
-                    \DB::commit();
+                    DB::commit();
                     $transactionCommitted = true;
                     
-                    \Log::info('[AUTO-MAPPING] Transaction committed successfully', [
+                    Log::info('[AUTO-MAPPING] Transaction committed successfully', [
                         'platform_product_id' => $platformProduct->id
                     ]);
                     
@@ -577,7 +594,7 @@ public function store(Request $request)
                         ->where('is_active', true)
                         ->get();
                     
-                    \Log::info('[AUTO-MAPPING] Verifying mappings after commit', [
+                    Log::info('[AUTO-MAPPING] Verifying mappings after commit', [
                         'platform_product_id' => $platformProduct->id,
                         'active_mappings_count' => $verifyMappings->count(),
                         'active_mappings' => $verifyMappings->map(function($m) {
@@ -585,7 +602,7 @@ public function store(Request $request)
                         })->toArray()
                     ]);
                     
-                    \Log::info('[AUTO-MAPPING] ✅ Successfully updated mapping from auto-create', [
+                    Log::info('[AUTO-MAPPING] ✅ Successfully updated mapping from auto-create', [
                         'platform_product_id' => $platformProduct->id,
                         'platform_product_name' => $platformProduct->platform_product_name,
                         'variant' => $platformProduct->variant,
@@ -624,7 +641,7 @@ public function store(Request $request)
                         if ($key !== false) {
                             unset($unmappedProducts[$key]);
                             session(['unmapped_products' => array_values($unmappedProducts)]);
-                            \Log::info('[AUTO-MAPPING] Removed from unmapped list', ['product' => $fullProductName]);
+                            Log::info('[AUTO-MAPPING] Removed from unmapped list', ['product' => $fullProductName]);
                         }
                         
                         $platformId = $request->platform_id;
@@ -645,7 +662,7 @@ public function store(Request $request)
             // Jika ini dari sales import (ada preview_data), redirect ke preview dengan info
             if ($hasPreviewData) {
                 $existingMapping = $existingMappings->first();
-                \DB::rollBack();
+                DB::rollBack();
                 // Hapus produk dari unmapped list karena sudah ada mapping
                 $unmappedProducts = session('unmapped_products', []);
                 $productName = $request->platform_product_name;
@@ -682,25 +699,25 @@ public function store(Request $request)
                 
                 // Handle redirect berdasarkan platform ID (prioritas tertinggi)
                 if ($platformId == 6) {
-                    // Shopee2
+                    // Shopee Liefmarket (sebelumnya Shopee2)
                     return redirect()->route('sales.shopee2.show-preview')
                         ->with('info', 'Produk ini sudah memiliki mapping aktif (v' . $existingMapping->version . '). Mapping sudah dihapus dari daftar produk yang perlu dimapping.');
                 } elseif ($platformId == 7) {
-                    // Tiktok2
+                    // Tiktok Liefmarket (sebelumnya Tiktok2)
                     return redirect()->route('sales.tiktok2.show-preview')
                         ->with('info', 'Produk ini sudah memiliki mapping aktif (v' . $existingMapping->version . '). Mapping sudah dihapus dari daftar produk yang perlu dimapping.');
-                } elseif ($platformId == 3 || (stripos($normalizedPlatformName, 'tiktok') !== false && stripos($normalizedPlatformName, 'troublue') === false && stripos($normalizedPlatformName, 'tiktok2') === false)) {
-                    // Tiktok (bukan Tiktok2)
+                } elseif ($platformId == 3 || (stripos($normalizedPlatformName, 'tiktok') !== false && stripos($normalizedPlatformName, 'troublue') === false && stripos($normalizedPlatformName, 'tiktok2') === false && stripos($normalizedPlatformName, 'tiktok liefmarket') === false)) {
+                    // Tiktok Lamourad (sebelumnya Tiktok)
                     return redirect()->route('sales.tiktok.show-preview')
                         ->with('info', 'Produk ini sudah memiliki mapping aktif (v' . $existingMapping->version . '). Mapping sudah dihapus dari daftar produk yang perlu dimapping.');
-                } elseif (stripos($normalizedPlatformName, 'shopee') !== false && stripos($normalizedPlatformName, 'troublue') === false && stripos($normalizedPlatformName, 'shopee2') === false) {
-                    // Shopee (bukan Shopee2)
+                } elseif (stripos($normalizedPlatformName, 'shopee') !== false && stripos($normalizedPlatformName, 'troublue') === false && stripos($normalizedPlatformName, 'shopee2') === false && stripos($normalizedPlatformName, 'shopee liefmarket') === false) {
+                    // Shopee Lamourad (sebelumnya Shopee)
                     return redirect()->route('sales.shopee.show-preview')
                         ->with('info', 'Produk ini sudah memiliki mapping aktif (v' . $existingMapping->version . '). Mapping sudah dihapus dari daftar produk yang perlu dimapping.');
                 }
                 
                 // Fallback: redirect ke mapping index jika platform tidak dikenali
-                \Log::warning('Unknown platform for redirect', [
+                Log::warning('Unknown platform for redirect', [
                     'platform_id' => $platformId,
                     'platform_name' => $platformName,
                     'normalized_name' => $normalizedPlatformName
@@ -711,7 +728,7 @@ public function store(Request $request)
             
             // Jika bukan dari sales import dan bukan dari auto-create, redirect ke edit mapping yang sudah ada
             $existingMapping = $existingMappings->first();
-            \DB::rollBack();
+            DB::rollBack();
             return redirect()->route('master.mapping.edit', $existingMapping->id)
                 ->with('info', 'Platform+variant ini sudah memiliki mapping aktif (v' . $existingMapping->version . ').');
         }
@@ -726,14 +743,14 @@ public function store(Request $request)
                 'variant' => $variantValue, // Use processed variant value
             ]);
             $platformProduct->save();
-            \Log::info('Created new platform product', [
+            Log::info('Created new platform product', [
                 'platform_product_id' => $platformProduct->id,
                 'platform_id' => $request->platform_id,
                 'platform_product_name' => $request->platform_product_name,
                 'variant' => $variantValue
             ]);
         } else {
-            \Log::info('Using existing platform product', [
+            Log::info('Using existing platform product', [
                 'platform_product_id' => $platformProduct->id,
                 'platform_id' => $platformProduct->platform_id,
                 'platform_product_name' => $platformProduct->platform_product_name,
@@ -746,7 +763,7 @@ public function store(Request $request)
         $duplicateIds = MappingBarang::getDuplicateProductIds($productIds);
         
         if (!empty($duplicateIds)) {
-            \DB::rollBack();
+            DB::rollBack();
             $duplicateNames = Product::whereIn('id', $duplicateIds)->pluck('name')->toArray();
             return redirect()->back()
                 ->with('error', 'Terdapat produk master yang duplikat dalam form: ' . implode(', ', $duplicateNames) . '. Pastikan setiap produk master hanya dipilih sekali.');
@@ -755,7 +772,7 @@ public function store(Request $request)
         // Log untuk kasus membuat mapping baru (tidak ada existing active mapping)
         $fromAutoCreate = $request->has('from_auto_create') && $request->from_auto_create == '1';
         if ($fromAutoCreate) {
-            \Log::info('[AUTO-MAPPING] Creating new mapping (no existing active mapping)', [
+            Log::info('[AUTO-MAPPING] Creating new mapping (no existing active mapping)', [
                 'platform_product_id' => $platformProduct->id,
                 'platform_product_name' => $platformProduct->platform_product_name,
                 'variant' => $platformProduct->variant,
@@ -788,7 +805,7 @@ public function store(Request $request)
                     'quantity' => $request->quantity[$index]
                 ];
                 
-                \Log::info($fromAutoCreate ? '[AUTO-MAPPING] New mapping created' : 'Mapping created', [
+                Log::info($fromAutoCreate ? '[AUTO-MAPPING] New mapping created' : 'Mapping created', [
                     'mapping_id' => $mapping->id,
                     'platform_product_id' => $platformProduct->id,
                     'product_id' => $productId,
@@ -806,7 +823,7 @@ public function store(Request $request)
                     'new_quantity' => $request->quantity[$index]
                 ];
                 
-                \Log::info($fromAutoCreate ? '[AUTO-MAPPING] Mapping updated' : 'Mapping updated', [
+                Log::info($fromAutoCreate ? '[AUTO-MAPPING] Mapping updated' : 'Mapping updated', [
                     'mapping_id' => $mapping->id,
                     'platform_product_id' => $platformProduct->id,
                     'product_id' => $productId,
@@ -817,14 +834,14 @@ public function store(Request $request)
         }
         
         // Commit transaksi
-        \DB::commit();
+        DB::commit();
         $transactionCommitted = true;
         
         // Check if this is from sales import process (has preview_data in session)
         $hasPreviewData = session('preview_data') !== null;
         
         if ($fromAutoCreate) {
-            \Log::info('[AUTO-MAPPING] ✅ Successfully created new mapping from auto-create', [
+            Log::info('[AUTO-MAPPING] ✅ Successfully created new mapping from auto-create', [
                 'platform_product_id' => $platformProduct->id,
                 'platform_product_name' => $platformProduct->platform_product_name,
                 'variant' => $platformProduct->variant,
@@ -835,7 +852,7 @@ public function store(Request $request)
                 'has_preview_data' => $hasPreviewData
             ]);
         } else {
-            \Log::info('Mapping store completed successfully', [
+            Log::info('Mapping store completed successfully', [
                 'platform_product_id' => $platformProduct->id,
                 'platform_product_name' => $platformProduct->platform_product_name,
                 'variant' => $platformProduct->variant,
@@ -844,14 +861,17 @@ public function store(Request $request)
             ]);
         }
         
-        \Log::info($fromAutoCreate ? '[AUTO-MAPPING] Checking preview data for redirect' : 'Mapping store - checking preview data', [
+        Log::info($fromAutoCreate ? '[AUTO-MAPPING] Checking preview data for redirect' : 'Mapping store - checking preview data', [
             'hasPreviewData' => $hasPreviewData,
             'preview_data_exists' => session('preview_data') !== null,
             'platform_id' => $request->platform_id,
-            'from_auto_create' => $fromAutoCreate
+            'from_auto_create' => $fromAutoCreate,
+            'request_has_from_auto_create' => $request->has('from_auto_create')
         ]);
         
-        if ($hasPreviewData) {
+        // Hanya redirect ke preview jika request benar-benar berasal dari auto-create (tombol Mapping di preview)
+        // Jika dari sidebar (tambah manual), harus kembali ke index meskipun ada preview data di session
+        if ($hasPreviewData && $request->has('from_auto_create')) {
             // Skenario 1: Dari sales import - redirect back to preview
             $platform = Platform::findOrFail($request->platform_id);
             $platformName = strtolower($platform->name);
@@ -864,7 +884,7 @@ public function store(Request $request)
             // Create full product name with variant if exists
             $fullProductName = $variant ? $productName . ' - ' . $variant : $productName;
             
-            \Log::info($fromAutoCreate ? '[AUTO-MAPPING] Removing from unmapped products' : 'Removing from unmapped products', [
+            Log::info($fromAutoCreate ? '[AUTO-MAPPING] Removing from unmapped products' : 'Removing from unmapped products', [
                 'product_name' => $productName,
                 'variant' => $variant,
                 'full_product_name' => $fullProductName,
@@ -931,13 +951,13 @@ public function store(Request $request)
                 unset($unmappedProducts[$key]);
                 session(['unmapped_products' => array_values($unmappedProducts)]);
                 
-                \Log::info($fromAutoCreate ? '[AUTO-MAPPING] Product removed from unmapped list' : 'Product removed from unmapped list', [
+                Log::info($fromAutoCreate ? '[AUTO-MAPPING] Product removed from unmapped list' : 'Product removed from unmapped list', [
                     'removed_product' => $fullProductName,
                     'unmapped_products_after' => array_values($unmappedProducts),
                     'from_auto_create' => $fromAutoCreate
                 ]);
             } else {
-                \Log::warning($fromAutoCreate ? '[AUTO-MAPPING] Product not found in unmapped list' : 'Product not found in unmapped list', [
+                Log::warning($fromAutoCreate ? '[AUTO-MAPPING] Product not found in unmapped list' : 'Product not found in unmapped list', [
                     'searched_product' => $fullProductName,
                     'unmapped_products' => $unmappedProducts,
                     'from_auto_create' => $fromAutoCreate
@@ -951,7 +971,7 @@ public function store(Request $request)
             // Check platform ID for shopee2 and tiktok2
             $platformId = $request->platform_id;
             
-            \Log::info($fromAutoCreate ? '[AUTO-MAPPING] Redirecting to preview' : 'Mapping store - redirecting to preview', [
+            Log::info($fromAutoCreate ? '[AUTO-MAPPING] Redirecting to preview' : 'Mapping store - redirecting to preview', [
                 'platformName' => $platformName,
                 'normalizedPlatformName' => $normalizedPlatformName,
                 'platformId' => $platformId,
@@ -971,15 +991,13 @@ public function store(Request $request)
             
             // Handle by platform name (fallback)
             switch ($normalizedPlatformName) {
-                case 'blibli':
-                    return redirect()->route('sales.blibli.show-preview-import')
-                        ->with('success', 'Mapping produk berhasil disimpan. Silakan lanjutkan proses import.');
                 case 'shopee':
                 case 'shopee2':
                 case 'shopeelamourad':
                 case 'shopeetroublue':
-                    // Check if it's shopee2 by ID or name
-                    if ($platformId == 6 || stripos($platformName, 'troublue') !== false || stripos($platformName, 'shopee2') !== false) {
+                case 'shopeeliefmarket':
+                    // Check if it's shopee2/shopee liefmarket by ID or name
+                    if ($platformId == 6 || stripos($platformName, 'troublue') !== false || stripos($platformName, 'shopee2') !== false || stripos($platformName, 'shopee liefmarket') !== false) {
                         return redirect()->route('sales.shopee2.show-preview')
                             ->with('success', 'Mapping produk berhasil disimpan. Silakan lanjutkan proses import.');
                     }
@@ -989,20 +1007,18 @@ public function store(Request $request)
                 case 'tiktok2':
                 case 'tiktoklamourad':
                 case 'tiktoktroublue':
-                    // Check if it's tiktok2 by ID or name
-                    if ($platformId == 7 || stripos($platformName, 'troublue') !== false || stripos($platformName, 'tiktok2') !== false) {
+                case 'tiktokliefmarket':
+                    // Check if it's tiktok2/tiktok liefmarket by ID or name
+                    if ($platformId == 7 || stripos($platformName, 'troublue') !== false || stripos($platformName, 'tiktok2') !== false || stripos($platformName, 'tiktok liefmarket') !== false) {
                         return redirect()->route('sales.tiktok2.show-preview')
                             ->with('success', 'Mapping produk berhasil disimpan. Silakan lanjutkan proses import.');
                     }
                     return redirect()->route('sales.tiktok.show-preview')
                         ->with('success', 'Mapping produk berhasil disimpan. Silakan lanjutkan proses import.');
-                case 'tokopedia':
-                    return redirect()->route('sales.tokopedia.show-preview')
-                        ->with('success', 'Mapping produk berhasil disimpan. Silakan lanjutkan proses import.');
                 default:
                     // Try to construct route name from normalized platform name
                     $routeName = 'sales.' . $normalizedPlatformName . '.show-preview';
-                    \Log::warning('Using default route for platform', [
+                    Log::warning('Using default route for platform', [
                         'platformName' => $platformName,
                         'normalizedPlatformName' => $normalizedPlatformName,
                         'routeName' => $routeName,
@@ -1012,7 +1028,7 @@ public function store(Request $request)
                         return redirect()->route($routeName)
                             ->with('success', 'Mapping produk berhasil disimpan. Silakan lanjutkan proses import.');
                     } catch (\Exception $e) {
-                        \Log::error('Route not found, redirecting to mapping index', [
+                        Log::error('Route not found, redirecting to mapping index', [
                             'routeName' => $routeName,
                             'error' => $e->getMessage()
                         ]);
@@ -1022,23 +1038,23 @@ public function store(Request $request)
             }
         }
         
-        \Log::info('Mapping store - redirecting to mapping index (no preview data)');
+        Log::info('Mapping store - redirecting to mapping index (no preview data)');
         
         return redirect()->route('master.mapping.index')
             ->with('success', 'Mapping produk berhasil disimpan.');
     } catch (\Exception $e) {
         // Rollback transaksi jika terjadi error DAN belum di-commit
         if (!$transactionCommitted) {
-            \DB::rollBack();
-            \Log::info('Transaction rolled back (not committed yet)');
+            DB::rollBack();
+            Log::info('Transaction rolled back (not committed yet)');
         } else {
-            \Log::warning('Exception occurred after transaction was committed - data should be saved', [
+            Log::warning('Exception occurred after transaction was committed - data should be saved', [
                 'error' => $e->getMessage()
             ]);
         }
         
         // Log the error
-        \Log::error('Error storing mapping', [
+        Log::error('Error storing mapping', [
             'platform_id' => $request->platform_id,
             'platform_product_name' => $request->platform_product_name,
             'variant' => $request->variant,
@@ -1067,15 +1083,17 @@ public function store(Request $request)
 public function destroy($id)
 {
     // Debug logging
-    \Log::info('MappingBarangController@destroy called', [
+    Log::info('MappingBarangController@destroy called', [
         'mapping_id' => $id,
         'user_id' => auth()->id(),
         'timestamp' => now()
     ]);
 
     // Check if user has permission to edit/delete mapping
-    if (!auth()->user()->canEdit()) {
-        \Log::warning('User does not have edit permission', [
+    /** @var User $user */
+    $user = auth()->user();
+    if (!$user->canEdit()) {
+        Log::warning('User does not have edit permission', [
             'user_id' => auth()->id(),
             'mapping_id' => $id
         ]);
@@ -1084,7 +1102,7 @@ public function destroy($id)
     }
 
     try {
-        \DB::beginTransaction();
+        DB::beginTransaction();
         
         $mapping = MappingBarang::findOrFail($id);
         $platformProductId = $mapping->platform_product_id;
@@ -1092,7 +1110,7 @@ public function destroy($id)
         $quantity = $mapping->quantity;
         $version = $mapping->version;
         
-        \Log::info('Mapping found for deletion', [
+        Log::info('Mapping found for deletion', [
             'mapping_id' => $id,
             'platform_product_id' => $platformProductId,
             'product_id' => $productId,
@@ -1103,14 +1121,14 @@ public function destroy($id)
         // Cek apakah mapping sudah pernah digunakan dalam penjualan
         $hasBeenUsed = $mapping->hasBeenUsedInSales();
         
-        \Log::info('Sales usage check result', [
+        Log::info('Sales usage check result', [
             'mapping_id' => $id,
             'has_been_used' => $hasBeenUsed
         ]);
         
         if ($hasBeenUsed) {
             // Kondisi 2: Sudah digunakan dalam penjualan, buat versi baru tanpa mapping yang dihapus
-            \Log::info('Creating new version after deletion (used in sales)', [
+            Log::info('Creating new version after deletion (used in sales)', [
                 'mapping_id' => $id,
                 'version' => $version
             ]);
@@ -1148,7 +1166,7 @@ public function destroy($id)
                 $newMapping->save();
             }
             
-            \Log::info('New version created after deletion', [
+            Log::info('New version created after deletion', [
                 'new_version' => $latestVersion + 1,
                 'remaining_mappings' => $activeMappings->count()
             ]);
@@ -1163,8 +1181,8 @@ public function destroy($id)
                 'keterangan' => 'Hapus mapping v' . $version . ' - dibuat versi baru v' . ($latestVersion + 1),
             ]);
             
-            \DB::commit();
-            \Log::info('Transaction committed for version creation', ['mapping_id' => $id]);
+            DB::commit();
+            Log::info('Transaction committed for version creation', ['mapping_id' => $id]);
             
             // Redirect ke mapping aktif yang baru
             $newActiveMapping = MappingBarang::where('platform_product_id', $platformProductId)
@@ -1180,14 +1198,14 @@ public function destroy($id)
             }
         } else {
             // Kondisi 1: Belum digunakan dalam penjualan, hapus langsung
-            \Log::info('Deleting mapping (not used in sales)', [
+            Log::info('Deleting mapping (not used in sales)', [
                 'mapping_id' => $id,
                 'version' => $version
             ]);
             
             $mapping->delete();
             
-            \Log::info('Mapping deleted successfully', ['mapping_id' => $id]);
+            Log::info('Mapping deleted successfully', ['mapping_id' => $id]);
 
             // Log to history
             MappingBarangHistory::create([
@@ -1199,8 +1217,8 @@ public function destroy($id)
                 'keterangan' => 'Hapus mapping v' . $version,
             ]);
             
-            \DB::commit();
-            \Log::info('Transaction committed for deletion', ['mapping_id' => $id]);
+            DB::commit();
+            Log::info('Transaction committed for deletion', ['mapping_id' => $id]);
             
             // Cek apakah masih ada mapping aktif untuk platform product ini
             $remainingActiveMapping = MappingBarang::where('platform_product_id', $platformProductId)
@@ -1218,9 +1236,9 @@ public function destroy($id)
             }
         }
     } catch (\Exception $e) {
-        \DB::rollBack();
+        DB::rollBack();
         
-        \Log::error('Error in MappingBarangController@destroy', [
+        Log::error('Error in MappingBarangController@destroy', [
             'mapping_id' => $id,
             'user_id' => auth()->id(),
             'error_message' => $e->getMessage(),
@@ -1297,7 +1315,7 @@ public function update(Request $request, $id)
     ]);
 
     try {
-        \DB::beginTransaction();
+        DB::beginTransaction();
         
         $mapping = MappingBarang::findOrFail($id);
         $oldProductId = $mapping->product_id;
@@ -1374,7 +1392,7 @@ public function update(Request $request, $id)
                 'keterangan' => 'Buat versi baru mapping (dari v' . $mapping->version . ' ke v' . $newMapping->version . ') - ' . ($request->change_reason ?? 'Tidak ada alasan'),
             ]);
             
-            \DB::commit();
+            DB::commit();
             $message = 'Mapping berhasil diperbarui dengan versi baru (v' . ($latestVersion + 1) . '). Mapping lama menjadi history.';
             
             // Cari mapping yang baru dibuat untuk redirect
@@ -1387,7 +1405,7 @@ public function update(Request $request, $id)
         } else {
             // Cek apakah product_id yang baru sudah ada di mapping aktif lainnya (kecuali mapping yang sedang diedit)
             if (MappingBarang::isProductAlreadyMapped($mapping->platform_product_id, $request->product_id, $mapping->id)) {
-                \DB::rollBack();
+                DB::rollBack();
                 $product = Product::find($request->product_id);
                 $productName = $product ? $product->name : 'Unknown';
                 return redirect()->back()
@@ -1410,7 +1428,7 @@ public function update(Request $request, $id)
                 'keterangan' => 'Edit mapping (dari product_id: ' . $oldProductId . ', qty: ' . $oldQuantity . ')',
             ]);
             
-            \DB::commit();
+            DB::commit();
             $message = 'Mapping berhasil diperbarui.';
             $redirectId = $mapping->id;
         }
@@ -1419,10 +1437,10 @@ public function update(Request $request, $id)
         return redirect()->route('master.mapping.edit', $redirectId)
             ->with('success', $message);
         } catch (\Exception $e) {
-        \DB::rollBack();
+        DB::rollBack();
         
         // Log error untuk debugging
-        \Log::error('Error updating mapping', [
+        Log::error('Error updating mapping', [
             'mapping_id' => $id,
             'user_id' => auth()->id(),
             'error' => $e->getMessage(),
@@ -1446,7 +1464,7 @@ public function update(Request $request, $id)
         ]);
 
         try {
-            \DB::beginTransaction();
+            DB::beginTransaction();
             
             // Cek apakah produk master yang sama sudah ada di mapping AKTIF saja
             $existingActiveMapping = MappingBarang::where('platform_product_id', $request->platform_product_id)
@@ -1455,7 +1473,7 @@ public function update(Request $request, $id)
                 ->first();
                 
             if ($existingActiveMapping) {
-                \DB::rollBack();
+                DB::rollBack();
                 return redirect()->back()
                     ->with('error', 'Produk master ini sudah ada dalam mapping aktif. Silakan edit mapping yang sudah ada.');
             }
@@ -1488,7 +1506,7 @@ public function update(Request $request, $id)
                     'keterangan' => 'Tambah mapping baru (v1)',
                 ]);
                 
-                \DB::commit();
+                DB::commit();
                 return redirect()->back()
                     ->with('success', 'Produk master berhasil ditambahkan ke mapping.');
             }
@@ -1559,13 +1577,13 @@ public function update(Request $request, $id)
                     'keterangan' => 'Tambah mapping baru (v' . ($latestVersion + 1) . ') - mapping lama menjadi history',
                 ]);
                 
-                \DB::commit();
+                DB::commit();
                 return redirect()->back()
                     ->with('success', 'Produk master berhasil ditambahkan ke mapping versi ' . ($latestVersion + 1) . '. Mapping lama menjadi history.');
             } else {
                 // Cek apakah product_id sudah ada di mapping aktif
                 if (MappingBarang::isProductAlreadyMapped($request->platform_product_id, $request->product_id)) {
-                    \DB::rollBack();
+                    DB::rollBack();
                     $product = Product::find($request->product_id);
                     $productName = $product ? $product->name : 'Unknown';
                     return redirect()->back()
@@ -1594,7 +1612,7 @@ public function update(Request $request, $id)
                     'keterangan' => 'Tambah mapping ke versi ' . $activeMappings->first()->version,
                 ]);
                 
-                \DB::commit();
+                DB::commit();
                 return redirect()->back()
                     ->with('success', 'Produk master berhasil ditambahkan ke mapping.');
             }
@@ -1652,7 +1670,7 @@ public function update(Request $request, $id)
         // Ambil variant dari query parameter jika ada (lebih akurat dari Excel)
         $variantFromQuery = $request->input('variant');
         
-        \Log::info('[AUTO-MAPPING] Mulai autoCreateMapping', [
+        Log::info('[AUTO-MAPPING] Mulai autoCreateMapping', [
             'platform' => $platform,
             'productName' => $productName,
             'variant_from_query' => $variantFromQuery,
@@ -1662,7 +1680,7 @@ public function update(Request $request, $id)
         // Decode the URL-encoded product name using rawurldecode to preserve + characters
         $decodedProductName = rawurldecode($productName);
         
-        \Log::info('[AUTO-MAPPING] Decoded product name', [
+        Log::info('[AUTO-MAPPING] Decoded product name', [
             'encoded' => $productName,
             'decoded' => $decodedProductName
         ]);
@@ -1673,7 +1691,7 @@ public function update(Request $request, $id)
             $variant = rawurldecode($variantFromQuery);
             $productNameOnly = $decodedProductName;
             
-            \Log::info('[AUTO-MAPPING] Using variant from query parameter (from Excel)', [
+            Log::info('[AUTO-MAPPING] Using variant from query parameter (from Excel)', [
                 'productName' => $productNameOnly,
                 'variant' => $variant
             ]);
@@ -1684,7 +1702,7 @@ public function update(Request $request, $id)
             $productNameOnly = $productParts[0];
             $variant = isset($productParts[1]) ? $productParts[1] : '';
             
-            \Log::info('[AUTO-MAPPING] Parsing variant from product name (fallback)', [
+            Log::info('[AUTO-MAPPING] Parsing variant from product name (fallback)', [
                 'productName' => $productNameOnly,
                 'variant' => $variant
             ]);
@@ -1721,7 +1739,7 @@ public function update(Request $request, $id)
             }
         }
         
-        \Log::info('[AUTO-MAPPING] Parsed product data', [
+        Log::info('[AUTO-MAPPING] Parsed product data', [
             'fullProductName' => $decodedProductName,
             'productNameOnly' => $productNameOnly,
             'variant' => $variant,
@@ -1737,14 +1755,14 @@ public function update(Request $request, $id)
         }
         
         if (!$platformEntity) {
-            \Log::warning('[AUTO-MAPPING] Platform tidak ditemukan', ['platform' => $platform]);
+            Log::warning('[AUTO-MAPPING] Platform tidak ditemukan', ['platform' => $platform]);
             return redirect()->route('master.mapping.index')->with('error', 'Platform tidak ditemukan di database.');
         }
 
         // Ambil semua produk yang bisa di-mapping
         $products = Product::where('is_active', true)->get();
 
-        \Log::info('[AUTO-MAPPING] Sukses tampilkan form auto-mapping', [
+        Log::info('[AUTO-MAPPING] Sukses tampilkan form auto-mapping', [
             'platform' => $platform,
             'productName' => $productNameOnly,
             'variant' => $variant,
@@ -1931,17 +1949,18 @@ public function update(Request $request, $id)
         $platformProduct = PlatformProduct::with('platform')->findOrFail($platformProductId);
         
         // Ambil ringkasan versi - hanya versi unik
+        // Gunakan COALESCE(valid_from, created_at) untuk konsistensi dengan query analytic
         $versionSummary = MappingBarang::where('platform_product_id', $platformProductId)
             ->selectRaw('version, 
                        COUNT(*) as total_products,
-                       MIN(valid_from) as created_at,
-                       MAX(CASE WHEN is_active = 1 THEN valid_from END) as last_active_at')
+                       MIN(COALESCE(valid_from, created_at)) as created_at,
+                       MAX(CASE WHEN is_active = 1 THEN COALESCE(valid_from, created_at) END) as last_active_at')
             ->groupBy('version')
             ->orderBy('version', 'desc')
             ->get();
 
         // Debug: Cek data yang diambil
-        \Log::info('Version History Data', [
+        Log::info('Version History Data', [
             'platform_product_id' => $platformProductId,
             'version_count' => $versionSummary->count(),
             'versions' => $versionSummary->pluck('version')->toArray()
@@ -1958,7 +1977,7 @@ public function update(Request $request, $id)
      */
     public function versionDetail($platformProductId, $version)
     {
-        \Log::info('Version Detail Method Called', [
+        Log::info('Version Detail Method Called', [
             'platform_product_id' => $platformProductId,
             'version' => $version,
             'timestamp' => now()
@@ -2010,7 +2029,7 @@ public function update(Request $request, $id)
         $previousVersionMappings = $uniquePreviousMappings;
         
         // Debug logging untuk melihat data yang sudah di-unique
-        \Log::info('Unique Previous Mappings Debug', [
+        Log::info('Unique Previous Mappings Debug', [
             'platform_product_id' => $platformProductId,
             'version' => $version,
             'unique_count' => $previousVersionMappings->count(),
@@ -2023,7 +2042,7 @@ public function update(Request $request, $id)
         $changes = $this->analyzeVersionChanges($currentVersionMappings, $previousVersionMappings);
 
         // Debug logging
-        \Log::info('Version Detail Debug', [
+        Log::info('Version Detail Debug', [
             'platform_product_id' => $platformProductId,
             'version' => $version,
             'current_mappings_count' => $currentVersionMappings->count(),
@@ -2057,7 +2076,7 @@ public function update(Request $request, $id)
         ];
 
         // Debug logging untuk analisis
-        \Log::info('Analyze Version Changes Debug', [
+        Log::info('Analyze Version Changes Debug', [
             'current_count' => $current->count(),
             'previous_count' => $previous->count(),
             'current_data' => $current->map(function($m) {
@@ -2096,7 +2115,7 @@ public function update(Request $request, $id)
         foreach ($currentMap as $productId => $currentMapping) {
             if ($previousMap->has($productId)) {
                 $previousMapping = $previousMap[$productId];
-                \Log::info('Comparing mapping', [
+                Log::info('Comparing mapping', [
                     'product_id' => $productId,
                     'current_quantity' => $currentMapping->quantity,
                     'previous_quantity' => $previousMapping->quantity,
@@ -2113,7 +2132,7 @@ public function update(Request $request, $id)
             }
         }
 
-        \Log::info('Final changes result', [
+        Log::info('Final changes result', [
             'added_count' => count($changes['added']),
             'removed_count' => count($changes['removed']),
             'modified_count' => count($changes['modified']),

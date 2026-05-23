@@ -9,9 +9,40 @@
                     <h5 class="mb-0 fw-semibold text-primary">
                         <i class="fas fa-boxes me-2"></i>Data Produk
                     </h5>
-                    <a href="{{ route('products.create') }}" class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm">
-                        <i class="fas fa-plus me-1"></i> Tambah Produk
-                    </a>
+                    @php
+                        $exportQuery = request()->query();
+                        $exportSuffix = count($exportQuery) ? ('?' . http_build_query($exportQuery)) : '';
+                        $exportXlsxUrl = route('products.export', ['format' => 'xlsx']) . $exportSuffix;
+                        $exportCsvUrl = route('products.export', ['format' => 'csv']) . $exportSuffix;
+                        $exportPdfUrl = route('products.export', ['format' => 'pdf']) . $exportSuffix;
+                    @endphp
+                    <div class="d-flex gap-2">
+                        <div class="dropdown">
+                            <button class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-file-export me-1"></i> Export
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0">
+                                <li>
+                                    <a class="dropdown-item" href="{{ $exportXlsxUrl }}">
+                                        <i class="fas fa-file-excel me-2 text-success"></i> Excel (.xlsx)
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="{{ $exportCsvUrl }}">
+                                        <i class="fas fa-file-csv me-2 text-primary"></i> CSV (.csv)
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="{{ $exportPdfUrl }}" target="_blank" rel="noopener">
+                                        <i class="fas fa-file-pdf me-2 text-danger"></i> PDF (.pdf)
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        <a href="{{ route('products.create') }}" class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm">
+                            <i class="fas fa-plus me-1"></i> Tambah Produk
+                        </a>
+                    </div>
                 </div>
                 
                 <div class="card-body p-4">
@@ -234,6 +265,9 @@
                                         <div class="btn-group">
                                             <a href="{{ route('products.edit', $product->id) }}" class="btn btn-sm btn-info rounded-start-3">
                                                 <i class="fas fa-edit"></i>
+                                            </a>
+                                            <a href="{{ route('products.initial-price.show', $product->id) }}" class="btn btn-sm btn-warning">
+                                                <i class="fas fa-tag"></i>
                                             </a>
                                             <a href="{{ route('products.show', $product->id) }}" class="btn btn-sm btn-primary">
                                                 <i class="fas fa-eye"></i>

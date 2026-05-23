@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('page-title', 'Preview Import Arus Kas Shopee')
+@section('page-title', 'Preview Import Arus Kas Shopee Lamourad')
 
 @section('content')
 <div class="container-fluid">
@@ -8,7 +8,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h4 class="card-title">Preview Data Arus Kas Shopee</h4>
+                    <h4 class="card-title">Preview Data Arus Kas Shopee Lamourad</h4>
                 </div>
 
                 <div class="card-body">
@@ -95,9 +95,9 @@
                                         </td>
                                         <td class="text-muted small">{{ $row['Tipe Transaksi'] }}</td>
                                         <td class="text-muted small">{{ $row['Jenis Transaksi'] }}</td>
-                                        <td class="fw-bold text-end">{{ number_format($row['Pemasukan'], 0, ',', '.') }}</td>
+                                        <td class="fw-bold text-end">{{ number_format((float) $row['Pemasukan'], 0, ',', '.') }}</td>
                                         <td class="text-muted small">{{ $row['Status'] }}</td>
-                                        <td class="fw-bold text-end">{{ number_format($row['Saldo Akhir'], 0, ',', '.') }}</td>
+                                        <td class="fw-bold text-end">{{ number_format((float) $row['Saldo Akhir'], 0, ',', '.') }}</td>
                                         <td>
                                             @if (!$row['_valid'])
                                                 <ul class="mb-0 ps-3 small">

@@ -128,33 +128,13 @@
         }
         
         /* Platform specific colors */
-        .platform-tokopedia {
-            background-color: #42b549;
-            color: white;
-        }
-        
         .platform-shopee {
             background-color: #ee4d2d;
             color: white;
         }
         
-        .platform-lazada {
-            background-color: #0f146d;
-            color: white;
-        }
-        
         .platform-tiktok {
             background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095da;
-            color: white;
-        }
-        
-        .platform-bukalapak {
-            background-color: #e31e52;
             color: white;
         }
         
@@ -372,8 +352,8 @@
                     <div class="card bg-success text-white h-100">
                         <div class="card-body">
                             <h5 class="card-title">Total Terjual</h5>
-                            <h2 class="display-5">{{ number_format($summary['total_quantity']) }}</h2>
-                            <p>pcs (setelah retur)</p>
+                            <h2 class="display-5">{{ number_format($summary['total_quantity_with_returns']) }}</h2>
+                            <p>pcs (sebelum retur)</p>
                         </div>
                     </div>
                 </div>
@@ -407,7 +387,7 @@
                             <th>Nama Produk Platform</th>
                             <th>Varian</th>
                             <th>Platform</th>
-                            <th class="text-end">Jumlah Terjual (pcs)</th>
+                            <th class="text-end">Terjual (pcs)</th>
                             <th class="text-end">Retur (pcs)</th>
                             <th class="text-end">Net Terjual (pcs)</th>
                             <th class="text-end">Jumlah Order</th>
@@ -425,9 +405,9 @@
                                     {{ $product['platform_name'] }}
                                 </div>
                             </td>
-                            <td class="text-end">{{ number_format($product['total_quantity'], 0) }}</td>
+                            <td class="text-end fw-bold">{{ number_format($product['total_quantity'], 0) }}</td>
                             <td class="text-end text-danger">{{ number_format($product['qty_retur'], 0) }}</td>
-                            <td class="text-end fw-bold">{{ number_format($product['net_quantity'], 0) }}</td>
+                            <td class="text-end">{{ number_format($product['net_quantity'], 0) }}</td>
                             <td class="text-end">{{ number_format($product['order_count']) }}</td>
                             <td class="text-end">Rp {{ number_format($product['total_value'], 0, ',', '.') }}</td>
                         </tr>

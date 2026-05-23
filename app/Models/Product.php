@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class Product extends Model
 {
@@ -43,6 +45,64 @@ class Product extends Model
             if ($mainCategoryId) {
                 $builder->where('main_category_id', $mainCategoryId);
             }
+        });
+
+        static::created(function (Product $product) {
+            if ($product->initialPriceVersions()->exists()) {
+                return;
+            }
+
+            $effectiveFrom = $product->created_at ?? now();
+
+            $product->initialPriceVersions()->create([
+                'version' => 1,
+                'initial_price' => $product->initial_price ?? 0,
+                'discount_percentage' => $product->discount_percentage ?? 0,
+                'is_active' => true,
+                'valid_from' => $effectiveFrom,
+                'valid_until' => null,
+                'parent_version_id' => null,
+                'change_reason' => 'Product created',
+            ]);
+        });
+
+        static::saved(function (Product $product) {
+            if ($product->wasRecentlyCreated) {
+                return;
+            }
+
+            if (!$product->wasChanged('initial_price') && !$product->wasChanged('discount_percentage')) {
+                return;
+            }
+
+            DB::transaction(function () use ($product) {
+                $effectiveFrom = $product->updated_at ?? now();
+
+                $previousActive = $product->initialPriceVersions()
+                    ->active()
+                    ->orderByDesc('version')
+                    ->first();
+
+                $product->initialPriceVersions()
+                    ->active()
+                    ->update([
+                        'is_active' => false,
+                        'valid_until' => $effectiveFrom,
+                    ]);
+
+                $latestVersion = (int) $product->initialPriceVersions()->max('version');
+
+                $product->initialPriceVersions()->create([
+                    'version' => $latestVersion + 1,
+                    'initial_price' => $product->initial_price ?? 0,
+                    'discount_percentage' => $product->discount_percentage ?? 0,
+                    'is_active' => true,
+                    'valid_from' => $effectiveFrom,
+                    'valid_until' => null,
+                    'parent_version_id' => $previousActive?->id,
+                    'change_reason' => null,
+                ]);
+            });
         });
     }
 
@@ -89,6 +149,29 @@ class Product extends Model
     public function warehouseStocks(): HasMany
     {
         return $this->hasMany(WarehouseStock::class);
+    }
+
+    public function initialPriceVersions(): HasMany
+    {
+        return $this->hasMany(ProductInitialPriceVersion::class);
+    }
+
+    public function latestInitialPriceVersion(): HasOne
+    {
+        return $this->hasOne(ProductInitialPriceVersion::class)
+            ->ofMany(['version' => 'max'], function ($query) {
+                $query->where('is_active', true);
+            });
+    }
+
+    public function getInitialPriceAt($date): string
+    {
+        $version = $this->initialPriceVersions()
+            ->forDate($date)
+            ->orderBy('valid_from', 'desc')
+            ->first();
+
+        return (string) ($version?->initial_price ?? $this->initial_price ?? 0);
     }
 
     /**

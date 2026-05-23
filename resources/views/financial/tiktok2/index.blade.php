@@ -7,8 +7,8 @@
     <!-- Page Header -->
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
-            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platform }}</h1>
-            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platform }}</p>
+            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platformLabel }}</h1>
+            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platformLabel }}</p>
         </div>
         <div class="col-md-6 text-end">
             <div class="btn-group shadow-sm" role="group">
@@ -53,18 +53,26 @@
     </div>
     @endif
 
-    @if(session('skipped_reasons'))
+    @if(session('tiktok2_skipped_reasons'))
     <div class="alert alert-warning shadow-sm" role="alert">
         <div class="d-flex align-items-center mb-2">
             <i class="fas fa-exclamation-triangle me-2"></i>
             <strong>Beberapa transaksi dilewati saat import:</strong>
-            <button class="btn btn-sm btn-link ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#skippedReasons" aria-expanded="false">
-                Lihat Detail
-            </button>
+            <div class="ms-auto d-flex gap-2">
+                <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#skippedReasons" aria-expanded="false">
+                    Lihat Detail
+                </button>
+                <form action="{{ route('finance.tiktok2.clear-skipped-reasons') }}" method="POST" class="d-inline">
+                    @csrf
+                    <button type="submit" class="btn btn-sm btn-link text-danger" title="Hapus pesan error" onclick="return confirm('Hapus pesan error ini?')">
+                        <i class="fas fa-times"></i> Tutup
+                    </button>
+                </form>
+            </div>
         </div>
         <div class="collapse" id="skippedReasons">
             <ul class="mb-0 ps-4">
-                @foreach(session('skipped_reasons') as $reason)
+                @foreach(session('tiktok2_skipped_reasons') as $reason)
                     <li>{{ $reason }}</li>
                 @endforeach
             </ul>
@@ -226,7 +234,8 @@
                             </thead>
                             <tbody>
                                 @foreach($missingOrders as $index => $order)
-                                @php
+                            @if(!$order) @continue @endif
+                            @php
                                     // Determine if the order is older than 3 weeks
                                     $isOlderThan3Weeks = $order->tanggal && $order->tanggal->diffInDays(now()) > 21;
                                 @endphp
@@ -320,8 +329,9 @@
                         
                         @forelse($groupedTransactions as $orderNumber => $orderTransactions)
                             @foreach($orderTransactions as $index => $transaction)
+                            @if(!$transaction) @continue @endif
                             @php
-                                $isUnpaid = $transaction->outstanding > 0;
+                                $isUnpaid = optional($transaction)->outstanding > 0;
                                 $isOlderThan3Weeks = false;
                                 if ($transaction->order && $transaction->order->tanggal) {
                                     $isOlderThan3Weeks = $transaction->order->tanggal->diffInDays(now()) > 21;
@@ -726,6 +736,7 @@
     
     <!-- Adjust Modals -->
     @foreach($transactions as $transaction)
+    @if(!$transaction) @continue @endif
     <div class="modal fade" id="adjustModal-{{ $transaction->id }}" tabindex="-1" aria-labelledby="adjustModalLabel-{{ $transaction->id }}" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">

@@ -4,19 +4,29 @@
 <div class="container-fluid py-4">
     <div class="row">
         <div class="col-12">
-            <div class="card mb-4">
-                <div class="card-header pb-0 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">Detail Produk</h6>
+            <div class="card border-0 shadow-sm mb-4 rounded-3 overflow-hidden">
+                <div class="card-header bg-gradient-light d-flex justify-content-between align-items-center py-3 px-4">
                     <div>
-                        <a href="{{ route('products.edit', $product->id) }}" class="btn btn-sm btn-info">
+                        <h5 class="mb-0 fw-semibold text-primary">
+                            <i class="fas fa-eye me-2"></i>Detail Produk
+                        </h5>
+                        <div class="text-muted text-sm mt-1">
+                            {{ $product->name }} • {{ $product->sku ?? '-' }}
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="{{ route('products.initial-price.show', $product->id) }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm">
+                            <i class="fas fa-tag me-1"></i> Harga Awal
+                        </a>
+                        <a href="{{ route('products.edit', $product->id) }}" class="btn btn-outline-info btn-sm rounded-pill px-3 shadow-sm">
                             <i class="fas fa-edit me-1"></i> Edit
                         </a>
-                        <a href="{{ route('products.index') }}" class="btn btn-sm btn-secondary">
+                        <a href="{{ route('products.index') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 shadow-sm">
                             <i class="fas fa-arrow-left me-1"></i> Kembali
                         </a>
                     </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     <div class="row">
                         <div class="col-md-6 mb-4">
                             <div class="card card-plain">
@@ -157,4 +167,10 @@
         </div>
     </div>
 </div>
+
+<style>
+    .bg-gradient-light {
+        background: linear-gradient(to right, #f8f9fa, #fff);
+    }
+</style>
 @endsection 

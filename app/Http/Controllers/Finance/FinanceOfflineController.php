@@ -9,6 +9,7 @@ use App\Models\OfflineSale;
 use App\Exports\FinanceOfflineInvoiceExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -215,7 +216,13 @@ class FinanceOfflineController extends Controller
         }
 
         // Get all invoices first to calculate payment status and sort
+        // Use fresh query without any cache
         $allInvoices = $query->get();
+        
+        // Force refresh each invoice to get latest data from database
+        foreach ($allInvoices as $invoice) {
+            $invoice->refresh();
+        }
         
         // Calculate payment status and sort (with net total after return)
         $invoicesWithStatus = $allInvoices->map(function($invoice) {
@@ -243,31 +250,39 @@ class FinanceOfflineController extends Controller
                     }
                 }
                 
+                // Only count each offline_sale_item once (same logic as recalculateNominal)
+                $processedSaleItemIds = [];
                 foreach ($invoice->barangKeluarItems as $bk) {
                     if ($bk->offlineSaleItem) {
                         $osi = $bk->offlineSaleItem;
-                        $currentQty = $osi->quantity;
-                        $currentSubtotal = $osi->subtotal ?? 0;
+                        $saleItemId = $osi->id;
                         
-                        // Calculate returned qty from eager loaded returs
-                        $returnedQty = 0;
-                        foreach ($returs as $retur) {
-                            foreach ($retur->details as $detail) {
-                                if ($detail->offline_sale_item_id == $osi->id) {
-                                    $returnedQty += $detail->qty;
+                        // Only count each sale item once
+                        if (!in_array($saleItemId, $processedSaleItemIds)) {
+                            $currentQty = $osi->quantity;
+                            $currentSubtotal = $osi->subtotal ?? 0;
+                            
+                            // Calculate returned qty from eager loaded returs
+                            $returnedQty = 0;
+                            foreach ($returs as $retur) {
+                                foreach ($retur->details as $detail) {
+                                    if ($detail->offline_sale_item_id == $osi->id) {
+                                        $returnedQty += $detail->qty;
+                                    }
                                 }
                             }
+                            
+                            $originalQty = $currentQty + $returnedQty;
+                            
+                            if ($currentQty > 0) {
+                                $originalSubtotal = ($currentSubtotal / $currentQty) * $originalQty;
+                            } else {
+                                $originalSubtotal = $osi->unit_price * $originalQty;
+                            }
+                            
+                            $dppOriginal += $originalSubtotal;
+                            $processedSaleItemIds[] = $saleItemId;
                         }
-                        
-                        $originalQty = $currentQty + $returnedQty;
-                        
-                        if ($currentQty > 0) {
-                            $originalSubtotal = ($currentSubtotal / $currentQty) * $originalQty;
-                        } else {
-                            $originalSubtotal = $osi->unit_price * $originalQty;
-                        }
-                        
-                        $dppOriginal += $originalSubtotal;
                     }
                 }
                 
@@ -293,19 +308,22 @@ class FinanceOfflineController extends Controller
             
             $totalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments->sum('amount'));
             
-            // Determine payment status
+            $dbStatus = $invoice->status ?? 'unpaid';
+            $remainingAmount = max(0, $netTotal - $totalPaid);
+            $isTidakBalance = ($totalPaid > $netTotal && $totalPaid > 0 && $dbStatus != 'refunded' && $dbStatus != 'retur_full');
+            
             $paymentStatus = 'belum_lunas';
-            if ($invoice->status == 'retur_full' || $invoice->nominal == 0) {
+            if ($dbStatus == 'refunded' || $dbStatus == 'retur_full') {
                 $paymentStatus = 'retur_full';
-            } elseif ($totalPaid > $netTotal) {
+            } elseif ($isTidakBalance) {
                 $paymentStatus = 'tidak_balance';
-            } elseif ($totalPaid >= $netTotal) {
+            } elseif ($remainingAmount == 0) {
                 $paymentStatus = 'lunas';
+            } else {
+                $paymentStatus = 'belum_lunas';
             }
             
-            // Determine payment status: 0 = belum lunas (unpaid/partial/retur_full/tidak_balance), 1 = lunas (fully paid)
-            // Hanya yang paymentStatus == 'lunas' yang dianggap lunas, semua yang lain dianggap belum lunas
-            $isFullyPaid = ($paymentStatus == 'lunas') ? 1 : 0;
+            $isFullyPaid = ($remainingAmount == 0 && $paymentStatus != 'retur_full') ? 1 : 0;
             
             // Parse tanggal_invoice menjadi Carbon biar tidak disort sebagai string
             $tanggalInvoice = $invoice->tanggal_invoice instanceof \Carbon\Carbon 
@@ -329,29 +347,43 @@ class FinanceOfflineController extends Controller
         }
         
         // Urutkan invoice offline dengan:
-        // 1. Pisahkan dulu yang belum lunas dan yang sudah lunas
+        // 1. Pisahkan menjadi grup berdasarkan payment_status: belum lunas, lunas, tidak balance, retur full
         // 2. Parse tanggal_invoice menjadi Carbon biar tidak disort sebagai string (sudah dilakukan di map)
         // 3. Urutkan masing-masing grup dari tanggal paling lama ke paling baru (ASC)
-        // 4. Gabungkan kembali dengan urutan: belum lunas di atas dan lunas di bawah
+        // 4. Gabungkan kembali dengan urutan: belum lunas -> lunas -> tidak balance -> retur full
         // 5. Pakai values() supaya urutan final tetap konsisten
         
-        // Step 1: Pisahkan menjadi dua grup: belum lunas dan sudah lunas
+        // Step 1: Pisahkan menjadi grup berdasarkan payment_status
         $belumLunas = $invoicesWithStatus->filter(function($item) {
-            return $item['is_fully_paid'] == 0;
+            return $item['payment_status'] === 'belum_lunas';
         });
         
         $sudahLunas = $invoicesWithStatus->filter(function($item) {
-            return $item['is_fully_paid'] == 1;
+            return $item['payment_status'] === 'lunas';
+        });
+        
+        $tidakBalance = $invoicesWithStatus->filter(function($item) {
+            return $item['payment_status'] === 'tidak_balance';
+        });
+        
+        $lainLain = $invoicesWithStatus->filter(function($item) {
+            return $item['payment_status'] === 'retur_full';
         });
         
         // Step 2 & 3: tanggal_invoice sudah di-parse menjadi Carbon di map function
         // Urutkan masing-masing grup dari tanggal paling lama ke paling baru (ASC)
         $belumLunasSorted = $belumLunas->sortBy('tanggal_invoice')->values();
         $sudahLunasSorted = $sudahLunas->sortBy('tanggal_invoice')->values();
+        $tidakBalanceSorted = $tidakBalance->sortBy('tanggal_invoice')->values();
+        $lainLainSorted = $lainLain->sortBy('tanggal_invoice')->values();
         
-        // Step 4 & 5: Gabungkan kembali dengan urutan: belum lunas di atas dan lunas di bawah
+        // Step 4 & 5: Gabungkan kembali dengan urutan: belum lunas -> lunas -> tidak balance -> retur full
         // Pakai values() supaya urutan final tetap konsisten
-        $sortedInvoices = $belumLunasSorted->concat($sudahLunasSorted)->values();
+        $sortedInvoices = $belumLunasSorted
+            ->concat($sudahLunasSorted)
+            ->concat($tidakBalanceSorted)
+            ->concat($lainLainSorted)
+            ->values();
         
         // Extract invoices from sorted collection (maintain order)
         $sortedInvoiceCollection = $sortedInvoices->pluck('invoice')->values();
@@ -479,34 +511,42 @@ class FinanceOfflineController extends Controller
             $netTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($netTotal);
             
             $totalReturAmount += $returAmount;
-            $totalNetValue += $netTotal; // Use GRAND TOTAL (NET + PPN for PKP, NET only for Non-PKP) for summary value
             
             $totalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments->sum('amount'));
             
-            // Determine payment status
+            // Use status from DB directly
+            $dbStatus = $invoice->status ?? 'unpaid';
+            
             // Tidak Balance: hanya muncul saat ada pembayaran > NET Total (NET DPP + PPN setelah retur)
             // NET Total = (DPP - Retur) + PPN
-            if ($invoice->status == 'retur_full' || $invoice->nominal == 0) {
+            // Check for both 'refunded' and 'retur_full' status (legacy support)
+            if ($dbStatus == 'refunded' || $dbStatus == 'retur_full') {
+                // For refunded invoices, don't add to grand total (retur full means all items returned)
                 $returFullCount++;
-            } elseif ($totalPaid > $netTotal && $totalPaid > 0) {
+            } elseif ($totalPaid > $netTotal && $totalPaid > 0 && $dbStatus != 'refunded' && $dbStatus != 'retur_full') {
                 // Tidak Balance: pembayaran > NET Total (setelah retur)
                 // Contoh: Bayar 100.000, DPP 100.000, Retur 20.000, NET DPP = 80.000
                 // Jika PKP, NET Total = 80.000 + PPN. Jika pembayaran > NET Total, maka tidak balance
                 $tidakBalanceCount++;
                 $totalPaidAmount += $totalPaid;
                 $totalUnpaidAmount += 0; // Already overpaid
+                $totalNetValue += $netTotal; // Add to grand total (use net total, not overpaid amount)
             } elseif ($totalPaid >= $netTotal) {
                 // Fully paid (compare with NET Total including PPN)
-                $totalPaidAmount += $netTotal;
+                // Use actual payment amount to match gross profit offline calculation
+                $totalPaidAmount += $totalPaid;
+                $totalNetValue += $netTotal; // Add to grand total only if not refunded
                 $paidCount++;
             } elseif ($totalPaid > 0) {
                 // Partially paid
                 $totalPaidAmount += $totalPaid;
                 $totalUnpaidAmount += ($netTotal - $totalPaid);
+                $totalNetValue += $netTotal; // Add to grand total only if not refunded
                 $partialCount++;
             } else {
                 // Unpaid
                 $totalUnpaidAmount += $netTotal;
+                $totalNetValue += $netTotal; // Add to grand total only if not refunded
                 $unpaidCount++;
             }
         }
@@ -544,7 +584,10 @@ class FinanceOfflineController extends Controller
                                         'barangKeluarItems.offlineSaleItem',
                                         'barangKeluarItems.offlineSaleItem.offlineSale',
                                         'barangKeluarItems.offlineSaleItem.offlineSale.customerInfo',
-                                        'barangKeluarItems.offlineSaleItem.offlineSale.mainCategory']);
+                                        'barangKeluarItems.offlineSaleItem.offlineSale.mainCategory',
+                                        'barangKeluarItems.offlineSaleItem.offlineSale.returOfflineSales' => function($q) {
+                                            $q->where('status', 'selesai')->with('details.offlineSaleItem');
+                                        }]);
 
         // Apply the same filters as listInvoices
         if ($request->filled('invoice_number')) {
@@ -629,6 +672,116 @@ class FinanceOfflineController extends Controller
             }
         }
     }
+
+    private function calculateNetTotalForInvoice(FinanceOffline $invoice): int
+    {
+        $invoice->loadMissing([
+            'barangKeluarItems.offlineSaleItem',
+            'barangKeluarItems.offlineSaleItem.offlineSale',
+            'barangKeluarItems.warehouseStock',
+            'payments',
+        ]);
+
+        $firstItem = $invoice->barangKeluarItems->first();
+        $taxId = $firstItem && $firstItem->warehouseStock && $firstItem->warehouseStock->tax_id ? $firstItem->warehouseStock->tax_id : null;
+
+        $returAmount = 0;
+        $dppOriginal = 0;
+
+        $offlineSale = ($firstItem && $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale)
+            ? $firstItem->offlineSaleItem->offlineSale
+            : null;
+
+        $returs = collect();
+        if ($offlineSale) {
+            $returs = \App\Models\ReturOfflineSale::where('offline_sale_id', $offlineSale->id)
+                ->where('status', 'selesai')
+                ->with('details.offlineSaleItem')
+                ->get();
+
+            $processedSaleItemIds = [];
+            foreach ($invoice->barangKeluarItems as $bk) {
+                if ($bk->offlineSaleItem) {
+                    $osi = $bk->offlineSaleItem;
+                    $saleItemId = $osi->id;
+
+                    if (!in_array($saleItemId, $processedSaleItemIds)) {
+                        $currentQty = $osi->quantity;
+                        $currentSubtotal = $osi->subtotal ?? 0;
+
+                        $returnedQty = 0;
+                        foreach ($returs as $retur) {
+                            foreach ($retur->details as $detail) {
+                                if ($detail->offline_sale_item_id == $osi->id) {
+                                    $returnedQty += $detail->qty;
+                                }
+                            }
+                        }
+
+                        $originalQty = $currentQty + $returnedQty;
+
+                        if ($currentQty > 0) {
+                            $subtotalPerUnit = $currentSubtotal / $currentQty;
+                            $originalSubtotal = $subtotalPerUnit * $originalQty;
+                        } else {
+                            $originalSubtotal = $osi->unit_price * $originalQty;
+                        }
+
+                        $dppOriginal += $originalSubtotal;
+                        $processedSaleItemIds[] = $saleItemId;
+                    }
+                }
+            }
+
+            foreach ($returs as $retur) {
+                foreach ($retur->details as $detail) {
+                    $offlineSaleItem = $detail->offlineSaleItem;
+                    if ($offlineSaleItem) {
+                        $qtyRetur = (float)($detail->qty ?? 0);
+                        $basePrice = (float)($offlineSaleItem->unit_price ?? 0);
+
+                        $currentTotal = $basePrice * $qtyRetur;
+
+                        for ($i = 1; $i <= 5; $i++) {
+                            $percentField = "discount_percent_" . $i;
+                            $discountPercent = (float)($offlineSaleItem->$percentField ?? 0);
+                            if ($discountPercent > 0) {
+                                $currentTotal = \App\Helpers\NumberFormatter::calculatePercentageDiscount($currentTotal, $discountPercent);
+                            }
+                        }
+
+                        for ($i = 1; $i <= 5; $i++) {
+                            $amountField = "discount_amount_" . $i;
+                            $discountAmount = (float)($offlineSaleItem->$amountField ?? 0);
+                            if ($discountAmount > 0) {
+                                $currentTotal = \App\Helpers\NumberFormatter::calculateNominalDiscount($currentTotal, $discountAmount * $qtyRetur);
+                            }
+                        }
+
+                        $returAmount += \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+                    }
+                }
+            }
+        } else {
+            $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->nominal);
+        }
+
+        $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($dppOriginal);
+        $returAmount = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmount);
+
+        $netDPP = max(0, $dppOriginal - $returAmount);
+        $netDPP = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPP);
+
+        $netPPN = 0;
+        if ($taxId == 3) {
+            $netDPP11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($netDPP);
+            $netPPN = \App\Helpers\NumberFormatter::calculatePPN($netDPP11_12);
+            $netPPN = \App\Helpers\NumberFormatter::roundToWholeNumber($netPPN);
+        }
+
+        $netTotal = $netDPP + $netPPN;
+        return \App\Helpers\NumberFormatter::roundToWholeNumber($netTotal);
+    }
     
     /**
      * Mark an invoice as paid.
@@ -640,12 +793,33 @@ class FinanceOfflineController extends Controller
     public function markAsPaid(Request $request, $id)
     {
         $invoice = FinanceOffline::findOrFail($id);
+
+        $dbStatus = $invoice->status ?? 'unpaid';
+        if ($dbStatus == 'refunded' || $dbStatus == 'retur_full') {
+            return redirect()->back()->with('error', 'Invoice retur full tidak bisa dibayar.');
+        }
+
+        $netTotal = $this->calculateNetTotalForInvoice($invoice);
+        $totalPaidBefore = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments()->sum('amount'));
+        $remainingAmount = max(0, $netTotal - $totalPaidBefore);
+
+        if ($remainingAmount <= 0) {
+            return redirect()->back()->with('error', 'Invoice ini sudah lunas.');
+        }
         
         // Get payment details from the request
-        $paymentAmount = $request->input('payment_amount', $invoice->nominal);
+        $paymentAmount = \App\Helpers\NumberFormatter::roundToWholeNumber($request->input('payment_amount', $remainingAmount));
         $paymentDate = $request->input('payment_date', now()->format('Y-m-d'));
         $paymentMethod = $request->input('payment_method', 'transfer');
         $paymentNotes = $request->input('payment_notes');
+
+        if ($paymentAmount <= 0) {
+            return redirect()->back()->with('error', 'Nominal pembayaran tidak valid.');
+        }
+
+        if ($paymentAmount > $remainingAmount) {
+            return redirect()->back()->with('error', 'Nominal pembayaran melebihi sisa tagihan.');
+        }
         
         // Create a new payment record
         $payment = new \App\Models\InvoicePayment([
@@ -658,10 +832,9 @@ class FinanceOfflineController extends Controller
         
         $payment->save();
         
-        // Update invoice status if payment equals or exceeds the invoice amount
-        $totalPaid = $invoice->payments()->sum('amount');
+        $totalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments()->sum('amount'));
         
-        if ($totalPaid >= $invoice->nominal) {
+        if ($totalPaid >= $netTotal) {
             $invoice->status = 'paid';
             $invoice->tanggal_bayar = $paymentDate;
             $invoice->save();
@@ -684,7 +857,9 @@ class FinanceOfflineController extends Controller
     public function adjustPayment(Request $request, $id)
     {
         // Check if user is superadmin
-        if (!auth()->user()->isSuperAdmin()) {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+        if (!$user->isSuperAdmin()) {
             return redirect()->back()->with('error', 'Anda tidak memiliki izin untuk menyesuaikan pembayaran.');
         }
 
@@ -693,72 +868,7 @@ class FinanceOfflineController extends Controller
 
             $invoice = FinanceOffline::findOrFail($id);
             
-            // Calculate NET total (same logic as in view)
-            $firstItem = $invoice->barangKeluarItems->first();
-            $taxId = $firstItem && $firstItem->warehouseStock && $firstItem->warehouseStock->tax_id ? $firstItem->warehouseStock->tax_id : null;
-            
-            $returAmount = 0;
-            $dppOriginal = 0;
-            
-            if ($firstItem && $firstItem->offlineSaleItem && $firstItem->offlineSaleItem->offlineSale) {
-                $offlineSale = $firstItem->offlineSaleItem->offlineSale;
-                
-                $returs = \App\Models\ReturOfflineSale::where('offline_sale_id', $offlineSale->id)
-                    ->where('status', 'selesai')
-                    ->get();
-                
-                foreach ($returs as $retur) {
-                    foreach ($retur->details as $detail) {
-                        $offlineSaleItem = $detail->offlineSaleItem;
-                        if ($offlineSaleItem) {
-                            $returAmount += $offlineSaleItem->unit_price * $detail->qty;
-                        }
-                    }
-                }
-                
-                foreach ($invoice->barangKeluarItems as $bk) {
-                    if ($bk->offlineSaleItem) {
-                        $osi = $bk->offlineSaleItem;
-                        $currentQty = $osi->quantity;
-                        $currentSubtotal = $osi->subtotal ?? 0;
-                        
-                        $returnedQty = \App\Models\ReturOfflineSaleDetail::where('offline_sale_item_id', $osi->id)
-                            ->whereHas('returOfflineSale', function($q) {
-                                $q->where('status', 'selesai');
-                            })
-                            ->sum('qty');
-                        
-                        $originalQty = $currentQty + $returnedQty;
-                        
-                        if ($currentQty > 0) {
-                            $originalSubtotal = ($currentSubtotal / $currentQty) * $originalQty;
-                        } else {
-                            $originalSubtotal = $osi->unit_price * $originalQty;
-                        }
-                        
-                        $dppOriginal += $originalSubtotal;
-                    }
-                }
-                
-                $dppOriginal = \App\Helpers\NumberFormatter::roundToWholeNumber($dppOriginal);
-            } else {
-                $dpp = \App\Helpers\NumberFormatter::calculateDPP($invoice->nominal);
-                $dppOriginal = $dpp;
-            }
-            
-            $returAmount = \App\Helpers\NumberFormatter::roundToWholeNumber($returAmount);
-            $netDPP = max(0, $dppOriginal - $returAmount);
-            $netDPP = \App\Helpers\NumberFormatter::roundToWholeNumber($netDPP);
-            
-            $netPPN = 0;
-            if ($taxId == 3) {
-                $netDPP11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($netDPP);
-                $netPPN = \App\Helpers\NumberFormatter::calculatePPN($netDPP11_12);
-                $netPPN = \App\Helpers\NumberFormatter::roundToWholeNumber($netPPN);
-            }
-            
-            $netTotal = $netDPP + $netPPN;
-            $netTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($netTotal);
+            $netTotal = $this->calculateNetTotalForInvoice($invoice);
             
             $totalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments->sum('amount'));
             $excessAmount = $totalPaid - $netTotal;
@@ -781,16 +891,8 @@ class FinanceOfflineController extends Controller
             // Update invoice status
             $newTotalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments->sum('amount'));
             
-            // If there's a partial return, keep status as 'partial_refund' but mark as paid
-            if ($invoice->status == 'partial_refund' || $returAmount > 0) {
-                // Keep partial_refund status but ensure it's considered paid
-                // Status will be calculated as 'lunas' in view based on netTotal
-            } else {
-                if ($newTotalPaid >= $invoice->nominal) {
-                    $invoice->status = 'paid';
-                } else {
-                    $invoice->status = 'unpaid';
-                }
+            if ($invoice->status != 'partial_refund') {
+                $invoice->status = $newTotalPaid >= $netTotal ? 'paid' : 'unpaid';
             }
             
             $invoice->save();
@@ -819,7 +921,9 @@ class FinanceOfflineController extends Controller
     public function deletePayment($paymentId)
     {
         // Check if user is superadmin
-        if (!auth()->user()->isSuperAdmin()) {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+        if (!$user->isSuperAdmin()) {
             return redirect()->back()->with('error', 'Anda tidak memiliki izin untuk menghapus pembayaran.');
         }
 
@@ -834,16 +938,19 @@ class FinanceOfflineController extends Controller
             $payment->delete();
 
             // Recalculate invoice status
-            $totalPaid = $invoice->payments()->sum('amount');
-            
-            if ($totalPaid >= $invoice->nominal) {
-                $invoice->status = 'paid';
-                // Keep the latest payment date if still paid
-                $latestPayment = $invoice->payments()->latest('payment_date')->first();
-                $invoice->tanggal_bayar = $latestPayment ? $latestPayment->payment_date : null;
-            } else {
-                $invoice->status = 'unpaid';
-                $invoice->tanggal_bayar = null;
+            $dbStatus = $invoice->status ?? 'unpaid';
+            if ($dbStatus != 'refunded' && $dbStatus != 'retur_full') {
+                $netTotal = $this->calculateNetTotalForInvoice($invoice);
+                $totalPaid = \App\Helpers\NumberFormatter::roundToWholeNumber($invoice->payments()->sum('amount'));
+                
+                if ($totalPaid >= $netTotal) {
+                    $invoice->status = 'paid';
+                    $latestPayment = $invoice->payments()->latest('payment_date')->first();
+                    $invoice->tanggal_bayar = $latestPayment ? $latestPayment->payment_date : null;
+                } else {
+                    $invoice->status = 'unpaid';
+                    $invoice->tanggal_bayar = null;
+                }
             }
             
             $invoice->save();
@@ -927,41 +1034,25 @@ class FinanceOfflineController extends Controller
                 }
                 $offlineSales = $offlineSales->unique('id');
                 
+                // Calculate nominal from unique offline_sale items (not from barang_keluar items)
+                // This ensures each sale item is only counted once, even if split into multiple barang_keluar
                 $nominal = 0;
-                foreach ($offlineSales as $sale) {
-                    // Load sale items to calculate proportion
-                    $sale->load('items');
-                    
-                    // Calculate total value of all items in the sale (with discounts)
-                    $totalSaleItemsValue = 0;
-                    foreach ($sale->items as $saleItem) {
-                        $itemValue = $this->calculateItemValue($saleItem);
-                        $totalSaleItemsValue += $itemValue;
-                    }
-                    
-                    // Calculate value of items from this sale that are in this invoice
-                    $invoiceItemsValue = 0;
-                    foreach ($barangKeluarItems as $bk) {
-                        if ($bk->offlineSaleItem && $bk->offlineSaleItem->offline_sale_id == $sale->id) {
-                            $saleItem = $bk->offlineSaleItem;
-                            $itemValue = $this->calculateItemValue($saleItem);
-                            $invoiceItemsValue += $itemValue;
+                $processedSaleItemIds = [];
+                
+                foreach ($barangKeluarItems as $bk) {
+                    if ($bk->offlineSaleItem) {
+                        $saleItemId = $bk->offlineSaleItem->id;
+                        
+                        // Only count each sale item once
+                        if (!in_array($saleItemId, $processedSaleItemIds)) {
+                            $subtotal = $bk->offlineSaleItem->subtotal ?? 0;
+                            $nominal += $subtotal;
+                            $processedSaleItemIds[] = $saleItemId;
                         }
-                    }
-                    
-                    // Calculate proportion
-                    $proportion = $totalSaleItemsValue > 0 ? ($invoiceItemsValue / $totalSaleItemsValue) : 0;
-                    
-                    // Use total_amount if proportion is close to 1 (all items), otherwise use proportion
-                    if ($proportion >= 0.99) {
-                        // All items are in invoice, use full total_amount
-                        $nominal += $sale->total_amount;
-                    } else {
-                        // Partial items, use proportion of total_amount
-                        $nominal += $sale->total_amount * $proportion;
                     }
                 }
                 
+                // Format nominal (this is DPP, not grand total)
                 $nominal = \App\Helpers\NumberFormatter::formatForDatabase($nominal);
                 
                 // Set main_category_id from offlineSale or session
@@ -1135,6 +1226,7 @@ class FinanceOfflineController extends Controller
      */
     public function approveReprint($id)
     {
+        /** @var \App\Models\User $user */
         $user = auth()->user();
         
         if (!$user->isSuperAdmin()) {
@@ -1157,7 +1249,7 @@ class FinanceOfflineController extends Controller
                     ->with('error', 'Gagal menyetujui permintaan cetak ulang, silakan coba lagi.');
             }
         } catch (\Exception $e) {
-            \Log::error('Error approving reprint: ' . $e->getMessage());
+            Log::error('Error approving reprint: ' . $e->getMessage());
             
             return redirect()->route('finance.offline.invoices')
                 ->with('error', 'Terjadi kesalahan: ' . $e->getMessage());

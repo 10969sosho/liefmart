@@ -14,7 +14,7 @@ use App\Models\ImportTemp;
 class ArusKasTiktokController extends Controller
 {
     /**
-     * Display a listing of the imported TikTok cash flow data
+     * Display a listing of the imported TikTok Lamourad cash flow data
      */
     public function index(Request $request)
     {
@@ -51,14 +51,14 @@ class ArusKasTiktokController extends Controller
      */
     public function preview(Request $request)
     {
-        Log::info('=== TIKTOK PREVIEW START ===');
+        Log::info('=== TIKTOK LAMOURAD PREVIEW START ===');
         
         $request->validate([
             'file' => 'required|mimes:xlsx,xls',
         ]);
 
         $file = $request->file('file');
-        Log::info('TikTok file uploaded: ' . $file->getClientOriginalName());
+        Log::info('TikTok Lamourad file uploaded: ' . $file->getClientOriginalName());
         
         try {
             // Load the spreadsheet

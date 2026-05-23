@@ -53,29 +53,23 @@ class InvoiceSequence extends Model
             throw new \Exception("Tanggal order wajib ada untuk generate invoice number.");
         }
         
-        // Format tahun-bulan berdasarkan tanggal ORDER (YYMM)
+        // Format tahun-bulan berdasarkan tanggal ORDER (YYMM) - Contoh: 2601 untuk Januari 2026
         $yearMonth = Carbon::parse($orderDate)->format('ym');
         
         // Menggunakan transaksi database untuk memastikan counter tidak duplikat
         $counter = DB::transaction(function() use ($yearMonth, $category, $salesType, $taxStatus) {
             // SMART INVOICE SEQUENCE - Ambil semua nomor invoice dari SEMUA tabel untuk bulan/kategori/tipe/status ini
             // HARUS dilakukan SEBELUM lock untuk memastikan konsistensi
-            $suffix = '';
-            if ($category === self::CATEGORY_KOPI) {
-                if ($salesType === self::SALES_ONLINE) {
-                    $suffix = 'HPNSDA-OLK';
-                } else { // OFFLINE
-                    $suffix = 'HPNSDA-KOP';
-                }
-            } else { // SKINCARE
-                if ($salesType === self::SALES_ONLINE) {
-                    $suffix = 'HGNSDA-OL';
-                } else { // OFFLINE
-                    $suffix = 'HGNSDA-KOS';
-                }
+            $config = config('invoice.format');
+            
+            // Determine suffix based on sales type
+            if ($salesType === self::SALES_OFFLINE) {
+                $suffix = $config['suffix_offline'] ?? 'AMP-KOS';
+            } else {
+                $suffix = $config['suffix_online'] ?? 'AMP-OL';
             }
             
-            $taxCode = ($taxStatus === self::TAX_PKP) ? '01' : '02';
+            $taxCode = ($taxStatus === self::TAX_PKP) ? $config['pkp_tax_code'] : $config['non_pkp_tax_code'];
             $pattern = "%/$yearMonth/$suffix/$taxCode";
             
             // Ambil dari semua tabel yang relevan
@@ -91,20 +85,11 @@ class InvoiceSequence extends Model
                 ->pluck('no_invoice');
             $existingInvoices = $existingInvoices->concat($shopeeInvoices);
             
-            // Tokopedia (jika ada)
+            // Shopee2 (Trubleu)
             try {
-                $tokopediaInvoices = \App\Models\TokopediaFinancialTransaction::where('no_invoice', 'like', $pattern)
+                $shopee2Invoices = \App\Models\Shopee2FinancialTransaction::where('no_invoice', 'like', $pattern)
                     ->pluck('no_invoice');
-                $existingInvoices = $existingInvoices->concat($tokopediaInvoices);
-            } catch (\Exception $e) {
-                // Table might not exist
-            }
-            
-            // Blibli (jika ada)
-            try {
-                $blibliInvoices = \App\Models\BlibliFinancialTransaction::where('no_invoice', 'like', $pattern)
-                    ->pluck('no_invoice');
-                $existingInvoices = $existingInvoices->concat($blibliInvoices);
+                $existingInvoices = $existingInvoices->concat($shopee2Invoices);
             } catch (\Exception $e) {
                 // Table might not exist
             }
@@ -122,12 +107,13 @@ class InvoiceSequence extends Model
                 }
             }
             
-            // Extract nomor counter dari invoice numbers
-            // Untuk OFFLINE: format adalah 0001 (4 digit), untuk ONLINE: format adalah 000001 (6 digit)
-            $counterLength = ($salesType === self::SALES_OFFLINE) ? 4 : 6;
+            // Extract nomor urut dari invoice number
+            // Format adalah 0001 (4 digit) untuk semua jenis
+            $counterLength = 4;
             $existing = $existingInvoices
                 ->map(function($v) use ($counterLength) {
                     // Ambil bagian counter dari invoice number (sebelum slash pertama)
+                    // Format invoice sekarang: {counter}/{yearMonth}/AMP/{taxCode}
                     $parts = explode('/', $v);
                     if (isset($parts[0])) {
                         return intval($parts[0]);
@@ -229,14 +215,21 @@ class InvoiceSequence extends Model
             $tables = [
                 'tiktok_financial_transactions',
                 'shopee_financial_transactions', 
-                'blibli_financial_transactions',
-                'tokopedia_financial_transactions'
             ];
             
             // Buat pattern untuk mencari invoice berdasarkan kombinasi
             // Format invoice: {counter}/{yearMonth}/{suffix}/{taxCode}
-            // Contoh: 000001/2503/HPNSDA-OLK/01
-            $pattern = '%/' . $yearMonth . '/%';
+            // Contoh: 0001/2503/AMP/01
+            
+            // Determine suffix based on sales type
+            $config = config('invoice.format');
+            if ($salesType === self::SALES_OFFLINE) {
+                $suffix = $config['suffix_offline'] ?? 'AMP-KOS';
+            } else {
+                $suffix = $config['suffix_online'] ?? 'AMP-OL';
+            }
+            
+            $pattern = '%/' . $yearMonth . '/' . $suffix . '/%';
             
             foreach ($tables as $table) {
                 try {
@@ -254,7 +247,7 @@ class InvoiceSequence extends Model
             
             // Extract nomor urut dari invoice number
             $numbers = $existingInvoices->map(function($invoice) {
-                // Format: 000001/2503/HPNSDA-OLK/01
+                // Format: 0001/2503/AMP/01
                 // Ambil bagian pertama sebagai nomor urut
                 $parts = explode('/', $invoice);
                 if (count($parts) >= 1) {
@@ -283,32 +276,24 @@ class InvoiceSequence extends Model
      */
     private static function formatInvoiceNumber($category, $salesType, $taxStatus, $yearMonth, $counter)
     {
-        // Format counter (6 digit untuk online, 4 digit untuk offline)
-        $counterFormat = ($salesType === self::SALES_ONLINE) ? '%06d' : '%04d';
-        $formattedCounter = sprintf($counterFormat, $counter);
+        // Ambil konfigurasi dari config
+        $config = config('invoice.format');
         
-        // Format suffix berdasarkan kategori, jenis penjualan, dan status pajak
-        $suffix = '';
+        // Format counter (4 digit untuk semua jenis)
+        $formattedCounter = sprintf('%0' . $config['counter_length'] . 'd', $counter);
         
-        if ($category === self::CATEGORY_KOPI) {
-            if ($salesType === self::SALES_ONLINE) {
-                $suffix = 'HPNSDA-OLK';
-            } else { // OFFLINE
-                $suffix = 'HPNSDA-KOP';
-            }
-        } else { // SKINCARE
-            if ($salesType === self::SALES_ONLINE) {
-                $suffix = 'HGNSDA-OL';
-            } else { // OFFLINE
-                $suffix = 'HGNSDA-KOS';
-            }
+        // Format suffix dari konfigurasi
+        if ($salesType === self::SALES_OFFLINE) {
+            $suffix = $config['suffix_offline'] ?? 'AMP-KOS';
+        } else {
+            $suffix = $config['suffix_online'] ?? 'AMP-OL';
         }
         
-        // Tambahkan kode pajak
-        $taxCode = ($taxStatus === self::TAX_PKP) ? '01' : '02';
+        // Tambahkan kode pajak dari konfigurasi
+        $taxCode = ($taxStatus === self::TAX_PKP) ? $config['pkp_tax_code'] : $config['non_pkp_tax_code'];
         
         // Format: {counter}/{yearMonth}/{suffix}/{taxCode}
-        // Contoh: 000001/2503/HPNSDA-OLK/01
+        // Contoh: 0001/2601/AMP/01 untuk PKP, 0001/2601/AMP/02 untuk NON PKP
         return $formattedCounter . '/' . $yearMonth . '/' . $suffix . '/' . $taxCode;
     }
 

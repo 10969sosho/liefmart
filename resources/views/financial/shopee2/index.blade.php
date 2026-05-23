@@ -5,8 +5,8 @@
     <!-- Page Header -->
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
-            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platform }}</h1>
-            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platform }}</p>
+            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platformLabel }}</h1>
+            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platformLabel }}</p>
         </div>
         <div class="col-md-6 text-end">
             <div class="btn-group shadow-sm" role="group">
@@ -45,7 +45,7 @@
     </div>
     @endif
 
-    @if(session('skipped_reasons'))
+    @if(session('shopee2_skipped_reasons'))
     <div class="alert alert-warning shadow-sm" role="alert">
         <div class="d-flex align-items-center mb-2">
             <i class="fas fa-exclamation-triangle me-2"></i>
@@ -56,7 +56,7 @@
         </div>
         <div class="collapse" id="skippedReasons">
             <ul class="mb-0 ps-4">
-                @foreach(session('skipped_reasons') as $reason)
+                @foreach(session('shopee2_skipped_reasons') as $reason)
                     <li>{{ $reason }}</li>
                 @endforeach
             </ul>

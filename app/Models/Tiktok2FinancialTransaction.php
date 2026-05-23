@@ -26,8 +26,16 @@ class Tiktok2FinancialTransaction extends Model
         'nominal_diskon4',
         'nominal_diskon5',
         'nominal_diskon6',
+        'nominal_diskon7',
+        'nominal_diskon8',
+        'nominal_diskon9',
+        'nominal_diskon10',
+        'nominal_diskon11',
+        'nominal_diskon12',
         'adjustment',
+        'adjustment_description',
         'nominal_fix',
+        'qty',
         'saldo_masuk',
         'tanggal_masuk_pembayaran',
         'hari_masuk_pembayaran',
@@ -38,6 +46,12 @@ class Tiktok2FinancialTransaction extends Model
         'persentase_diskon4',
         'persentase_diskon5',
         'persentase_diskon6',
+        'persentase_diskon7',
+        'persentase_diskon8',
+        'persentase_diskon9',
+        'persentase_diskon10',
+        'persentase_diskon11',
+        'persentase_diskon12',
         'total_persentase',
         'order_id',
     ];
@@ -52,8 +66,15 @@ class Tiktok2FinancialTransaction extends Model
         'nominal_diskon4' => 'decimal:2',
         'nominal_diskon5' => 'decimal:2',
         'nominal_diskon6' => 'decimal:2',
+        'nominal_diskon7' => 'decimal:2',
+        'nominal_diskon8' => 'decimal:2',
+        'nominal_diskon9' => 'decimal:2',
+        'nominal_diskon10' => 'decimal:2',
+        'nominal_diskon11' => 'decimal:2',
+        'nominal_diskon12' => 'decimal:2',
         'adjustment' => 'decimal:2',
         'nominal_fix' => 'decimal:2',
+        'qty' => 'decimal:2',
         'saldo_masuk' => 'decimal:2',
         'outstanding' => 'decimal:2',
         'persentase_diskon1' => 'decimal:4',
@@ -62,6 +83,12 @@ class Tiktok2FinancialTransaction extends Model
         'persentase_diskon4' => 'decimal:4',
         'persentase_diskon5' => 'decimal:4',
         'persentase_diskon6' => 'decimal:4',
+        'persentase_diskon7' => 'decimal:4',
+        'persentase_diskon8' => 'decimal:4',
+        'persentase_diskon9' => 'decimal:4',
+        'persentase_diskon10' => 'decimal:4',
+        'persentase_diskon11' => 'decimal:4',
+        'persentase_diskon12' => 'decimal:4',
         'total_persentase' => 'decimal:4',
     ];
 
@@ -129,6 +156,7 @@ class Tiktok2FinancialTransaction extends Model
         
         // Calculate total quantity across all order items
         $totalQty = $order->orderItems->sum('quantity');
+        $this->qty = $totalQty;
         
         // Calculate total invoice value (price_after_discount × quantity)
         $totalInvoiceValue = 0;
@@ -156,6 +184,12 @@ class Tiktok2FinancialTransaction extends Model
             ($this->nominal_diskon4 ?? 0) + 
             ($this->nominal_diskon5 ?? 0) + 
             ($this->nominal_diskon6 ?? 0) + 
+            ($this->nominal_diskon7 ?? 0) + 
+            ($this->nominal_diskon8 ?? 0) + 
+            ($this->nominal_diskon9 ?? 0) + 
+            ($this->nominal_diskon10 ?? 0) + 
+            ($this->nominal_diskon11 ?? 0) + 
+            ($this->nominal_diskon12 ?? 0) + 
             ($this->adjustment ?? 0);
             
         return $this;
@@ -186,9 +220,18 @@ class Tiktok2FinancialTransaction extends Model
             $this->persentase_diskon4 = ($this->nominal_diskon4 / $this->nominal_harga) * 100;
             $this->persentase_diskon5 = ($this->nominal_diskon5 / $this->nominal_harga) * 100;
             $this->persentase_diskon6 = ($this->nominal_diskon6 / $this->nominal_harga) * 100;
+            $this->persentase_diskon7 = ($this->nominal_diskon7 / $this->nominal_harga) * 100;
+            $this->persentase_diskon8 = ($this->nominal_diskon8 / $this->nominal_harga) * 100;
+            $this->persentase_diskon9 = ($this->nominal_diskon9 / $this->nominal_harga) * 100;
+            $this->persentase_diskon10 = ($this->nominal_diskon10 / $this->nominal_harga) * 100;
+            $this->persentase_diskon11 = ($this->nominal_diskon11 / $this->nominal_harga) * 100;
+            $this->persentase_diskon12 = ($this->nominal_diskon12 / $this->nominal_harga) * 100;
             $this->total_persentase = $this->persentase_diskon1 + $this->persentase_diskon2 + 
                                      $this->persentase_diskon3 + $this->persentase_diskon4 + 
-                                     $this->persentase_diskon5 + $this->persentase_diskon6;
+                                     $this->persentase_diskon5 + $this->persentase_diskon6 +
+                                     $this->persentase_diskon7 + $this->persentase_diskon8 +
+                                     $this->persentase_diskon9 + $this->persentase_diskon10 +
+                                     $this->persentase_diskon11 + $this->persentase_diskon12;
         }
         
         return $this;

@@ -37,38 +37,45 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
             'No Invoice',
             'Nama Produk (Platform)',
             'Variasi (Platform)',
-            'Jumlah QTY (Platform)',
-            'Jumlah Masuk Pembayaran (Rp)',
-            'Jumlah Masuk Pembayaran - PPN (Rp)',
+            'QTY',
+            'Jumlah Masuk Pembayaran per Produk (Rp)',
+            'Jumlah Masuk Pembayaran - PPN per Produk (Rp)',
             'Harga Modal Total (COGS) (Rp)',
-            'Gross Profit Total (Rp)',
-            'Margin per pcs (%)'
+            'Gross Profit per Produk (%)',
+            'Margin per Produk (Rp)',
+            'Margin per Produk (%)',
+            'Gross Profit per Order (Rp)',
+            'Margin per Order (%)'
         ];
     }
 
     public function map($row): array
     {
-        // Calculate values according to the new requirements
-        $revenue = $row['revenue'] ?? 0;
-        $revenueWithoutPPN = $revenue / 1.11;
-        $capital = $row['capital'] ?? 0;
-        $grossProfit = $revenueWithoutPPN - $capital;
-        
-        // Margin per pcs = (gross profit total / jumlah masuk pembayaran-PPN) x 100%
-        $marginPercent = $revenueWithoutPPN > 0 ? ($grossProfit / $revenueWithoutPPN) : 0;
+        // Use data from query that already calculates everything
+        $revenue = $row['revenue'] ?? 0; // Revenue per product (already proportional)
+        $revenueWithoutPPN = $row['revenue_without_ppn'] ?? 0; // Revenue per product without PPN
+        $capital = $row['capital'] ?? 0; // COGS per product
+        $grossProfitPerProductPercent = $row['gross_profit_per_product_percent'] ?? 0; // Gross profit per product (%)
+        $marginPerProductRp = $row['margin_per_product_rp'] ?? 0; // Margin per product (Rp)
+        $marginPerProductPercent = $row['margin_per_product_percent'] ?? 0; // Margin per product (%)
+        $grossProfitPerOrder = $row['gross_profit_per_order_rp'] ?? 0; // Gross profit per order (Rp)
+        $marginPerOrderPercent = $row['margin_per_order_percent'] ?? 0; // Margin per order (%)
 
         return [
             isset($row['order_date']) ? Carbon::parse($row['order_date'])->format('d M Y') : '-', // Tanggal
             isset($row['order_number']) ? (string)$row['order_number'] : '-', // No Pesanan as text
             isset($row['invoice_number']) ? (string)$row['invoice_number'] : '-', // No Invoice as text
             $row['platform_product_name'] ?? '-', // Nama Produk (Platform)
-            $row['platform_product_variant'] ?? '-', // Variasi (Platform)
-            $row['quantity'] ?? 0, // Jumlah QTY (Platform)
-            $revenue, // Jumlah Masuk Pembayaran (Rp)
-            $revenueWithoutPPN, // Jumlah Masuk Pembayaran - PPN (Rp)
+            $row['product_variant'] ?? ($row['platform_product_variant'] ?? '-'), // Variasi (Platform)
+            $row['quantity'] ?? 0, // QTY
+            $revenue, // Jumlah Masuk Pembayaran per Produk (Rp)
+            $revenueWithoutPPN, // Jumlah Masuk Pembayaran - PPN per Produk (Rp)
             $capital, // Harga Modal Total (COGS) (Rp)
-            $grossProfit, // Gross Profit Total (Rp)
-            $marginPercent // Margin per pcs (%) - dalam format desimal untuk Excel
+            $grossProfitPerProductPercent / 100, // Gross Profit per Produk (%) - convert to decimal for Excel
+            $marginPerProductRp, // Margin per Produk (Rp)
+            $marginPerProductPercent / 100, // Margin per Produk (%) - convert to decimal for Excel
+            $grossProfitPerOrder, // Gross Profit per Order (Rp)
+            $marginPerOrderPercent / 100 // Margin per Order (%) - convert to decimal for Excel
         ];
     }
 
@@ -80,7 +87,7 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
     public function styles(Worksheet $sheet)
     {
         // Style header row - CLEAN STYLING
-        $sheet->getStyle('A9:K9')->applyFromArray([
+        $sheet->getStyle('A9:N9')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['rgb' => 'FFFFFF'],
@@ -107,7 +114,7 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
         
         // Title styling
         $sheet->setCellValue('A1', 'ANALISIS GROSS PROFIT PER PRODUK PLATFORM');
-        $sheet->mergeCells('A1:K1');
+        $sheet->mergeCells('A1:N1');
         $sheet->getStyle('A1')->applyFromArray([
             'font' => [
                 'bold' => true, 
@@ -194,21 +201,21 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
             ]);
         }
 
-        // Format currency columns (G, H, I, J)
+        // Format currency columns (G, H, I, K, M)
         $lastRow = $sheet->getHighestRow();
-        $currencyColumns = ['G', 'H', 'I', 'J'];
+        $currencyColumns = ['G', 'H', 'I', 'K', 'M'];
         foreach ($currencyColumns as $col) {
             $sheet->getStyle($col . '10:' . $col . $lastRow)->getNumberFormat()->setFormatCode('#,##0');
         }
         
-        // Format percentage columns (K)
-        $percentageColumns = ['K'];
+        // Format percentage columns (J, L, N)
+        $percentageColumns = ['J', 'L', 'N'];
         foreach ($percentageColumns as $col) {
             $sheet->getStyle($col . '10:' . $col . $lastRow)->getNumberFormat()->setFormatCode('0.00%');
         }
         
         // Set default cell style to remove any unwanted formatting
-        $sheet->getStyle('A1:K1000')->applyFromArray([
+        $sheet->getStyle('A1:N1000')->applyFromArray([
             'fill' => [
                 'fillType' => 'none'
             ],
@@ -219,7 +226,7 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
         ]);
         
         // Apply clean styling to all data rows - NO BOLD TEXT, NO CENTER ALIGNMENT
-        $sheet->getStyle('A10:K' . $lastRow)->applyFromArray([
+        $sheet->getStyle('A10:N' . $lastRow)->applyFromArray([
             'fill' => [
                 'fillType' => 'none'
             ],
@@ -241,7 +248,7 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
         ]);
         
         // Special alignment for numeric columns (right aligned)
-        $numericColumns = ['F', 'G', 'H', 'I', 'J'];
+        $numericColumns = ['F', 'G', 'H', 'I', 'K', 'M'];
         foreach ($numericColumns as $col) {
             $sheet->getStyle($col . '10:' . $col . $lastRow)->applyFromArray([
                 'alignment' => [
@@ -252,7 +259,7 @@ class SalesByPlatformProductExport implements FromCollection, WithHeadings, With
         }
         
         // Special alignment for percentage columns (right aligned)
-        $percentageColumns = ['K'];
+        $percentageColumns = ['J', 'L', 'N'];
         foreach ($percentageColumns as $col) {
             $sheet->getStyle($col . '10:' . $col . $lastRow)->applyFromArray([
                 'alignment' => [

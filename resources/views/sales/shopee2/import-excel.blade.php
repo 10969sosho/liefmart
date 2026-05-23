@@ -5,7 +5,7 @@
     <div class="row justify-content-center">
         <div class="col-md-8">
             <div class="card">
-                <div class="card-header">{{ __('Import Data Excel Shopee') }}</div>
+                <div class="card-header">{{ __('Import Data Excel Shopee Liefmarket') }}</div>
 
                 <div class="card-body">
                     <div class="row mb-4">
@@ -15,8 +15,8 @@
                                     <li class="breadcrumb-item"><a href="{{ route('sales.index') }}">Menu Penjualan</a></li>
                                     <li class="breadcrumb-item"><a href="{{ route('sales.choose-type') }}">Pilih Tipe Penjualan</a></li>
                                     <li class="breadcrumb-item"><a href="{{ route('sales.online') }}">Penjualan Online</a></li>
-                                    <li class="breadcrumb-item"><a href="{{ route('sales.platform', ['platform' => 'shopee2']) }}">Platform Shopee</a></li>
-                                    <li class="breadcrumb-item active" aria-current="page">Import Excel Shopee</li>
+                                    <li class="breadcrumb-item"><a href="{{ route('sales.platform', ['platform' => 'shopee2']) }}">Platform Shopee Liefmarket</a></li>
+                                    <li class="breadcrumb-item active" aria-current="page">Import Excel Shopee Liefmarket</li>
                                 </ol>
                             </nav>
                         </div>

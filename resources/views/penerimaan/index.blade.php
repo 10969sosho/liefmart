@@ -34,6 +34,14 @@
     </div>
 
     <!-- Alert -->
+    @if(request('success'))
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle me-2"></i>
+        Berhasil disimpan.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    @endif
+
     @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
         <i class="fas fa-check-circle me-2"></i>
@@ -91,8 +99,8 @@
                         <label for="tax_category" class="form-label small fw-medium">Status Tax</label>
                         <select class="form-select" id="tax_category" name="tax_category">
                             <option value="">Semua Status Tax</option>
-                            <option value="HGN" {{ request('tax_category') == 'HGN' ? 'selected' : '' }}>HGN</option>
-                            <option value="LM" {{ request('tax_category') == 'LM' ? 'selected' : '' }}>LM</option>
+                            <option value="PKP" {{ request('tax_category') == 'PKP' ? 'selected' : '' }}>PKP</option>
+                            <option value="NON PKP" {{ request('tax_category') == 'NON PKP' ? 'selected' : '' }}>NON PKP</option>
                         </select>
                     </div>
                     
@@ -158,10 +166,10 @@
                                 <td>{{ $item->tanggal_penerimaan->format('d/m/Y') }}</td>
                                 <td class="text-center">
                                     @if($item->taxCategory)
-                                        @if($item->taxCategory->name == 'HGN')
-                                            <span class="badge bg-info">HGN</span>
-                                        @elseif($item->taxCategory->name == 'LM')
-                                            <span class="badge bg-warning">LM</span>
+                                        @if($item->taxCategory->name == 'PKP')
+                                            <span class="badge bg-info">PKP</span>
+                                        @elseif($item->taxCategory->name == 'NON PKP')
+                                            <span class="badge bg-warning">NON PKP</span>
                                         @else
                                             <span class="badge bg-light text-dark">{{ $item->taxCategory->name }}</span>
                                         @endif
@@ -172,7 +180,7 @@
                                 @php
                                     $dpp = round($item->calculated_total);
                                     $ppn = 0;
-                                    if ($item->taxCategory && $item->taxCategory->name == 'HGN') {
+                                    if ($item->taxCategory && $item->taxCategory->name == 'PKP') {
                                         $ppn = round($dpp * 0.11);
                                     }
                                     $total = $dpp + $ppn;

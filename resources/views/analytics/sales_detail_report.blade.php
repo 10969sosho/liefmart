@@ -155,33 +155,13 @@
         }
         
         /* Platform specific colors */
-        .platform-tokopedia {
-            background-color: #42B549;
-            color: white;
-        }
-        
         .platform-shopee {
             background-color: #EE4D2D;
             color: white;
         }
         
-        .platform-lazada {
-            background-color: #0F146D;
-            color: white;
-        }
-        
         .platform-tiktok {
             background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095DA;
-            color: white;
-        }
-        
-        .platform-bukalapak {
-            background-color: #E31E52;
             color: white;
         }
         
@@ -377,7 +357,7 @@
                             </div>
                             <div class="mt-2 small opacity-75" style="font-size: 0.75rem; line-height: 1.4;">
                                 @php
-                                    // Gunakan total_orders_before_returns dari controller yang sudah sesuai dengan filter tanggal dan platform
+                                    // Card summary mengikuti semua filter (tanggal, platform, harga, qty)
                                     $totalBeforeReturns = $summary['total_orders_before_returns'] ?? 0;
                                     $ordersWithReturns = $summary['orders_with_returns'] ?? 0;
                                     
@@ -454,7 +434,7 @@
                                 </div>
                             </div>
                             <div class="mt-2 small opacity-75" style="font-size: 0.75rem; line-height: 1.4;">
-                                Data terfilter dari total keseluruhan
+                                % dari filter tanggal/platform yang dipilih
                             </div>
                         </div>
                     </div>

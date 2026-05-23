@@ -342,6 +342,7 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
     protected function isHeaderRow($row)
     {
         // Daftar header yang diharapkan - hanya header yang spesifik ini yang diperbolehkan
+        // PENTING: Untuk variant, terima 'VARIASI', 'VARIANT', atau 'VARIAN' (case-insensitive)
         $expectedHeaders = [
             'NOMOR PESANAN',
             'NOMOR RESI',
@@ -349,10 +350,13 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
             'STATUS HARI',
             'TANGGAL',
             'NAMA PRODUK',
-            'VARIASI',
+            'VARIASI', // Juga menerima 'VARIANT' dan 'VARIAN' (case-insensitive)
             'QTY',
             'HARGA SETELAH DISKON'
         ];
+        
+        // Variant header options untuk matching
+        $variantHeaderOptions = ['VARIASI', 'VARIANT', 'VARIAN'];
 
         // Log for debugging
         \Log::info("Checking if row is a header row");
@@ -385,21 +389,28 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
         foreach ($expectedHeaders as $header) {
             $headerMatched = false;
             
+            // Untuk header VARIASI, cek juga VARIANT dan VARIAN
+            $headerOptions = ($header === 'VARIASI') ? $variantHeaderOptions : [$header];
+            
             foreach ($row as $cellIndex => $cell) {
                 if (!is_string($cell)) {
                     continue;
                 }
                 
                 $normalizedCell = trim(strtoupper($cell));
-                $normalizedHeader = trim(strtoupper($header));
                 
-                // Hanya cocokkan jika sama persis
-                if ($normalizedCell === $normalizedHeader) {
-                    $foundColumns++;
-                    $matchedColumns[] = $header . " (matched with: $cell)";
-                    $headerMatched = true;
-                    \Log::info("Match found for header: $header at cell index $cellIndex");
-                    break;
+                // Cek setiap opsi header (case-insensitive)
+                foreach ($headerOptions as $headerOption) {
+                    $normalizedHeader = trim(strtoupper($headerOption));
+                    
+                    // Hanya cocokkan jika sama persis
+                    if ($normalizedCell === $normalizedHeader) {
+                        $foundColumns++;
+                        $matchedColumns[] = $header . " (matched with: $cell)";
+                        $headerMatched = true;
+                        \Log::info("Match found for header: $header (matched '$headerOption') at cell index $cellIndex");
+                        break 2; // Break dari kedua loop
+                    }
                 }
             }
             
@@ -434,6 +445,7 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
         \Log::info('Original Headers:', $headers->toArray());
 
         // Hanya gunakan header yang spesifik sesuai permintaan
+        // PENTING: Untuk variasi, cari 'VARIASI', 'VARIANT', atau 'VARIAN' (case-insensitive)
         $exactHeaderMapping = [
             'no_order' => 'NOMOR PESANAN',
             'no_resi' => 'NOMOR RESI',
@@ -441,7 +453,7 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
             'status_hari' => 'STATUS HARI',
             'tanggal' => 'TANGGAL',
             'nama_barang' => 'NAMA PRODUK',
-            'variasi' => 'VARIASI',
+            'variasi' => ['VARIASI', 'VARIANT', 'VARIAN'], // Menerima VARIASI, VARIANT, atau VARIAN (case-insensitive)
             'qty' => 'QTY',
             'harga_setelah_diskon' => 'HARGA SETELAH DISKON'
         ];
@@ -471,16 +483,22 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
         foreach ($exactHeaderMapping as $field => $exactHeader) {
             $columnIndex = null;
             
+            // Handle array untuk field yang memiliki multiple header options (seperti variasi)
+            $headerOptions = is_array($exactHeader) ? $exactHeader : [$exactHeader];
+            
             foreach ($headers as $index => $header) {
                 if (!is_string($header)) {
                     continue;
                 }
                 
-                // Hanya cocokkan jika header sama persis (case-insensitive)
-                if (strtoupper(trim($header)) === strtoupper(trim($exactHeader))) {
-                    $columnIndex = $index;
-                    \Log::info("Exact match found for '$exactHeader' at index $index");
-                    break;
+                // Cek setiap opsi header (case-insensitive)
+                foreach ($headerOptions as $headerOption) {
+                    // Hanya cocokkan jika header sama persis (case-insensitive)
+                    if (strtoupper(trim($header)) === strtoupper(trim($headerOption))) {
+                        $columnIndex = $index;
+                        \Log::info("Exact match found for '$headerOption' (field: $field) at index $index");
+                        break 2; // Break dari kedua loop
+                    }
                 }
             }
             
@@ -600,9 +618,13 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
                     }
                 }
             }
-            // For nama_barang and variasi, preserve exactly as in Excel (no processing)
+            // PENTING: For nama_barang and variasi, preserve exactly as in Excel (no processing)
+            // VARIANT HARUS diambil HANYA dari kolom variant Excel, BUKAN dari parsing nama produk
+            // Meskipun di nama produk ada simbol seperti "-", "+", dll, JANGAN parsing untuk mendapatkan variant
+            // Variant hanya dari kolom variant Excel saja
             else if ($key === 'nama_barang' || $key === 'variasi') {
                 // Return exactly as in Excel, preserve all characters including +, -, spaces, etc.
+                // NO PARSING from product name - variant comes ONLY from variant column
                 $result[$key] = $value;
                 continue;
             }
@@ -718,6 +740,8 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
             $errors[] = 'Quantity harus berupa angka (ditemukan: ' . gettype($row['qty']) . ' - ' . $row['qty'] . ')';
         } else if ($row['qty'] <= 0) {
             $errors[] = 'Quantity harus lebih dari 0 (ditemukan: ' . $row['qty'] . ')';
+        } else if (floor($row['qty']) != $row['qty']) {
+            $errors[] = 'Quantity tidak boleh berupa angka desimal (ditemukan: ' . $row['qty'] . '). Harap perbaiki file Excel Anda.';
         }
         
         // Price validation with more detailed error messages
@@ -942,9 +966,10 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
 
                     // Proses setiap item dalam order
                     foreach ($orderItems as $item) {
-                        // Buat nama produk lengkap dengan variasi jika ada
+                        // PENTING: Variant diambil HANYA dari kolom variant Excel ($item['variasi'])
+                        // BUKAN dari parsing nama produk, meskipun di nama produk ada simbol seperti "-", "+", dll
                         $productName = $item['nama_barang'];
-                        $variation = $item['variasi'] ?? null;
+                        $variation = $item['variasi'] ?? null; // Variant HANYA dari kolom variant Excel
                         $fullProductName = !empty($variation) ? "$productName - $variation" : $productName;
                         
                         \Log::info("Processing item: $fullProductName, qty: {$item['qty']}");
@@ -1082,40 +1107,44 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
      */
     protected function checkStock($platformProduct, $quantity)
     {
-        // Debug logging untuk main category
-        $mainCategoryId = \App\Helpers\MainCategoryHelper::getSelectedMainCategoryId();
-        \Log::info("CheckStock - Main Category ID: " . ($mainCategoryId ?: 'NULL'));
-        
-        // Ambil semua mapping barang AKTIF untuk platform product ini
         $mappings = MappingBarang::where('platform_product_id', $platformProduct->id)
             ->where('is_active', true)
             ->get();
 
         foreach ($mappings as $mapping) {
-            // Hitung jumlah yang perlu dikurangi dari stok
             $qtyToReduce = $quantity * $mapping->quantity;
 
-            // Ambil total stok yang tersedia
-            $availableStock = WarehouseStock::where('product_id', $mapping->product_id)
+            $remainingQty = $qtyToReduce;
+            $stocks = WarehouseStock::where('product_id', $mapping->product_id)
                 ->where('qty', '>', 0)
-                ->sum('qty');
+                ->orderBy('warehouse_stock.created_at')
+                ->orderBy('warehouse_stock.tax_id', 'asc')
+                ->get(['warehouse_stock.qty']);
 
-            // Debug logging untuk stok
-            \Log::info("CheckStock - Product ID: {$mapping->product_id}, Required: {$qtyToReduce}, Available: {$availableStock}");
+            foreach ($stocks as $stock) {
+                if ($remainingQty <= 0) {
+                    break;
+                }
 
-            // Jika stok tidak cukup, return error
-            if ($availableStock < $qtyToReduce) {
+                $qtyToTake = min($remainingQty, $stock->qty);
+
+                $remainingQty -= $qtyToTake;
+            }
+
+            if ($remainingQty > 0) {
                 $product = Product::find($mapping->product_id);
                 $productName = $product ? $product->name : 'Unknown Product';
+                $effectiveAvailableStock = $qtyToReduce - $remainingQty;
 
-                \Log::error("CheckStock - Insufficient stock: {$productName}, Required: {$qtyToReduce}, Available: {$availableStock}");
+                \Log::error("CheckStock - Insufficient stock: {$productName}, Required: {$qtyToReduce}, Effective Available: {$effectiveAvailableStock}, Remaining: {$remainingQty}");
 
                 return [
                     'success' => false,
                     'product_id' => $mapping->product_id,
                     'product_name' => $productName,
                     'required' => $qtyToReduce,
-                    'available' => $availableStock,
+                    'available' => $effectiveAvailableStock,
+                    'shortage' => $remainingQty,
                 ];
             }
         }
@@ -1199,11 +1228,6 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
                     // Hitung quantity yang akan dikurangi dari stok ini
                     // Pastikan qty minimal 1 (tidak ada desimal seperti 0.5)
                     $qtyToTake = min($remainingQty, $stock->qty);
-                    
-                    // Jika qtyToTake kurang dari 1, skip stock ini dan lanjut ke stock berikutnya
-                    if ($qtyToTake < 1) {
-                        continue;
-                    }
                     
                     \Log::info("Reducing from stock ID: {$stock->id}, Available: {$stock->qty}, Taking: {$qtyToTake}");
 
@@ -1366,9 +1390,12 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
 
     /**
      * Periksa apakah produk dan variasi sudah dimapping di database
+     * 
+     * PENTING: $variation parameter HARUS diambil dari kolom variant Excel, BUKAN dari parsing nama produk
+     * Meskipun di nama produk ada simbol seperti "-", "+", dll, JANGAN parsing untuk mendapatkan variant
      *
-     * @param  string  $productName
-     * @param  string|null  $variation
+     * @param  string  $productName Nama produk dari kolom nama_barang Excel
+     * @param  string|null  $variation Variant dari kolom variasi Excel (BUKAN dari parsing nama produk)
      * @return void
      */
     protected function checkProductMapping($productName, $variation = null)
@@ -1377,7 +1404,8 @@ class Shopee2Import implements ToCollection, WithMultipleSheets
             return;
         }
 
-        // Buat nama produk lengkap dengan variasi jika ada
+        // PENTING: Variant ($variation) sudah diambil dari kolom variant Excel, bukan dari parsing nama produk
+        // Buat nama produk lengkap dengan variasi jika ada (hanya untuk logging/display)
         $fullProductName = $productName;
         if (!empty($variation)) {
             $fullProductName .= " - " . $variation;

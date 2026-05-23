@@ -114,14 +114,17 @@
                                         </tr>
                                     </thead>
                                     <tbody id="items-container">
-                                        @foreach($returPembelian->penerimaan->details as $index => $item)
                                         @php
-                                            $detail = $returPembelian->details->where('penerimaan_detail_id', $item->id)->first();
-                                            $availableStock = $item->available_stock ?? 0;
-                                            if ($detail) {
-                                                // Add current return qty to available stock because we're editing
-                                                $availableStock += $detail->qty;
-                                            }
+                                            $itemIndex = 0;
+                                        @endphp
+                                        @foreach($returPembelian->details as $returDetail)
+                                        @php
+                                            $penerimaanDetail = $returDetail->penerimaanDetail;
+                                            if (!$penerimaanDetail) continue;
+                                            
+                                            $item = $penerimaanDetail;
+                                            // available_stock already calculated in controller
+                                            $availableStock = $returDetail->available_stock ?? 0;
                                             $stockClass = $availableStock > 0 ? 'text-success font-weight-bold' : 'text-danger font-weight-bold';
                                         @endphp
                                         <tr>
@@ -130,16 +133,24 @@
                                             <td class="{{ $stockClass }}">{{ $availableStock }}</td>
                                             <td>{{ $item->satuan ? $item->satuan->name : '-' }}</td>
                                             <td>
-                                                <input type="hidden" name="details[{{ $index }}][penerimaan_detail_id]" value="{{ $item->id }}">
-                                                <input type="hidden" name="details[{{ $index }}][product_id]" value="{{ $item->product_id }}">
-                                                <input type="hidden" name="details[{{ $index }}][satuan_id]" value="{{ $item->satuan_id }}">
-                                                <input type="number" name="details[{{ $index }}][qty]" class="form-control form-control-sm qty-input" min="0" max="{{ $availableStock }}" step="0.01" value="{{ $detail ? $detail->qty : 0 }}" {{ $availableStock <= 0 ? 'disabled' : '' }}>
+                                                <input type="hidden" name="details[{{ $itemIndex }}][penerimaan_detail_id]" value="{{ $item->id }}">
+                                                <input type="hidden" name="details[{{ $itemIndex }}][product_id]" value="{{ $item->product_id }}">
+                                                <input type="hidden" name="details[{{ $itemIndex }}][satuan_id]" value="{{ $item->satuan_id }}">
+                                                <input type="number" name="details[{{ $itemIndex }}][qty]" class="form-control form-control-sm qty-input" min="0" max="{{ $availableStock }}" step="0.01" value="{{ $returDetail->qty }}" required>
                                             </td>
                                             <td>
-                                                <input type="text" name="details[{{ $index }}][alasan]" class="form-control form-control-sm" placeholder="Alasan retur" value="{{ $detail ? $detail->alasan : '' }}" {{ $availableStock <= 0 ? 'disabled' : '' }}>
+                                                <input type="text" name="details[{{ $itemIndex }}][alasan]" class="form-control form-control-sm" placeholder="Alasan retur" value="{{ $returDetail->alasan ?? '' }}" required>
                                             </td>
                                         </tr>
+                                        @php
+                                            $itemIndex++;
+                                        @endphp
                                         @endforeach
+                                        @if($returPembelian->details->isEmpty())
+                                        <tr>
+                                            <td colspan="6" class="text-center">Tidak ada detail barang retur</td>
+                                        </tr>
+                                        @endif
                                     </tbody>
                                 </table>
                             </div>

@@ -6,8 +6,6 @@ use Illuminate\Console\Command;
 use App\Models\InvoiceSequence;
 use App\Models\TiktokFinancialTransaction;
 use App\Models\ShopeeFinancialTransaction;
-use App\Models\BlibliFinancialTransaction;
-use App\Models\TokopediaFinancialTransaction;
 
 class CheckInvoiceSequences extends Command
 {
@@ -74,8 +72,6 @@ class CheckInvoiceSequences extends Command
         $platforms = [
             'TikTok' => TiktokFinancialTransaction::class,
             'Shopee' => ShopeeFinancialTransaction::class,
-            'Blibli' => BlibliFinancialTransaction::class,
-            'Tokopedia' => TokopediaFinancialTransaction::class,
         ];
 
         foreach ($platforms as $platformName => $modelClass) {

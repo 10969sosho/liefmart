@@ -161,6 +161,17 @@
                                             $grandTotalRetur = 0;
                                             $totalDiskonRetur = 0;
                                         @endphp
+                                        @php
+                                            // Get tax_id from first detail item's barang keluar
+                                            $taxId = null;
+                                            $firstDetail = $returOfflineSale->details->first();
+                                            if ($firstDetail && $firstDetail->offlineSaleItem) {
+                                                $barangKeluar = $firstDetail->offlineSaleItem->barangKeluar()->with('warehouseStock')->first();
+                                                if ($barangKeluar && $barangKeluar->warehouseStock) {
+                                                    $taxId = $barangKeluar->warehouseStock->tax_id;
+                                                }
+                                            }
+                                        @endphp
                                         @forelse($returOfflineSale->details as $index => $detail)
                                         @php
                                             $qtyRetur = $detail->qty;
@@ -223,6 +234,56 @@
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    @php
+                        // Calculate DPP, PPN, and Grand Total
+                        // grandTotalRetur adalah total setelah diskon (DPP retur)
+                        $dpp = \App\Helpers\NumberFormatter::calculateDPP($grandTotalRetur);
+                        $ppn = 0;
+                        $grandTotal = $dpp;
+                        
+                        if ($taxId == 3) {
+                            // PKP: Calculate PPN
+                            // DPP = grandTotalRetur (total setelah diskon)
+                            // DPP 11/12 = DPP * (11/12)
+                            // PPN = DPP 11/12 * 12% = DPP * 0.11
+                            $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                            $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                            $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+                        } else {
+                            // Non-PKP: No PPN
+                            $dpp11_12 = 0;
+                            $ppn = 0;
+                            $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+                        }
+                        // grandTotal adalah nominal retur (pembayaran) = DPP + PPN
+                    @endphp
+
+                    <div class="card mt-3">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0">Rincian Pembayaran</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 offset-md-6">
+                                    <table class="table table-bordered">
+                                        <tr>
+                                            <th width="50%">DPP (Dasar Pengenaan Pajak)</th>
+                                            <td class="text-right"><strong>Rp {{ number_format($dpp, 0, ',', '.') }}</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <th>PPN (11%)</th>
+                                            <td class="text-right"><strong>Rp {{ number_format($ppn, 0, ',', '.') }}</strong></td>
+                                        </tr>
+                                        <tr class="table-info">
+                                            <th>TOTAL (DPP + PPN)</th>
+                                            <td class="text-right"><strong>Rp {{ number_format($grandTotal, 0, ',', '.') }}</strong></td>
+                                        </tr>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>

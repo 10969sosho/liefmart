@@ -141,33 +141,12 @@
         }
         
         /* Platform specific colors */
-        .platform-tokopedia {
-            background-color: #42b549;
-            color: white;
-        }
-        
         .platform-shopee {
             background-color: #ee4d2d;
             color: white;
         }
-        
-        .platform-lazada {
-            background-color: #0f146d;
-            color: white;
-        }
-        
         .platform-tiktok {
             background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095da;
-            color: white;
-        }
-        
-        .platform-bukalapak {
-            background-color: #e31e52;
             color: white;
         }
         

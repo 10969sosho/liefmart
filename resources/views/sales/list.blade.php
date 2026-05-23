@@ -62,11 +62,12 @@
                                     <div class="col-md-3">
                                         <label for="platformFilter" class="form-label small">Platform</label>
                                         <select class="form-select form-select-sm" id="platformFilter" name="platform">
-                                            <option value="">Semua Platform</option>
-                                            <option value="shopee" {{ request('platform') == 'shopee' ? 'selected' : '' }}>Shopee</option>
-                                            <option value="tokopedia" {{ request('platform') == 'tokopedia' ? 'selected' : '' }}>Tokopedia</option>
-                                            <option value="tiktok" {{ request('platform') == 'tiktok' ? 'selected' : '' }}>Tiktok</option>
-                                            <option value="blibli" {{ request('platform') == 'blibli' ? 'selected' : '' }}>Blibli</option>
+                                            <option value="" {{ empty(request('platform')) || request('platform') == '' ? 'selected' : '' }}>Semua Platform</option>
+                                            @foreach($platforms ?? [] as $platform)
+                                                <option value="{{ $platform->id }}" {{ request('platform') == $platform->id ? 'selected' : '' }}>
+                                                    {{ ucfirst($platform->name) }}
+                                                </option>
+                                            @endforeach
                                         </select>
                                     </div>
                                     <div class="col-md-3">
@@ -174,10 +175,8 @@
                                                     <td style="text-align: center;" rowspan="{{ $rowspan }}">
                                                         @if($order->platform)
                                                             <span class="badge bg-{{ 
-                                                                $order->platform->name == 'shopee' ? 'warning' : 
-                                                                ($order->platform->name == 'tokopedia' ? 'success' : 
-                                                                ($order->platform->name == 'tiktok' ? 'dark' : 
-                                                                ($order->platform->name == 'blibli' ? 'info' : 'primary'))) 
+                                                                str_contains(strtolower($order->platform->name), 'shopee') ? 'warning' : 
+                                                                (str_contains(strtolower($order->platform->name), 'tiktok') ? 'dark' : 'primary') 
                                                             }}">
                                                                 {{ $order->platform->name }}
                                                             </span>
@@ -462,17 +461,9 @@
         color: white;
     }
     
-    .badge.bg-success {
-        background-color: #42B549 !important; /* Tokopedia green */
-    }
-    
-    .badge.bg-dark {
-        background-color: #000000 !important; /* TikTok black */
-    }
-    
-    .badge.bg-info {
-        background-color: #0074b1 !important; /* Blibli blue */
-        color: white;
+    .badge-tiktok {
+        background-color: #000000 !important;
+        color: white !important;
     }
     
     /* Animasi untuk filter section toggle */
@@ -695,16 +686,8 @@
     }
     
     // Function to print invoice
-    function printInvoice(orderId, platformName = '') {
-        let printUrl;
-        
-        // Use different route for Blibli orders to avoid under.construction middleware
-        if (platformName === 'blibli') {
-            printUrl = `/sales/blibli/orders/${orderId}/print`;
-        } else {
-            printUrl = `/sales/orders/${orderId}/print`;
-        }
-        
+    function printInvoice(orderId, platformName) {
+        let printUrl = `/sales/orders/${orderId}/print`;
         window.open(printUrl, '_blank');
     }
     

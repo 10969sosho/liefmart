@@ -47,18 +47,18 @@ class TaxCategorySeeder extends Seeder
 
         // Kategori pajak untuk KOSMETIK
         TaxCategory::create([
-            'name' => 'HGN',
+            'name' => 'PKP',
             'main_category_id' => $kosmetikId,
-            'tax_percentage' => 10.00, // Contoh persentase
-            'description' => 'Harvest Niaga Global',
+            'tax_percentage' => 11.00, // 11% PPN
+            'description' => 'Pengusaha Kena Pajak',
             'is_active' => true,
         ]);
 
         TaxCategory::create([
-            'name' => 'LM',
+            'name' => 'NON PKP',
             'main_category_id' => $kosmetikId,
-            'tax_percentage' => 0.00, // Contoh persentase
-            'description' => 'LM',
+            'tax_percentage' => 0.00, // Tanpa PPN
+            'description' => 'Bukan Pengusaha Kena Pajak',
             'is_active' => true,
         ]);
 

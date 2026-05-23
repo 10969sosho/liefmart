@@ -66,18 +66,6 @@ class GrossProfitReportQuery
                         WHERE order_id = o.id AND saldo_masuk > 0 
                         ORDER BY tanggal_masuk_pembayaran ASC 
                         LIMIT 1
-                    ), (
-                        SELECT no_invoice 
-                        FROM tokopedia_financial_transactions 
-                        WHERE order_id = o.id AND saldo_masuk > 0 
-                        ORDER BY tanggal_masuk_pembayaran ASC 
-                        LIMIT 1
-                    ), (
-                        SELECT no_invoice 
-                        FROM blibli_financial_transactions 
-                        WHERE order_id = o.id AND saldo_masuk > 0 
-                        ORDER BY tanggal_masuk_pembayaran ASC 
-                        LIMIT 1
                     ), '-') as invoice_number
                 FROM order_totals ot
                 INNER JOIN orders o ON ot.order_id = o.id

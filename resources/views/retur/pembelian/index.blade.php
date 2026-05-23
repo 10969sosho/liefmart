@@ -135,7 +135,28 @@
                                     $totalQty = $retur->details->sum('qty');
                                     $totalNominal = $retur->details->sum(function($detail) {
                                         if ($detail->penerimaanDetail) {
-                                            return $detail->penerimaanDetail->harga_hpp * $detail->qty;
+                                            $penerimaanDetail = $detail->penerimaanDetail;
+                                            // Calculate harga per unit after tiered discounts
+                                            $hargaHpp = 0;
+                                            if ($penerimaanDetail->qty > 0 && $penerimaanDetail->subtotal > 0) {
+                                                $hargaHpp = $penerimaanDetail->subtotal / $penerimaanDetail->qty;
+                                            } else {
+                                                // Fallback: calculate from harga_hpp with discounts
+                                                $hargaHpp = $penerimaanDetail->harga_hpp;
+                                                for ($i = 1; $i <= 5; $i++) {
+                                                    $diskonPersen = $penerimaanDetail->{"diskon_persen_$i"} ?? 0;
+                                                    if ($diskonPersen > 0) {
+                                                        $hargaHpp = $hargaHpp * (1 - $diskonPersen / 100);
+                                                    }
+                                                }
+                                                for ($i = 1; $i <= 5; $i++) {
+                                                    $diskonNominal = $penerimaanDetail->{"diskon_nominal_$i"} ?? 0;
+                                                    if ($diskonNominal > 0 && $penerimaanDetail->qty > 0) {
+                                                        $hargaHpp = $hargaHpp - ($diskonNominal / $penerimaanDetail->qty);
+                                                    }
+                                                }
+                                            }
+                                            return $hargaHpp * $detail->qty;
                                         }
                                         return 0;
                                     });
@@ -160,6 +181,9 @@
                                     <td>
                                         <a href="{{ route('retur-pembelian.show', $retur->id) }}" class="btn btn-sm btn-info">
                                             <i class="fas fa-eye"></i> Detail
+                                        </a>
+                                        <a href="{{ route('retur-pembelian.edit', $retur->id) }}" class="btn btn-sm btn-warning ml-1">
+                                            <i class="fas fa-edit"></i> Edit
                                         </a>
                                         <form action="{{ route('retur-pembelian.destroy', $retur->id) }}" method="POST" class="d-inline ml-1">
                                             @csrf

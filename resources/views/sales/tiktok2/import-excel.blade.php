@@ -6,7 +6,7 @@
         <div class="row justify-content-center">
             <div class="col-md-8">
                 <div class="card">
-                    <div class="card-header">{{ __('Import Data Excel Tiktok') }}</div>
+                    <div class="card-header">{{ __('Import Data Excel Tiktok Liefmarket') }}</div>
 
                     <div class="card-body">
                         <div class="row mb-4">
@@ -21,8 +21,8 @@
                                                 Online</a></li>
                                         <li class="breadcrumb-item"><a
                                                 href="{{ route('sales.platform', ['platform' => 'tiktok2']) }}">Platform
-                                                Tiktok</a></li>
-                                        <li class="breadcrumb-item active" aria-current="page">Import Excel Tiktok</li>
+                                                Tiktok Liefmarket</a></li>
+                                        <li class="breadcrumb-item active" aria-current="page">Import Excel Tiktok Liefmarket</li>
                                     </ol>
                                 </nav>
                             </div>

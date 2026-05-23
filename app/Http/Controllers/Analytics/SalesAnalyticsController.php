@@ -17,12 +17,15 @@ use App\Exports\SalesByDateNumberExport;
 use App\Exports\SalesDetailReportExport;
 use App\Exports\SalesByPlatformExport;
 use App\Exports\SalesByStatusDayExport;
+use App\Exports\InternalProductSalesExport;
+use App\Exports\SalesExportMappedExport;
+use App\Queries\Analytics\Sales\SalesDetailQuery;
 
 class SalesAnalyticsController extends Controller
 {
     public function salesByPlatformReport(Request $request)
     {
-        $platforms = Platform::all();
+        $platforms = Platform::whereIn('name', ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'])->get();
         
         // Set default date range
         $startDate = $request->filled('start_date') ? $request->input('start_date') : Carbon::today()->format('Y-m-d');
@@ -32,7 +35,7 @@ class SalesAnalyticsController extends Controller
         try {
             $startDateCarbon = Carbon::parse($startDate)->startOfDay();
             $endDateCarbon = Carbon::parse($endDate)->endOfDay();
-        } catch (\Exception $e) {
+} catch (\Exception $e) {
             $startDateCarbon = Carbon::today()->startOfDay();
             $endDateCarbon = Carbon::today()->endOfDay();
         }
@@ -46,11 +49,13 @@ class SalesAnalyticsController extends Controller
                 SELECT COALESCE(SUM(order_items.price_after_discount * order_items.quantity), 0)
                 FROM order_items
                 WHERE order_items.order_id = orders.id
+                  AND order_items.quantity > 0
             ) as total_value')
             ->selectRaw('(
                 SELECT COALESCE(SUM(order_items.quantity), 0)
                 FROM order_items
                 WHERE order_items.order_id = orders.id
+                  AND order_items.quantity > 0
             ) as total_volume');
         
         // Apply platform filter if set
@@ -58,22 +63,12 @@ class SalesAnalyticsController extends Controller
             $baseQuery->where('platform_id', $request->platform_id);
         }
         
-        // Get order IDs that have returns (for exclusion)
-        $orderIdsWithReturn = ReturPenjualan::whereIn('order_id', function($q) use ($startDateCarbon, $endDateCarbon, $request) {
-            $q->select('id')
-              ->from('orders')
-              ->whereNotNull('platform_id')
-              ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
-              
-            if ($request->filled('platform_id')) {
-                $q->where('platform_id', $request->platform_id);
-            }
-        })->pluck('order_id')->unique()->toArray();
-        
-        // Exclude orders with returns
-        if (!empty($orderIdsWithReturn)) {
-            $baseQuery->whereNotIn('orders.id', $orderIdsWithReturn);
-        }
+        $baseQuery->whereExists(function($q) {
+            $q->select(DB::raw(1))
+                ->from('order_items')
+                ->whereColumn('order_items.order_id', 'orders.id')
+                ->where('order_items.quantity', '>', 0);
+        });
         
         // Determine sort order
         $sortBy = $request->input('sort', 'date_newest');
@@ -119,10 +114,12 @@ class SalesAnalyticsController extends Controller
             $summaryQuery->where('platform_id', $request->platform_id);
         }
         
-        // Exclude orders with returns for summary
-        if (!empty($orderIdsWithReturn)) {
-            $summaryQuery->whereNotIn('id', $orderIdsWithReturn);
-        }
+        $summaryQuery->whereExists(function($q) {
+            $q->select(DB::raw(1))
+                ->from('order_items')
+                ->whereColumn('order_items.order_id', 'orders.id')
+                ->where('order_items.quantity', '>', 0);
+        });
         
         // Get valid order IDs for summary calculation
         $validOrderIds = $summaryQuery->pluck('id')->toArray();
@@ -134,6 +131,7 @@ class SalesAnalyticsController extends Controller
                 ->selectRaw('COALESCE(SUM(price_after_discount * quantity), 0) as total_value')
                 ->selectRaw('COALESCE(SUM(quantity), 0) as total_volume')
                 ->whereIn('order_id', $validOrderIds)
+                ->where('quantity', '>', 0)
                 ->first();
         } else {
             $summaryData = (object)[
@@ -178,9 +176,12 @@ class SalesAnalyticsController extends Controller
             $platformSummaryQuery->where('platform_id', $request->platform_id);
         }
         
-        if (!empty($orderIdsWithReturn)) {
-            $platformSummaryQuery->whereNotIn('id', $orderIdsWithReturn);
-        }
+        $platformSummaryQuery->whereExists(function($q) {
+            $q->select(DB::raw(1))
+                ->from('order_items')
+                ->whereColumn('order_items.order_id', 'orders.id')
+                ->where('order_items.quantity', '>', 0);
+        });
         
         $platformOrderIds = $platformSummaryQuery->pluck('id')->toArray();
         
@@ -193,6 +194,7 @@ class SalesAnalyticsController extends Controller
                 ->selectRaw('COALESCE(SUM(order_items.price_after_discount * order_items.quantity), 0) as total_value')
                 ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as total_volume')
                 ->whereIn('orders.id', $platformOrderIds)
+                ->where('order_items.quantity', '>', 0)
                 ->groupBy('platforms.id', 'platforms.name')
                 ->get()
                 ->map(function($item) {
@@ -234,7 +236,7 @@ class SalesAnalyticsController extends Controller
     public function internalProductSalesReport(Request $request)
     {
         // Get platforms for filter
-        $platforms = Platform::all();
+        $platforms = Platform::whereIn('name', ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'])->get();
         
         // Parse dates
         $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
@@ -326,7 +328,8 @@ class SalesAnalyticsController extends Controller
                             
                             // Calculate value (proportional to this internal product)
                             $itemPrice = (float) ($orderItem->price_after_discount ?? 0);
-                            $itemValue = $remainingQty * $itemPrice;
+                            // Value should be proportional: internal_qty * (price_per_platform_product / total_package_qty)
+                            $itemValue = $internalQty * ($itemPrice / max($totalPackageQty, 1));
                             
                             if ($internalQty > 0) {
                                 if (!isset($productData[$productId])) {
@@ -427,11 +430,8 @@ class SalesAnalyticsController extends Controller
         ]);
     }
 
-    public function salesDetailReport(Request $request)
+    public function exportInternalProductSales(Request $request)
     {
-        // Get platforms for filter
-        $platforms = Platform::all();
-        
         // Parse dates
         $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
         $endDate = $request->input('end_date') ?? now()->format('Y-m-d');
@@ -444,270 +444,432 @@ class SalesAnalyticsController extends Controller
             $endDateCarbon = Carbon::today()->endOfDay();
         }
         
-        // Build base query - load orderItems because needed for detail display
-        $baseQuery = Order::withoutGlobalScope('mainCategory')
-            ->with([
-                'orderItems.platformProduct.mappingBarang' => function($query) {
-                    $query->where('is_active', true);
-                }, 
-                'platform'
-            ])
-            ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
-        
-        // Apply platform filter if provided
-        if ($request->has('platform_id') && !empty($request->platform_id)) {
-            $baseQuery->where('platform_id', $request->platform_id);
-        }
-        
-        // Get order IDs first (lightweight)
-        $tempOrderIdsQuery = Order::withoutGlobalScope('mainCategory')
-            ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
+        // Get order IDs in date range with platform filter
+        $orderIdsQuery = Order::withoutGlobalScope('mainCategory')
+            ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon])
+            ->whereNotNull('platform_id')
+            ->whereHas('orderItems.platformProduct.mappingBarang', function($query) {
+                $query->where('is_active', true);
+            });
             
         if ($request->has('platform_id') && !empty($request->platform_id)) {
-            $tempOrderIdsQuery->where('platform_id', $request->platform_id);
+            $orderIdsQuery->where('platform_id', $request->platform_id);
         }
         
-        $tempOrderIds = $tempOrderIdsQuery->pluck('id')->toArray();
+        $orderIds = $orderIdsQuery->pluck('id')->toArray();
         
-        $orderIdsWithReturn = [];
-        if (!empty($tempOrderIds)) {
-            $orderIdsWithReturn = ReturPenjualan::whereIn('order_id', $tempOrderIds)
-                ->whereIn('status', ['draft', 'selesai'])
-                ->pluck('order_id')
-                ->unique()
-                ->toArray();
-        }
-        
-        // Calculate order totals after returns using chunking (memory efficient)
-        // Process orders in chunks to avoid memory exhaustion
-        $orderTotals = [];
-        $chunkSize = 100; // Process 100 orders at a time
-        
-        if (!empty($tempOrderIds)) {
-            // Get all retur details in one query (batch query for efficiency)
+        // Get all retur details for these orders
+        $allReturDetails = [];
+        if (!empty($orderIds)) {
             $allReturDetails = DB::table('retur_penjualan_details')
                 ->join('retur_penjualans', 'retur_penjualan_details.retur_penjualan_id', '=', 'retur_penjualans.id')
-                ->whereIn('retur_penjualans.order_id', $tempOrderIds)
+                ->whereIn('retur_penjualans.order_id', $orderIds)
                 ->whereIn('retur_penjualans.status', ['draft', 'selesai'])
                 ->select('retur_penjualan_details.order_item_id', DB::raw('SUM(retur_penjualan_details.qty) as total_qty'))
                 ->groupBy('retur_penjualan_details.order_item_id')
-                ->pluck('total_qty', 'order_item_id')
+                ->pluck('total_qty', 'retur_penjualan_details.order_item_id')
                 ->toArray();
-            
-            // Get all order items with their platform products and mappings in chunks
-            foreach (array_chunk($tempOrderIds, $chunkSize) as $chunk) {
+        }
+        
+        // Group by internal product
+        $productData = [];
+        
+        if (!empty($orderIds)) {
+            // Process orders in chunks
+            foreach (array_chunk($orderIds, 100) as $chunk) {
                 $chunkOrders = Order::withoutGlobalScope('mainCategory')
                     ->whereIn('id', $chunk)
                     ->with(['orderItems' => function($query) {
                         $query->with(['platformProduct.mappingBarang' => function($q) {
-                            $q->where('is_active', true);
+                            $q->where('is_active', true)->with('product');
                         }]);
                     }])
                     ->get();
                 
                 foreach ($chunkOrders as $order) {
-                    $totalQtyAfterRetur = 0.0;
-                    $totalValueAfterRetur = 0.0;
-                    
                     foreach ($order->orderItems as $orderItem) {
-                        // Get retur quantity from pre-loaded array (no query in loop)
+                        if (!$orderItem->platformProduct || !$orderItem->platformProduct->mappingBarang || $orderItem->platformProduct->mappingBarang->isEmpty()) {
+                            continue;
+                        }
+                        
+                        // Get retur quantity
                         $itemQtyReturIndividual = isset($allReturDetails[$orderItem->id]) 
                             ? (float) $allReturDetails[$orderItem->id] 
                             : 0.0;
                         
-                        // Check if this is a package product
-                        $itemPackageQuantity = 1;
-                        if ($orderItem->platformProduct && $orderItem->platformProduct->mappingBarang && $orderItem->platformProduct->mappingBarang->count() > 0) {
-                            $itemPackageQuantity = $orderItem->platformProduct->mappingBarang->sum('quantity');
+                        // Process each internal product in the mapping
+                        foreach ($orderItem->platformProduct->mappingBarang as $mapping) {
+                            if (!$mapping->product) continue;
+                            
+                            $productId = $mapping->product->id;
+                            $productName = $mapping->product->name;
+                            $productSku = $mapping->product->sku ?? '-';
+                            $mappingQty = (float) $mapping->quantity;
+                            
+                            // Get total package quantity for this platform product
+                            $totalPackageQty = $orderItem->platformProduct->mappingBarang->sum('quantity');
+                            
+                            // Calculate retur for this specific internal product
+                            $itemQtyRetur = $totalPackageQty > 0 ? ($itemQtyReturIndividual * $mappingQty) / $totalPackageQty : 0;
+                            
+                            // Calculate quantities
+                            $currentItemQty = (float) ($orderItem->quantity ?? 0);
+                            $originalQty = $currentItemQty + ($totalPackageQty > 0 ? $itemQtyReturIndividual / $totalPackageQty : 0);
+                            $remainingQty = max(0.0, $originalQty - ($totalPackageQty > 0 ? $itemQtyReturIndividual / $totalPackageQty : 0));
+                            
+                            // Calculate internal product quantity
+                            $internalQty = $remainingQty * $mappingQty;
+                            
+                            // Calculate value (proportional to this internal product)
+                            $itemPrice = (float) ($orderItem->price_after_discount ?? 0);
+                            // Value should be proportional: internal_qty * (price_per_platform_product / total_package_qty)
+                            $itemValue = $internalQty * ($itemPrice / max($totalPackageQty, 1));
+                            
+                            if ($internalQty > 0) {
+                                if (!isset($productData[$productId])) {
+                                    $productData[$productId] = [
+                                        'product_name' => $productName,
+                                        'product_sku' => $productSku,
+                                        'total_qty' => 0,
+                                        'total_value' => 0,
+                                        'order_count' => 0,
+                                        'order_ids' => []
+                                    ];
+                                }
+                                
+                                $productData[$productId]['total_qty'] += $internalQty;
+                                $productData[$productId]['total_value'] += $itemValue;
+                                
+                                // Count unique orders
+                                if (!in_array($order->id, $productData[$productId]['order_ids'])) {
+                                    $productData[$productId]['order_ids'][] = $order->id;
+                                    $productData[$productId]['order_count']++;
+                                }
+                            }
                         }
-                        
-                        // Convert individual retur quantity back to package quantity
-                        $itemQtyRetur = $itemPackageQuantity > 0 ? $itemQtyReturIndividual / $itemPackageQuantity : $itemQtyReturIndividual;
-                        
-                        // Calculate original quantity (current + returned)
-                        $currentItemQty = (float) ($orderItem->quantity ?? 0);
-                        $originalQty = $currentItemQty + $itemQtyRetur;
-                        
-                        // Calculate remaining quantity after return
-                        $remainingQty = max(0.0, $originalQty - $itemQtyRetur);
-                        $totalQtyAfterRetur += $remainingQty;
-                        
-                        // Calculate remaining value after return
-                        $itemPrice = (float) ($orderItem->price_after_discount ?? 0);
-                        $remainingValue = round($itemPrice * $remainingQty, 2);
-                        $totalValueAfterRetur += $remainingValue;
-                    }
-                    
-                    // Hanya masukkan ke orderTotals jika masih punya qty > 0 setelah retur
-                    // Order yang sepenuhnya diretur (qty = 0) tidak masuk ke orderTotals
-                    if ($totalQtyAfterRetur > 0) {
-                        $orderTotals[$order->id] = [
-                            'qty_total' => round($totalQtyAfterRetur, 0),
-                            'total_invoice' => round($totalValueAfterRetur, 2)
-                        ];
                     }
                 }
                 
-                // Clear memory after each chunk
                 unset($chunkOrders);
             }
-            
-            // Clear retur details from memory
-            unset($allReturDetails);
         }
         
-        // Apply price range filters based on total invoice after returns
-        $filteredOrderIds = collect($orderTotals)->keys()->toArray();
-        
-        if ($request->has('min_price') && !empty($request->min_price)) {
-            $minPrice = (float) $request->min_price;
-            $filteredOrderIds = array_values(array_filter($filteredOrderIds, function($orderId) use ($orderTotals, $minPrice) {
-                return isset($orderTotals[$orderId]) && $orderTotals[$orderId]['total_invoice'] >= $minPrice;
-            }));
-        }
-        
-        if ($request->has('max_price') && !empty($request->max_price)) {
-            $maxPrice = (float) $request->max_price;
-            $filteredOrderIds = array_values(array_filter($filteredOrderIds, function($orderId) use ($orderTotals, $maxPrice) {
-                return isset($orderTotals[$orderId]) && $orderTotals[$orderId]['total_invoice'] <= $maxPrice;
-            }));
-        }
-        
-        // Apply quantity range filters based on qty total after returns
-        if ($request->has('min_qty') && !empty($request->min_qty)) {
-            $minQty = (float) $request->min_qty;
-            $filteredOrderIds = array_values(array_filter($filteredOrderIds, function($orderId) use ($orderTotals, $minQty) {
-                return isset($orderTotals[$orderId]) && $orderTotals[$orderId]['qty_total'] >= $minQty;
-            }));
-        }
-        
-        if ($request->has('max_qty') && !empty($request->max_qty)) {
-            $maxQty = (float) $request->max_qty;
-            $filteredOrderIds = array_values(array_filter($filteredOrderIds, function($orderId) use ($orderTotals, $maxQty) {
-                return isset($orderTotals[$orderId]) && $orderTotals[$orderId]['qty_total'] <= $maxQty;
-            }));
-        }
-        
-        // Apply filtered order IDs to base query
-        if (!empty($filteredOrderIds)) {
-            $baseQuery->whereIn('id', $filteredOrderIds);
-        } else {
-            // If no orders match the filters, return empty result
-            $baseQuery->whereRaw('1 = 0');
-        }
-        
-        // Apply sorting
-        $sortBy = $request->input('sort', 'date_newest');
-        
-        switch ($sortBy) {
-            case 'date_oldest':
-                $baseQuery->orderBy('tanggal', 'asc');
-                break;
-            case 'value_highest':
-                // Use subquery for sorting by total value
-                $baseQuery->selectRaw('orders.*')
-                    ->selectRaw('(
-                        SELECT COALESCE(SUM(order_items.price_after_discount * order_items.quantity), 0)
-                        FROM order_items
-                        WHERE order_items.order_id = orders.id
-                    ) as total_value_sort')
-                    ->orderByRaw('total_value_sort DESC');
-                break;
-            case 'value_lowest':
-                $baseQuery->selectRaw('orders.*')
-                    ->selectRaw('(
-                        SELECT COALESCE(SUM(order_items.price_after_discount * order_items.quantity), 0)
-                        FROM order_items
-                        WHERE order_items.order_id = orders.id
-                    ) as total_value_sort')
-                    ->orderByRaw('total_value_sort ASC');
-                break;
-            case 'date_newest':
-            default:
-                $baseQuery->orderBy('tanggal', 'desc');
-                break;
-        }
-        
-        // Use pagination instead of loading all orders
-        $orders = $baseQuery->paginate(25);
-        
-        // Process paginated orders - calculate hari (day of week) and ensure data is ready
-        $orders->getCollection()->transform(function($order) {
-            // Make sure day of week is set
-            if ($order->tanggal) {
-                $order->hari = Carbon::parse($order->tanggal)->locale('id')->isoFormat('dddd');
-            }
-            return $order;
+        // Convert to collection for sorting
+        $productsCollection = collect($productData)->map(function($data, $productId) {
+            return (object)[
+                'product_id' => $productId,
+                'product_name' => $data['product_name'],
+                'product_sku' => $data['product_sku'],
+                'total_qty' => round($data['total_qty'], 0),
+                'total_value' => round($data['total_value'], 2),
+                'order_count' => $data['order_count']
+            ];
         });
         
-        // Calculate summary based on filtered orders (using the same orderTotals we calculated)
-        $summaryTotalOrders = 0;
-        $summaryTotalValue = 0.0;
-        $summaryTotalVolume = 0.0;
+        // Apply sorting
+        $sortBy = $request->input('sort', 'qty_highest');
         
-        foreach ($filteredOrderIds as $orderId) {
-            if (isset($orderTotals[$orderId])) {
-                $summaryTotalOrders++;
-                $summaryTotalValue += $orderTotals[$orderId]['total_invoice'];
-                $summaryTotalVolume += $orderTotals[$orderId]['qty_total'];
-            }
+        switch ($sortBy) {
+            case 'qty_lowest':
+                $productsCollection = $productsCollection->sortBy('total_qty');
+                break;
+            case 'value_highest':
+                $productsCollection = $productsCollection->sortByDesc('total_value');
+                break;
+            case 'value_lowest':
+                $productsCollection = $productsCollection->sortBy('total_value');
+                break;
+            case 'name_asc':
+                $productsCollection = $productsCollection->sortBy('product_name');
+                break;
+            case 'name_desc':
+                $productsCollection = $productsCollection->sortByDesc('product_name');
+                break;
+            case 'qty_highest':
+            default:
+                $productsCollection = $productsCollection->sortByDesc('total_qty');
+                break;
         }
         
-        $summaryData = (object)[
-            'total_orders' => $summaryTotalOrders,
-            'total_value' => $summaryTotalValue,
-            'total_volume' => $summaryTotalVolume
+        // Get all products (no pagination for export)
+        $products = $productsCollection->values();
+        
+        // Calculate summary
+        $summary = [
+            'total_products' => $productsCollection->count(),
+            'total_orders' => $productsCollection->sum('order_count'),
+            'total_value' => $productsCollection->sum('total_value'),
+            'total_qty' => $productsCollection->sum('total_qty'),
         ];
         
-        // Get total returns count (lightweight) - count returns for filtered orders
-        $totalReturns = !empty($filteredOrderIds) 
-            ? ReturPenjualan::whereIn('order_id', $filteredOrderIds)
-                ->whereIn('status', ['draft', 'selesai'])
-                ->count() 
-            : 0;
+        $filename = 'analytics-penjualan-master-internal-' . date('Y-m-d') . '.xlsx';
         
-        // Calculate total orders count (before returns) for percentage
-        // Get all orders count before any filters
-        $allOrdersCount = Order::withoutGlobalScope('mainCategory')->count();
+        return Excel::download(new InternalProductSalesExport($products, $summary, $startDate, $endDate), $filename);
+    }
+
+    public function salesExportMapped(Request $request)
+    {
+        // Get platforms for filter
+        $platforms = Platform::whereIn('name', ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'])->get();
         
-        // Get orders count before price/qty filters (after date and platform filters)
-        // $tempOrderIds contains ALL orders matching date/platform filters (including fully returned orders)
-        // This is the correct total before any return calculations
-        $filteredOrdersCount = !empty($tempOrderIds) ? count($tempOrderIds) : 0;
+        // Parse dates
+        $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
+        $endDate = $request->input('end_date') ?? now()->format('Y-m-d');
+        $sortBy = $request->input('sort', 'date_newest');
         
-        $ordersAfterReturns = $summaryTotalOrders;
+        // Build filters array for SQL query
+        $filters = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'platform_id' => $request->input('platform_id'),
+            'min_price' => $request->input('min_price'),
+            'max_price' => $request->input('max_price'),
+            'min_qty' => $request->input('min_qty'),
+            'max_qty' => $request->input('max_qty'),
+            'sort' => $sortBy,
+        ];
         
-        // Calculate orders_with_returns from ALL orders that match date/platform filters (not just filtered ones)
-        // This should count all orders with returns from the total orders before price/qty filters
-        $ordersWithReturns = !empty($orderIdsWithReturn) 
-            ? count($orderIdsWithReturn)
-            : 0;
+        // Get pagination parameters
+        $perPage = 25;
+        $page = $request->input('page', 1);
         
-        $percentageShown = $allOrdersCount > 0 
-            ? round((count($filteredOrderIds) / $allOrdersCount) * 100, 1) 
-            : 0;
+        // Execute optimized SQL query untuk mendapatkan order IDs yang sudah difilter
+        $sqlQuery = SalesDetailQuery::build($filters, $perPage, $page);
+        $orderResults = DB::select($sqlQuery);
+        
+        // Get order IDs dari hasil query
+        $orderIds = collect($orderResults)->pluck('id')->toArray();
+        
+        // Get count untuk pagination
+        $countQuery = SalesDetailQuery::buildCount($filters);
+        $countResult = DB::selectOne($countQuery);
+        $total = (int)($countResult->total ?? 0);
+        
+        // Eager load orders dengan relationships yang diperlukan untuk view (including nested product for internal mapping)
+        $orders = collect();
+        if (!empty($orderIds)) {
+            $orders = Order::withoutGlobalScope('mainCategory')
+                ->whereIn('id', $orderIds)
+                ->with([
+                    'orderItems.platformProduct.mappingBarang' => function($query) {
+                        $query->where('is_active', true)->with('product');
+                    },
+                    'platform'
+                ])
+                ->get()
+                ->sortBy(function($order) use ($orderIds) {
+                    return array_search($order->id, $orderIds);
+                })
+                ->values();
+            
+            // Calculate hari (day of week) for each order
+            $orders->transform(function($order) {
+                if ($order->tanggal) {
+                    $order->hari = Carbon::parse($order->tanggal)->locale('id')->isoFormat('dddd');
+                }
+                return $order;
+            });
+        }
+        
+        // Create paginator manually
+        $paginatedOrders = new \Illuminate\Pagination\LengthAwarePaginator(
+            $orders,
+            $total,
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+        
+        // Get summary menggunakan SQL query (optimized)
+        $summaryQuery = SalesDetailQuery::buildSummary($filters);
+        $summaryResult = DB::selectOne($summaryQuery);
+        
+        // Calculate percentage shown (hanya affected oleh price/qty filters)
+        $hasPriceOrQtyFilter = ($request->has('min_price') && !empty($request->min_price)) || 
+                                ($request->has('max_price') && !empty($request->max_price)) || 
+                                ($request->has('min_qty') && !empty($request->min_qty)) || 
+                                ($request->has('max_qty') && !empty($request->max_qty));
+        
+        // Untuk percentage, kita perlu menghitung total orders yang match date/platform filters (tanpa price/qty)
+        $summaryWithoutPriceQtyFilters = $filters;
+        $summaryWithoutPriceQtyFilters['min_price'] = null;
+        $summaryWithoutPriceQtyFilters['max_price'] = null;
+        $summaryWithoutPriceQtyFilters['min_qty'] = null;
+        $summaryWithoutPriceQtyFilters['max_qty'] = null;
+        
+        $summaryQueryWithoutPriceQty = SalesDetailQuery::buildSummary($summaryWithoutPriceQtyFilters);
+        $summaryResultWithoutPriceQty = DB::selectOne($summaryQueryWithoutPriceQty);
+        $totalOrdersByDatePlatform = (int)($summaryResultWithoutPriceQty->total_orders ?? 0);
+        
+        $percentageShown = $hasPriceOrQtyFilter && $totalOrdersByDatePlatform > 0
+            ? round((($summaryResult->total_orders ?? 0) / $totalOrdersByDatePlatform) * 100, 1)
+            : 100;
         
         // Build summary array
         $summary = [
-            'total_orders' => $ordersAfterReturns,
-            'total_orders_after_returns' => $ordersAfterReturns,
-            'total_value' => (float) $summaryData->total_value,
-            'total_volume' => (float) $summaryData->total_volume,
-            'avg_order_value' => $ordersAfterReturns > 0 
-                ? (float) $summaryData->total_value / $ordersAfterReturns 
-                : 0,
-            'avg_order_volume' => $ordersAfterReturns > 0 
-                ? (float) $summaryData->total_volume / $ordersAfterReturns 
-                : 0,
+            'total_orders' => (int)($summaryResult->total_orders ?? 0),
+            'total_orders_after_returns' => (int)($summaryResult->total_orders ?? 0),
+            'total_value' => (float)($summaryResultWithoutPriceQty->total_value ?? 0),
+            'total_volume' => (float)($summaryResultWithoutPriceQty->total_volume ?? 0),
+            'avg_order_value' => (float)($summaryResultWithoutPriceQty->avg_order_value ?? 0),
+            'avg_order_volume' => (float)($summaryResultWithoutPriceQty->avg_order_volume ?? 0),
             'percentage_shown' => $percentageShown,
-            'total_orders_all' => $allOrdersCount,
-            'total_orders_before_returns' => $filteredOrdersCount,
-            'total_returns' => $totalReturns,
-            'orders_with_returns' => $ordersWithReturns
+            'total_orders_all' => (int)($summaryResult->total_orders_all ?? 0),
+            'total_orders_before_returns' => $totalOrdersByDatePlatform,
+            'total_returns' => (int)($summaryResult->total_returns ?? 0),
+            'orders_with_returns' => (int)($summaryResult->orders_with_returns ?? 0),
+        ];
+        
+        return view('analytics.sales_export_mapped', [
+            'orders' => $paginatedOrders,
+            'platforms' => $platforms,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'selectedPlatform' => $request->platform_id,
+            'sortBy' => $sortBy,
+            'summary' => $summary
+        ]);
+    }
+
+    public function exportSalesMapped(Request $request)
+    {
+        // Parse dates
+        $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
+        $endDate = $request->input('end_date') ?? now()->format('Y-m-d');
+        $sortBy = $request->input('sort', 'date_newest');
+        
+        // Build filters array for SQL query
+        $filters = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'platform_id' => $request->input('platform_id'),
+            'min_price' => $request->input('min_price'),
+            'max_price' => $request->input('max_price'),
+            'min_qty' => $request->input('min_qty'),
+            'max_qty' => $request->input('max_qty'),
+            'sort' => $sortBy,
+        ];
+        
+        $filename = 'sales-detail-mapped-' . date('Y-m-d') . '.xlsx';
+        return Excel::download(new SalesExportMappedExport($filters), $filename);
+    }
+
+    public function salesDetailReport(Request $request)
+    {
+        // Get platforms for filter
+        $platforms = Platform::whereIn('name', ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'])->get();
+        
+        // Parse dates
+        $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
+        $endDate = $request->input('end_date') ?? now()->format('Y-m-d');
+        $sortBy = $request->input('sort', 'date_newest');
+        
+        // Build filters array for SQL query
+        $filters = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'platform_id' => $request->input('platform_id'),
+            'min_price' => $request->input('min_price'),
+            'max_price' => $request->input('max_price'),
+            'min_qty' => $request->input('min_qty'),
+            'max_qty' => $request->input('max_qty'),
+            'sort' => $sortBy,
+        ];
+        
+        // Get pagination parameters
+        $perPage = 25;
+        $page = $request->input('page', 1);
+        
+        // Execute optimized SQL query untuk mendapatkan order IDs yang sudah difilter
+        $sqlQuery = SalesDetailQuery::build($filters, $perPage, $page);
+        $orderResults = DB::select($sqlQuery);
+        
+        // Get order IDs dari hasil query
+        $orderIds = collect($orderResults)->pluck('id')->toArray();
+        
+        // Get count untuk pagination
+        $countQuery = SalesDetailQuery::buildCount($filters);
+        $countResult = DB::selectOne($countQuery);
+        $total = (int)($countResult->total ?? 0);
+        
+        // Eager load orders dengan relationships yang diperlukan untuk view
+        $orders = collect();
+        if (!empty($orderIds)) {
+            $orders = Order::withoutGlobalScope('mainCategory')
+                ->whereIn('id', $orderIds)
+                ->with([
+                    'orderItems.platformProduct.mappingBarang' => function($query) {
+                        $query->where('is_active', true);
+                    },
+                    'platform'
+                ])
+                ->get()
+                ->sortBy(function($order) use ($orderIds) {
+                    return array_search($order->id, $orderIds);
+                })
+                ->values();
+            
+            // Calculate hari (day of week) for each order
+            $orders->transform(function($order) {
+                if ($order->tanggal) {
+                    $order->hari = Carbon::parse($order->tanggal)->locale('id')->isoFormat('dddd');
+                }
+                return $order;
+            });
+        }
+        
+        // Create paginator manually
+        $paginatedOrders = new \Illuminate\Pagination\LengthAwarePaginator(
+            $orders,
+            $total,
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+        
+        // Get summary menggunakan SQL query (optimized)
+        $summaryQuery = SalesDetailQuery::buildSummary($filters);
+        $summaryResult = DB::selectOne($summaryQuery);
+        
+        // Calculate percentage shown (hanya affected oleh price/qty filters)
+        $hasPriceOrQtyFilter = ($request->has('min_price') && !empty($request->min_price)) || 
+                                ($request->has('max_price') && !empty($request->max_price)) || 
+                                ($request->has('min_qty') && !empty($request->min_qty)) || 
+                                ($request->has('max_qty') && !empty($request->max_qty));
+        
+        // Untuk percentage, kita perlu menghitung total orders yang match date/platform filters (tanpa price/qty)
+        $summaryWithoutPriceQtyFilters = $filters;
+        $summaryWithoutPriceQtyFilters['min_price'] = null;
+        $summaryWithoutPriceQtyFilters['max_price'] = null;
+        $summaryWithoutPriceQtyFilters['min_qty'] = null;
+        $summaryWithoutPriceQtyFilters['max_qty'] = null;
+        
+        $summaryQueryWithoutPriceQty = SalesDetailQuery::buildSummary($summaryWithoutPriceQtyFilters);
+        $summaryResultWithoutPriceQty = DB::selectOne($summaryQueryWithoutPriceQty);
+        $totalOrdersByDatePlatform = (int)($summaryResultWithoutPriceQty->total_orders ?? 0);
+        
+        $percentageShown = $hasPriceOrQtyFilter && $totalOrdersByDatePlatform > 0
+            ? round((($summaryResult->total_orders ?? 0) / $totalOrdersByDatePlatform) * 100, 1)
+            : 100;
+        
+        // Build summary array
+        // Use summary without price/qty filters for total_value and total_volume to match export calculation
+        $summary = [
+            'total_orders' => (int)($summaryResult->total_orders ?? 0),
+            'total_orders_after_returns' => (int)($summaryResult->total_orders ?? 0),
+            'total_value' => (float)($summaryResultWithoutPriceQty->total_value ?? 0),
+            'total_volume' => (float)($summaryResultWithoutPriceQty->total_volume ?? 0),
+            'avg_order_value' => (float)($summaryResultWithoutPriceQty->avg_order_value ?? 0),
+            'avg_order_volume' => (float)($summaryResultWithoutPriceQty->avg_order_volume ?? 0),
+            'percentage_shown' => $percentageShown,
+            'total_orders_all' => (int)($summaryResult->total_orders_all ?? 0),
+            'total_orders_before_returns' => $totalOrdersByDatePlatform,
+            'total_returns' => (int)($summaryResult->total_returns ?? 0),
+            'orders_with_returns' => (int)($summaryResult->orders_with_returns ?? 0),
         ];
         
         return view('analytics.sales_detail_report', [
-            'orders' => $orders, // Paginated collection
+            'orders' => $paginatedOrders,
             'platforms' => $platforms,
             'startDate' => $startDate,
             'endDate' => $endDate,
@@ -757,7 +919,7 @@ class SalesAnalyticsController extends Controller
         
         // Build UNION ALL query for all financial transactions
         // This aggregates all financial transactions from all platforms in one query
-        // Note: shopee2, tiktok2, blibli, and lazada tables don't have qty column, so we use 0
+        // Note: shopee2, tiktok2, and lazada tables don't have qty column, so we use 0
         $financialTransactionsQuery = "
             SELECT 
                 ft.order_id,
@@ -775,12 +937,6 @@ class SalesAnalyticsController extends Controller
                 SELECT order_id, saldo_masuk, COALESCE(qty, 0) as qty FROM tiktok_financial_transactions WHERE saldo_masuk > 0
                 UNION ALL
                 SELECT order_id, saldo_masuk, 0 as qty FROM tiktok2_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, COALESCE(qty, 0) as qty FROM tokopedia_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, 0 as qty FROM blibli_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, 0 as qty FROM lazada_financial_transactions WHERE saldo_masuk > 0
             ) as ft
             INNER JOIN orders o ON ft.order_id = o.id
             LEFT JOIN (
@@ -1097,7 +1253,7 @@ class SalesAnalyticsController extends Controller
     public function salesByDateNumberReport(Request $request)
     {
         // Get platforms for filter
-        $platforms = Platform::all();
+        $platforms = Platform::whereIn('name', ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'])->get();
         
         // Set default date range to TODAY only for faster loading
         $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->format('Y-m-d');
@@ -1128,12 +1284,15 @@ class SalesAnalyticsController extends Controller
         $viewMode = $request->input('view_mode', 'volume');
         
         // Build UNION ALL query for all financial transactions
-        // Note: shopee2, tiktok2, blibli, and lazada tables don't have qty column, so we use 0
+        // Note: shopee2, tiktok2, and lazada tables don't have qty column, so we use 0
         $financialTransactionsQuery = "
             SELECT 
                 ft.order_id,
                 ft.saldo_masuk,
+                COALESCE(oi.total_nominal, 0) as total_nominal,
+                COALESCE(hpp.total_hpp, 0) as total_hpp,
                 ft.qty,
+                o.tanggal,
                 DAY(o.tanggal) as date_number,
                 o.platform_id
             FROM (
@@ -1144,14 +1303,33 @@ class SalesAnalyticsController extends Controller
                 SELECT order_id, saldo_masuk, COALESCE(qty, 0) as qty FROM tiktok_financial_transactions WHERE saldo_masuk > 0
                 UNION ALL
                 SELECT order_id, saldo_masuk, 0 as qty FROM tiktok2_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, COALESCE(qty, 0) as qty FROM tokopedia_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, 0 as qty FROM blibli_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, 0 as qty FROM lazada_financial_transactions WHERE saldo_masuk > 0
             ) as ft
             INNER JOIN orders o ON ft.order_id = o.id
+            LEFT JOIN (
+                SELECT 
+                    order_id,
+                    SUM(price_after_discount * quantity) as total_nominal
+                FROM order_items
+                GROUP BY order_id
+            ) as oi ON ft.order_id = oi.order_id
+            LEFT JOIN (
+                SELECT 
+                    oi.order_id,
+                    SUM(
+                        CASE 
+                            WHEN oi.warehouse_stock_id IS NOT NULL 
+                                AND ws.id IS NOT NULL 
+                                AND pd.id IS NOT NULL 
+                                AND pd.qty > 0 
+                            THEN (pd.subtotal / pd.qty) * oi.quantity
+                            ELSE 0
+                        END
+                    ) as total_hpp
+                FROM order_items oi
+                LEFT JOIN warehouse_stock ws ON oi.warehouse_stock_id = ws.id
+                LEFT JOIN penerimaan_detail pd ON ws.penerimaan_detail_id = pd.id
+                GROUP BY oi.order_id
+            ) as hpp ON ft.order_id = hpp.order_id
             WHERE o.tanggal BETWEEN ? AND ?
         ";
         
@@ -1170,6 +1348,8 @@ class SalesAnalyticsController extends Controller
             SELECT 
                 date_number,
                 SUM(saldo_masuk) as total_value,
+                SUM(total_nominal) as total_nominal,
+                SUM(total_hpp) as total_hpp,
                 SUM(qty) as total_volume,
                 COUNT(DISTINCT order_id) as order_count
             FROM ($financialTransactionsQuery) as transactions
@@ -1187,6 +1367,8 @@ class SalesAnalyticsController extends Controller
                 'date_number' => $dateKey,
                 'order_count' => 0,
                 'total_value' => 0,
+                'total_nominal' => 0,
+                'total_hpp' => 0,
                 'total_volume' => 0,
             ];
         }
@@ -1198,6 +1380,8 @@ class SalesAnalyticsController extends Controller
                 'date_number' => $dateKey,
                 'order_count' => (int)$result->order_count,
                 'total_value' => (float)$result->total_value,
+                'total_nominal' => (float)($result->total_nominal ?? 0),
+                'total_hpp' => (float)($result->total_hpp ?? 0),
                 'total_volume' => (float)$result->total_volume,
             ];
         }
@@ -1206,6 +1390,8 @@ class SalesAnalyticsController extends Controller
         $totalSummaryQuery = "
             SELECT 
                 SUM(saldo_masuk) as total_value,
+                SUM(total_nominal) as total_nominal,
+                SUM(total_hpp) as total_hpp,
                 SUM(qty) as total_volume,
                 COUNT(DISTINCT order_id) as total_orders
             FROM ($financialTransactionsQuery) as transactions
@@ -1213,6 +1399,8 @@ class SalesAnalyticsController extends Controller
         
         $totalSummary = DB::selectOne($totalSummaryQuery, $params);
         $totalValue = (float)($totalSummary->total_value ?? 0);
+        $totalNominal = (float)($totalSummary->total_nominal ?? 0);
+        $totalHpp = (float)($totalSummary->total_hpp ?? 0);
         $totalVolume = (float)($totalSummary->total_volume ?? 0);
         $totalOrders = (int)($totalSummary->total_orders ?? 0);
         
@@ -1268,12 +1456,6 @@ class SalesAnalyticsController extends Controller
                     SELECT order_id FROM tiktok_financial_transactions WHERE saldo_masuk > 0
                     UNION
                     SELECT order_id FROM tiktok2_financial_transactions WHERE saldo_masuk > 0
-                    UNION
-                    SELECT order_id FROM tokopedia_financial_transactions WHERE saldo_masuk > 0
-                    UNION
-                    SELECT order_id FROM blibli_financial_transactions WHERE saldo_masuk > 0
-                    UNION
-                    SELECT order_id FROM lazada_financial_transactions WHERE saldo_masuk > 0
                 ) as all_ft
             ) as ft ON o.id = ft.order_id
             WHERE o.tanggal BETWEEN ? AND ?
@@ -1341,6 +1523,8 @@ class SalesAnalyticsController extends Controller
             SELECT 
                 o.platform_id,
                 SUM(ft.saldo_masuk) as total_value,
+                SUM(COALESCE(oi.total_nominal, 0)) as total_nominal,
+                SUM(COALESCE(hpp.total_hpp, 0)) as total_hpp,
                 SUM(ft.qty) as total_volume,
                 COUNT(DISTINCT ft.order_id) as order_count
             FROM (
@@ -1351,14 +1535,33 @@ class SalesAnalyticsController extends Controller
                 SELECT order_id, saldo_masuk, COALESCE(qty, 0) as qty FROM tiktok_financial_transactions WHERE saldo_masuk > 0
                 UNION ALL
                 SELECT order_id, saldo_masuk, 0 as qty FROM tiktok2_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, COALESCE(qty, 0) as qty FROM tokopedia_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, 0 as qty FROM blibli_financial_transactions WHERE saldo_masuk > 0
-                UNION ALL
-                SELECT order_id, saldo_masuk, 0 as qty FROM lazada_financial_transactions WHERE saldo_masuk > 0
             ) as ft
             INNER JOIN orders o ON ft.order_id = o.id
+            LEFT JOIN (
+                SELECT 
+                    order_id,
+                    SUM(price_after_discount * quantity) as total_nominal
+                FROM order_items
+                GROUP BY order_id
+            ) as oi ON ft.order_id = oi.order_id
+            LEFT JOIN (
+                SELECT 
+                    oi.order_id,
+                    SUM(
+                        CASE 
+                            WHEN oi.warehouse_stock_id IS NOT NULL 
+                                AND ws.id IS NOT NULL 
+                                AND pd.id IS NOT NULL 
+                                AND pd.qty > 0 
+                            THEN (pd.subtotal / pd.qty) * oi.quantity
+                            ELSE 0
+                        END
+                    ) as total_hpp
+                FROM order_items oi
+                LEFT JOIN warehouse_stock ws ON oi.warehouse_stock_id = ws.id
+                LEFT JOIN penerimaan_detail pd ON ws.penerimaan_detail_id = pd.id
+                GROUP BY oi.order_id
+            ) as hpp ON ft.order_id = hpp.order_id
             WHERE o.tanggal BETWEEN ? AND ?
         ";
         
@@ -1375,10 +1578,15 @@ class SalesAnalyticsController extends Controller
         // Map platform results with platform names
         $platformSummary = collect($platformResults)->map(function($result) use ($platforms) {
             $platform = $platforms->where('id', $result->platform_id)->first();
+            $totalValue = (float)$result->total_value;
+            $totalHpp = (float)($result->total_hpp ?? 0);
             return [
                 'platform' => $platform ? $platform->name : 'Unknown',
                 'order_count' => (int)$result->order_count,
-                'total_value' => (float)$result->total_value,
+                'total_value' => $totalValue,
+                'total_nominal' => (float)($result->total_nominal ?? 0),
+                'total_hpp' => $totalHpp,
+                'total_gross_profit' => $totalValue - $totalHpp,
                 'total_volume' => (float)$result->total_volume,
             ];
         });
@@ -1387,6 +1595,9 @@ class SalesAnalyticsController extends Controller
         $summary = [
             'total_orders' => $totalOrders,
             'total_value' => $totalValue,
+            'total_nominal' => $totalNominal,
+            'total_hpp' => $totalHpp,
+            'total_gross_profit' => $totalValue - $totalHpp,
             'total_volume' => $totalVolume,
             'avg_order_value' => $totalOrders > 0 ? $totalValue / $totalOrders : 0,
             'avg_order_volume' => $totalOrders > 0 ? $totalVolume / $totalOrders : 0,
@@ -1397,8 +1608,123 @@ class SalesAnalyticsController extends Controller
                 : 0,
         ];
         
+        // Query 6: Group by month and date number for monthly breakdown
+        // Use the same financialTransactionsQuery structure for consistency
+        $monthlyDateNumberQuery = "
+            SELECT 
+                DATE_FORMAT(tanggal, '%Y-%m') as month_key,
+                YEAR(tanggal) as year,
+                MONTH(tanggal) as month,
+                DAY(tanggal) as date_number,
+                SUM(saldo_masuk) as total_value,
+                SUM(total_nominal) as total_nominal,
+                SUM(total_hpp) as total_hpp,
+                SUM(qty) as total_volume,
+                COUNT(DISTINCT order_id) as order_count
+            FROM ($financialTransactionsQuery) as transactions
+            GROUP BY DATE_FORMAT(tanggal, '%Y-%m'), YEAR(tanggal), MONTH(tanggal), DAY(tanggal)
+            ORDER BY year, month, date_number
+        ";
+        
+        $monthlyParams = $params;
+        $monthlyDateNumberResults = DB::select($monthlyDateNumberQuery, $monthlyParams);
+        
+        // Group data by month
+        $monthlyData = [];
+        $startCarbon = Carbon::parse($startDate);
+        $endCarbon = Carbon::parse($endDate);
+        
+        // Initialize monthly data structure for all months in range
+        $currentMonth = $startCarbon->copy()->startOfMonth();
+        while ($currentMonth->lte($endCarbon)) {
+            $monthKey = $currentMonth->format('Y-m');
+            $monthName = $currentMonth->locale('id')->translatedFormat('F Y');
+            
+            // Determine date range for this month
+            $monthStartDate = $currentMonth->copy()->startOfMonth();
+            $monthEndDate = $currentMonth->copy()->endOfMonth();
+            
+            // Adjust start date if it's the first month in range
+            if ($currentMonth->format('Y-m') == $startCarbon->format('Y-m')) {
+                $monthStartDate = $startCarbon->copy();
+            }
+            
+            // Adjust end date if it's the last month in range
+            if ($currentMonth->format('Y-m') == $endCarbon->format('Y-m')) {
+                $monthEndDate = $endCarbon->copy();
+            }
+            
+            // Get the first and last day of the month in the range
+            $firstDayInRange = $monthStartDate->day;
+            $lastDayInRange = $monthEndDate->day;
+            
+            // Initialize date data for this month
+            $monthDateData = [];
+            for ($day = $firstDayInRange; $day <= $lastDayInRange; $day++) {
+                $dateKey = sprintf('%02d', $day);
+                $monthDateData[$dateKey] = [
+                    'date_number' => $dateKey,
+                    'order_count' => 0,
+                    'total_value' => 0,
+                    'total_nominal' => 0,
+                    'total_hpp' => 0,
+                    'total_volume' => 0,
+                ];
+            }
+            
+            $monthlyData[$monthKey] = [
+                'month_key' => $monthKey,
+                'month_name' => $monthName,
+                'year' => $currentMonth->year,
+                'month' => $currentMonth->month,
+                'first_day' => $firstDayInRange,
+                'last_day' => $lastDayInRange,
+                'date_data' => $monthDateData,
+                'summary' => [
+                    'total_orders' => 0,
+                    'total_value' => 0,
+                    'total_nominal' => 0,
+                    'total_hpp' => 0,
+                    'total_gross_profit' => 0,
+                    'total_volume' => 0,
+                ],
+            ];
+            
+            $currentMonth->addMonth();
+        }
+        
+        // Populate monthly data from query results
+        foreach ($monthlyDateNumberResults as $result) {
+            $monthKey = $result->month_key;
+            $dateKey = sprintf('%02d', (int)$result->date_number);
+            
+            if (isset($monthlyData[$monthKey]['date_data'][$dateKey])) {
+                $monthlyData[$monthKey]['date_data'][$dateKey] = [
+                    'date_number' => $dateKey,
+                    'order_count' => (int)$result->order_count,
+                    'total_value' => (float)$result->total_value,
+                    'total_nominal' => (float)($result->total_nominal ?? 0),
+                    'total_hpp' => (float)($result->total_hpp ?? 0),
+                    'total_volume' => (float)$result->total_volume,
+                ];
+                
+                // Update month summary
+                $monthlyData[$monthKey]['summary']['total_orders'] += (int)$result->order_count;
+                $monthlyData[$monthKey]['summary']['total_value'] += (float)$result->total_value;
+                $monthlyData[$monthKey]['summary']['total_nominal'] += (float)($result->total_nominal ?? 0);
+                $monthlyData[$monthKey]['summary']['total_hpp'] += (float)($result->total_hpp ?? 0);
+                $monthlyData[$monthKey]['summary']['total_volume'] += (float)$result->total_volume;
+            }
+        }
+        
+        // Calculate gross profit for each month
+        foreach ($monthlyData as $monthKey => &$monthInfo) {
+            $monthInfo['summary']['total_gross_profit'] = $monthInfo['summary']['total_value'] - $monthInfo['summary']['total_hpp'];
+        }
+        
         return view('analytics.sales_by_date_number', [
             'dateNumberSummary' => $completeDateNumberSummary,
+            'monthlyData' => $monthlyData,
             'platforms' => $platforms,
             'startDate' => $startDate,
             'endDate' => $endDate,
@@ -1465,7 +1791,7 @@ class SalesAnalyticsController extends Controller
         }
         
         // Build base query: UNION ALL semua financial transactions
-        // Note: Blibli tidak memiliki kolom qty, jadi gunakan COALESCE(0)
+        // Note: Shopee2 and TikTok2 don't have qty column, so we use 0
         $allTransactionsSQL = "
             SELECT 
                 o.id as order_id,
@@ -1494,36 +1820,7 @@ class SalesAnalyticsController extends Controller
             WHERE o.tanggal BETWEEN " . DB::getPdo()->quote($startDate) . " AND " . DB::getPdo()->quote($endDate) . "
                 AND ft.saldo_masuk > 0
                 " . $platformFilter . $statusFilter . "
-            
-            UNION ALL
-            
-            SELECT 
-                o.id as order_id,
-                o.tanggal,
-                o.status_hari,
-                o.platform_id,
-                COALESCE(ft.saldo_masuk, 0) as saldo_masuk,
-                COALESCE(ft.qty, 0) as qty
-            FROM orders o
-            INNER JOIN tokopedia_financial_transactions ft ON ft.order_id = o.id
-            WHERE o.tanggal BETWEEN " . DB::getPdo()->quote($startDate) . " AND " . DB::getPdo()->quote($endDate) . "
-                AND ft.saldo_masuk > 0
-                " . $platformFilter . $statusFilter . "
-            
-            UNION ALL
-            
-            SELECT 
-                o.id as order_id,
-                o.tanggal,
-                o.status_hari,
-                o.platform_id,
-                COALESCE(ft.saldo_masuk, 0) as saldo_masuk,
-                0 as qty
-            FROM orders o
-            INNER JOIN blibli_financial_transactions ft ON ft.order_id = o.id
-            WHERE o.tanggal BETWEEN " . DB::getPdo()->quote($startDate) . " AND " . DB::getPdo()->quote($endDate) . "
-                AND ft.saldo_masuk > 0
-                " . $platformFilter . $statusFilter;
+        ";
         
         // Query untuk mendapatkan semua status unik (expand comma-separated)
         $allStatusesQuery = "
@@ -2113,15 +2410,6 @@ class SalesAnalyticsController extends Controller
             'tiktok2FinancialTransactions' => function($q) {
                 $q->where('saldo_masuk', '>', 0);
             },
-            'tokopediaFinancialTransactions' => function($q) {
-                $q->where('saldo_masuk', '>', 0);
-            },
-            'blibliFinancialTransactions' => function($q) {
-                $q->where('saldo_masuk', '>', 0);
-            },
-            'lazadaFinancialTransactions' => function($q) {
-                $q->where('saldo_masuk', '>', 0);
-            },
         ]);
         
         // Apply date filter
@@ -2148,10 +2436,6 @@ class SalesAnalyticsController extends Controller
             if ($order->shopeeFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0) {
                 $hasValidTransaction = true;
             } elseif ($order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0) {
-                $hasValidTransaction = true;
-            } elseif ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0) {
-                $hasValidTransaction = true;
-            } elseif ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0) {
                 $hasValidTransaction = true;
             }
             
@@ -2218,18 +2502,6 @@ class SalesAnalyticsController extends Controller
                     $totalValue += $transaction->saldo_masuk;
                     $totalVolume += $transaction->qty > 0 ? $transaction->qty : 0;
                 }
-                
-                // Process Tokopedia transactions
-                foreach ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
-                    $totalValue += $transaction->saldo_masuk;
-                    $totalVolume += $transaction->qty > 0 ? $transaction->qty : 0;
-                }
-                
-                // Process Blibli transactions
-                foreach ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
-                    $totalValue += $transaction->saldo_masuk;
-                    $totalVolume += $transaction->qty > 0 ? $transaction->qty : 0;
-                }
             }
             
             $totalGrossProfit = $totalValue - $totalHpp;
@@ -2277,18 +2549,6 @@ class SalesAnalyticsController extends Controller
             
             // Process TikTok transactions
             foreach ($order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
-                $totalValue += $transaction->saldo_masuk;
-                $totalVolume += $transaction->qty > 0 ? $transaction->qty : 0;
-            }
-            
-            // Process Tokopedia transactions
-            foreach ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
-                $totalValue += $transaction->saldo_masuk;
-                $totalVolume += $transaction->qty > 0 ? $transaction->qty : 0;
-            }
-            
-            // Process Blibli transactions
-            foreach ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
                 $totalValue += $transaction->saldo_masuk;
                 $totalVolume += $transaction->qty > 0 ? $transaction->qty : 0;
             }
@@ -2365,24 +2625,6 @@ class SalesAnalyticsController extends Controller
                     foreach ($order->tiktok2FinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
                         $totalValue += $transaction->saldo_masuk;
                         $totalVolume += 0; // TikTok2 doesn't have qty
-                    }
-                    
-                    // Tokopedia transactions
-                    foreach ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
-                        $totalValue += $transaction->saldo_masuk;
-                        $totalVolume += $transaction->qty > 0 ? $transaction->qty : 0;
-                    }
-                    
-                    // Blibli transactions
-                    foreach ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
-                        $totalValue += $transaction->saldo_masuk;
-                        $totalVolume += 0; // Blibli doesn't have qty
-                    }
-                    
-                    // Lazada transactions
-                    foreach ($order->lazadaFinancialTransactions->where('saldo_masuk', '>', 0) as $transaction) {
-                        $totalValue += $transaction->saldo_masuk;
-                        $totalVolume += 0; // Lazada doesn't have qty
                     }
                 }
                 
@@ -2636,8 +2878,6 @@ class SalesAnalyticsController extends Controller
             'orderItems',
             'shopeeFinancialTransactions',
             'tiktokFinancialTransactions',
-            'tokopediaFinancialTransactions',
-            'blibliFinancialTransactions',
         ]);
 
         // Date filter uses existing 'tanggal' column
@@ -2653,9 +2893,7 @@ class SalesAnalyticsController extends Controller
         $orders = $allOrders->filter(function($order) {
             return (
                 $order->shopeeFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0 ||
-                $order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0 ||
-                $order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0 ||
-                $order->blibliFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0
+                $order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0)->count() > 0
             );
         });
 
@@ -2671,14 +2909,6 @@ class SalesAnalyticsController extends Controller
                     $totalVolume += $t->qty > 0 ? $t->qty : 0;
                 }
                 foreach ($order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0) as $t) {
-                    $totalValue += $t->saldo_masuk;
-                    $totalVolume += $t->qty > 0 ? $t->qty : 0;
-                }
-                foreach ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0) as $t) {
-                    $totalValue += $t->saldo_masuk;
-                    $totalVolume += $t->qty > 0 ? $t->qty : 0;
-                }
-                foreach ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0) as $t) {
                     $totalValue += $t->saldo_masuk;
                     $totalVolume += $t->qty > 0 ? $t->qty : 0;
                 }
@@ -2719,14 +2949,6 @@ class SalesAnalyticsController extends Controller
                 $totalValue += $t->saldo_masuk;
                 $totalVolume += $t->qty > 0 ? $t->qty : 0;
             }
-            foreach ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0) as $t) {
-                $totalValue += $t->saldo_masuk;
-                $totalVolume += $t->qty > 0 ? $t->qty : 0;
-            }
-            foreach ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0) as $t) {
-                $totalValue += $t->saldo_masuk;
-                $totalVolume += $t->qty > 0 ? $t->qty : 0;
-            }
         }
 
         $summary = [
@@ -2751,6 +2973,10 @@ class SalesAnalyticsController extends Controller
      */
     public function exportSalesDetailReport(Request $request)
     {
+        // Increase memory limit and execution time for large exports
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        
         // Use the same logic as the view method to ensure consistency
         $platforms = Platform::all();
         
@@ -2766,84 +2992,96 @@ class SalesAnalyticsController extends Controller
             $endDateCarbon = Carbon::today()->endOfDay();
         }
         
-        // Build the query for orders - EXPORT ALL DATA (tidak exclude fully returned orders)
-        $query = Order::withoutGlobalScope('mainCategory')->with([
-            'orderItems.platformProduct', 
-            'platform'
-        ]);
+        // Build the query for order items with eager loading to avoid N+1
+        // Use subquery for sorting to avoid join duplication
+        $query = \App\Models\OrderItem::with([
+            'order.platform',
+            'order.orderItems.platformProduct', // Preload all order items for totals calculation
+            'platformProduct.mappingBarang'
+        ])->whereHas('order', function($q) use ($startDateCarbon, $endDateCarbon, $request) {
+            $q->withoutGlobalScope('mainCategory')
+              ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
+            
+            // Apply platform filter if provided
+            if ($request->has('platform_id') && !empty($request->platform_id)) {
+                $q->where('platform_id', $request->platform_id);
+            }
+        });
         
-        $query->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
-        
-        // Apply platform filter if provided
-        if ($request->has('platform_id') && !empty($request->platform_id)) {
-            $query->where('platform_id', $request->platform_id);
-        }
-        
-        // PERBAIKAN: Untuk export, tidak perlu filter price/qty range karena user ingin ALL data
-        // Hanya filter berdasarkan tanggal dan platform saja
-        
-        // Apply sorting
+        // Apply sorting based on order
+        // Use subquery to avoid DISTINCT + ORDER BY conflict
         $sortBy = $request->input('sort', 'date_newest');
-        
         switch ($sortBy) {
             case 'date_oldest':
-                $query->orderBy('tanggal', 'asc');
+                $query->join('orders', 'order_items.order_id', '=', 'orders.id')
+                      ->orderBy('orders.tanggal', 'asc')
+                      ->orderBy('orders.id', 'asc')
+                      ->orderBy('order_items.id', 'asc')
+                      ->select('order_items.*');
                 break;
             case 'value_highest':
-                $query->orderBy('total', 'desc');
+                $query->join('orders', 'order_items.order_id', '=', 'orders.id')
+                      ->orderBy('orders.total', 'desc')
+                      ->orderBy('orders.id', 'asc')
+                      ->orderBy('order_items.id', 'asc')
+                      ->select('order_items.*');
                 break;
             case 'value_lowest':
-                $query->orderBy('total', 'asc');
+                $query->join('orders', 'order_items.order_id', '=', 'orders.id')
+                      ->orderBy('orders.total', 'asc')
+                      ->orderBy('orders.id', 'asc')
+                      ->orderBy('order_items.id', 'asc')
+                      ->select('order_items.*');
                 break;
             case 'date_newest':
             default:
-                $query->orderBy('tanggal', 'desc');
+                $query->join('orders', 'order_items.order_id', '=', 'orders.id')
+                      ->orderBy('orders.tanggal', 'desc')
+                      ->orderBy('orders.id', 'desc')
+                      ->orderBy('order_items.id', 'desc')
+                      ->select('order_items.*');
                 break;
         }
         
-        // Get ALL orders (tidak exclude fully returned orders untuk export)
-        $orders = $query->get();
+        // Calculate summary using aggregation (more memory efficient)
+        $summaryQuery = Order::withoutGlobalScope('mainCategory')
+            ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
         
-        // Process orders to calculate additional metrics
-        $orders->each(function($order) {
-            $orderItems = $order->orderItems;
-            
-            $order->total_value = $orderItems->sum(function($item) {
-                return $item->price_after_discount * $item->quantity;
-            });
-            
-            $order->total_volume = $orderItems->sum('quantity');
-            
-            // Make sure day of week is set
-            if ($order->tanggal) {
-                $order->hari = Carbon::parse($order->tanggal)->locale('id')->isoFormat('dddd');
-            }
-            
-            return $order;
-        });
-        
-        // Collect all order items for export (matching the view's table structure)
-        $orderItems = collect();
-        foreach ($orders as $order) {
-            foreach ($order->orderItems as $item) {
-                $item->order = $order; // Attach order data to item
-                $orderItems->push($item);
-            }
+        if ($request->has('platform_id') && !empty($request->platform_id)) {
+            $summaryQuery->where('platform_id', $request->platform_id);
         }
         
-        // Calculate summary
         $summary = [
-            'total_orders' => $orders->count(),
-            'total_value' => $orders->sum('total_value'),
-            'total_volume' => $orders->sum('total_volume'),
+            'total_orders' => $summaryQuery->count(),
+            'total_value' => 0,
+            'total_volume' => 0,
         ];
         
+        // Calculate totals using aggregation
+        $totals = \App\Models\OrderItem::whereHas('order', function($q) use ($startDateCarbon, $endDateCarbon, $request) {
+            $q->withoutGlobalScope('mainCategory')
+              ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
+            
+            if ($request->has('platform_id') && !empty($request->platform_id)) {
+                $q->where('platform_id', $request->platform_id);
+            }
+        })->selectRaw('
+            SUM(price_after_discount * quantity) as total_value,
+            SUM(quantity) as total_volume
+        ')->first();
+        
+        $summary['total_value'] = $totals->total_value ?? 0;
+        $summary['total_volume'] = $totals->total_volume ?? 0;
         $summary['avg_order_value'] = $summary['total_orders'] > 0 ? $summary['total_value'] / $summary['total_orders'] : 0;
         $summary['avg_order_volume'] = $summary['total_orders'] > 0 ? $summary['total_volume'] / $summary['total_orders'] : 0;
         
         $filename = 'laporan-detail-penjualan-' . date('Y-m-d') . '.xlsx';
         
-        return Excel::download(new SalesDetailReportExport($orderItems, $summary, $startDate, $endDate, $request->platform_id), $filename);
+        // Pass query instead of collection to use chunking
+        return Excel::download(
+            new SalesDetailReportExport($query, $summary, $startDate, $endDate, $request->platform_id), 
+            $filename
+        );
     }
 
     /**
@@ -2866,7 +3104,10 @@ class SalesAnalyticsController extends Controller
                 $query->where('is_active', true);
             },
             'orderItems.platformProduct.mappingBarang.product',
-        ])->whereNotNull('platform_id'); // Ensure only online orders
+        ])->whereNotNull('platform_id') // Ensure only online orders
+          ->whereHas('orderItems', function($q) {
+              $q->where('quantity', '>', 0);
+          });
         
         // Apply date filter (selalu ada karena ada default)
         try {
@@ -2893,26 +3134,26 @@ class SalesAnalyticsController extends Controller
         switch ($sortBy) {
             case 'value_highest':
                 $orders = $orders->sortByDesc(function($order) {
-                    return $order->orderItems->sum(function($item) {
+                    return $order->orderItems->where('quantity', '>', 0)->sum(function($item) {
                         return $item->price_after_discount * $item->quantity;
                     });
                 });
                 break;
             case 'value_lowest':
                 $orders = $orders->sortBy(function($order) {
-                    return $order->orderItems->sum(function($item) {
+                    return $order->orderItems->where('quantity', '>', 0)->sum(function($item) {
                         return $item->price_after_discount * $item->quantity;
                     });
                 });
                 break;
             case 'volume_highest':
                 $orders = $orders->sortByDesc(function($order) {
-                    return $order->orderItems->sum('quantity');
+                    return $order->orderItems->where('quantity', '>', 0)->sum('quantity');
                 });
                 break;
             case 'volume_lowest':
                 $orders = $orders->sortBy(function($order) {
-                    return $order->orderItems->sum('quantity');
+                    return $order->orderItems->where('quantity', '>', 0)->sum('quantity');
                 });
                 break;
             case 'date_newest':
@@ -2928,34 +3169,22 @@ class SalesAnalyticsController extends Controller
         
         // Calculate total value and volume for each order
         $orders = $orders->map(function($order) {
-            $order->total_value = $order->orderItems->sum(function($item) {
+            $order->total_value = $order->orderItems->where('quantity', '>', 0)->sum(function($item) {
                 return $item->price_after_discount * $item->quantity;
             });
-            $order->total_volume = $order->orderItems->sum('quantity');
+            $order->total_volume = $order->orderItems->where('quantity', '>', 0)->sum('quantity');
             return $order;
         });
 
-        // Get order IDs for returns query
         $orderIds = $orders->pluck('id')->toArray();
-        
-        // Get ALL returns for the filtered orders (regardless of return date)
-        // This counts all returns for orders in the selected period, not just returns that happened in that period
-        $returPenjualanQuery = ReturPenjualan::whereIn('order_id', $orderIds);
-        
-        // Get order IDs that have returns (to exclude them from valid orders)
-        $orderIdsWithReturn = $returPenjualanQuery->pluck('order_id')->unique()->toArray();
-        
-        // Count total returns for orders in this period
-        $totalReturns = $returPenjualanQuery->count();
-        
-        // Filter out orders that have returns - these are the valid orders
-        $validOrders = $orders->reject(function($order) use ($orderIdsWithReturn) {
-            return in_array($order->id, $orderIdsWithReturn);
-        });
+        $totalReturns = empty($orderIds)
+            ? 0
+            : ReturPenjualan::whereIn('order_id', $orderIds)->count();
 
-        // Calculate summary data - use valid orders (excluding returns)
+        $validOrders = $orders;
+
         $summary = [
-            'total_orders' => $validOrders->count(), // Total pesanan = Order - Retur
+            'total_orders' => $validOrders->count(),
             'total_value' => $validOrders->sum('total_value'),
             'total_volume' => $validOrders->sum('total_volume'),
             'avg_order_value' => $validOrders->count() > 0 ? 
@@ -2987,8 +3216,6 @@ class SalesAnalyticsController extends Controller
             'orderItems',
             'shopeeFinancialTransactions',
             'tiktokFinancialTransactions',
-            'tokopediaFinancialTransactions',
-            'blibliFinancialTransactions',
         ]);
 
         $query->whereBetween('tanggal', [$startDate, $endDate]);
@@ -3039,8 +3266,6 @@ class SalesAnalyticsController extends Controller
             $totalValue = 0; $totalVolume = 0;
             foreach ($order->shopeeFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
             foreach ($order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
-            foreach ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
-            foreach ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
 
             if (!empty($order->status_hari)) {
                 if (strpos($order->status_hari, ',') !== false) {
@@ -3067,8 +3292,6 @@ class SalesAnalyticsController extends Controller
         foreach ($orders as $order) {
             foreach ($order->shopeeFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
             foreach ($order->tiktokFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
-            foreach ($order->tokopediaFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
-            foreach ($order->blibliFinancialTransactions->where('saldo_masuk', '>', 0) as $t) { $totalValue += $t->saldo_masuk; $totalVolume += max(0, $t->qty); }
         }
         $summary = [
             'total_orders' => $orders->count(),

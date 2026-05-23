@@ -16,9 +16,7 @@ class PlatformProductSeeder extends Seeder
     {
         $platformFiles = [
             1 => 'MASTER - MASTER SHOPEE.csv',
-            // 2 => 'MASTER - MASTER TOKPED.csv',
             3 => 'MASTER - MASTER TIKTOK.csv',
-            // 4 => 'MASTER - MASTER BLIBLI.csv',
         ];
 
         foreach ($platformFiles as $platformId => $filename) {

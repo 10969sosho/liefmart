@@ -204,6 +204,19 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="row g-2 mt-2 align-items-center" id="penerimaanHelperRow">
+                                <div class="col-md-5">
+                                    <div id="priceHistoryContainer" class="d-none">
+                                        <button type="button" class="btn btn-sm btn-outline-info" id="btnPriceHistory" data-bs-toggle="modal" data-bs-target="#priceHistoryModal">
+                                            <i class="fas fa-history me-1"></i> Lihat History Harga
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-7">
+                                    <div id="priceSuggestionContainer"></div>
+                                </div>
+                            </div>
                             
                             <!-- Discount System - 5 Levels -->
                             <div class="p-3 mb-3 rounded-3 border border-1" style="background-color: rgba(65, 95, 255, 0.03);">
@@ -337,6 +350,33 @@
             </div>
         </div>
     </form>
+</div>
+
+<!-- Price History Modal -->
+<div class="modal fade" id="priceHistoryModal" tabindex="-1" aria-labelledby="priceHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="priceHistoryModalLabel">
+                    <i class="fas fa-history me-2"></i>History Harga & Diskon
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="priceHistoryContent">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Memuat history harga...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
 </div>
 @endsection
 @push('styles')
@@ -585,6 +625,129 @@ tr.item-row:hover {
     #tabelDetailBarang td {
         padding: 0.75rem 0.5rem;
     }
+    
+    /* Price History Modal Responsive */
+    #priceHistoryModal .modal-dialog {
+        margin: 0.5rem;
+    }
+    
+    #priceHistoryModal .modal-body {
+        padding: 1rem;
+    }
+    
+    #priceHistoryModal .table {
+        font-size: 0.85rem;
+    }
+    
+    #priceHistoryModal .table th,
+    #priceHistoryModal .table td {
+        padding: 0.5rem;
+    }
+    
+    #btnPriceHistory {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.6rem;
+        width: 100%;
+    }
+}
+
+@media (max-width: 576px) {
+    #priceHistoryModal .table-responsive {
+        font-size: 0.8rem;
+    }
+    
+    #priceHistoryModal .badge {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    #priceHistoryModal .modal-title {
+        font-size: 1.1rem;
+    }
+}
+
+/* Price History Modal Styling */
+#priceHistoryModal .modal-header {
+    background: linear-gradient(to right, #f8f9fa, #f0f3f6);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+#priceHistoryModal .table th {
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #eaecf0;
+    padding: 0.75rem;
+}
+
+#priceHistoryModal .table td {
+    padding: 0.75rem;
+    vertical-align: middle;
+}
+
+#priceHistoryModal .table td small {
+    font-size: 0.8rem;
+    line-height: 1.3;
+}
+
+#priceHistoryModal .badge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.65rem;
+}
+
+#priceHistoryContainer {
+    animation: fadeIn 0.3s ease-out;
+}
+
+#btnPriceHistory {
+    transition: all 0.3s ease;
+    border: 1px solid #17a2b8;
+    color: #17a2b8;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+}
+
+#btnPriceHistory:hover {
+    background-color: #17a2b8;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(23, 162, 184, 0.2);
+}
+
+#btnPriceHistory:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Price Suggestion Alert */
+.alert-sm {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+.alert-sm .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+#priceSuggestion {
+    animation: slideDown 0.3s ease-out;
+}
+
+#penerimaanHelperRow {
+    min-height: 46px;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 </style>
 @endpush
@@ -636,6 +799,33 @@ document.addEventListener('DOMContentLoaded', function() {
             el.classList.remove(className);
         }, 750);
     }
+
+    async function parseJsonResponse(response) {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            if (!response.ok) {
+                let message = data.message || `HTTP error! Status: ${response.status}`;
+                if (data.errors && typeof data.errors === 'object') {
+                    const firstKey = Object.keys(data.errors)[0];
+                    const firstError = firstKey ? data.errors[firstKey] : null;
+                    if (Array.isArray(firstError) && firstError[0]) {
+                        message = firstError[0];
+                    } else if (typeof firstError === 'string' && firstError) {
+                        message = firstError;
+                    }
+                }
+                throw new Error(message);
+            }
+            return data;
+        }
+
+        const status = response.status;
+        if (status === 419 || status === 401 || status === 403) {
+            throw new Error('Sesi login habis atau tidak valid. Silakan refresh halaman lalu login ulang.');
+        }
+        throw new Error(`Respon server bukan JSON (HTTP ${status}). Silakan refresh halaman lalu coba lagi.`);
+    }
     
     // Format currency with 2 decimal places for individual items
     function formatRupiah(amount) {
@@ -680,13 +870,13 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log("Loading tax categories for main category ID:", mainCategoryId);
 
         // Fetch tax categories for selected main category
-        fetch(`/api/tax-categories?main_category_id=${mainCategoryId}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                return response.json();
-            })
+        fetch(`/api/tax-categories?main_category_id=${mainCategoryId}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(parseJsonResponse)
             .then(data => {
                 if (data.success) {
                     // Clear existing options
@@ -702,9 +892,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Filter tax categories based on main category
                     let filteredCategories = data.tax_categories;
                     
-                    // For KOSMETIK (main_category_id = 2), only show tax_id 3 or 4 (HGN and LM)
+                    // For KOSMETIK (main_category_id = 2), only show tax_id 3 or 4 (PKP and NON PKP)
                     if (mainCategoryId == 2) { // KOSMETIK
-                        console.log("Filtering tax categories for KOSMETIK (showing tax_id 3 or 4 - HGN and LM)");
+                        console.log("Filtering tax categories for KOSMETIK (showing tax_id 3 or 4 - PKP and NON PKP)");
                         filteredCategories = data.tax_categories.filter(cat => cat.id == 3 || cat.id == 4);
                     }
 
@@ -768,7 +958,17 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         },
         onChange: function(value) {
-            if (!value) return;
+            const priceHistoryContainer = document.getElementById('priceHistoryContainer');
+            const priceSuggestionContainer = document.getElementById('priceSuggestionContainer');
+            if (!value) {
+                if (priceHistoryContainer) {
+                    priceHistoryContainer.classList.add('d-none');
+                }
+                if (priceSuggestionContainer) {
+                    priceSuggestionContainer.innerHTML = '';
+                }
+                return;
+            }
             
             // Get selected product data
             const selectedOption = this.options[value];
@@ -789,6 +989,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         hargaInput.value = hargaNum;
                     }
                 }
+                
+                if (priceHistoryContainer) {
+                    priceHistoryContainer.classList.remove('d-none');
+                }
+
+                loadPriceHistory(value);
+                
+                suggestLastPrice(value);
                 
                 // Focus on quantity field for better UX flow
                 qtyInput.focus();
@@ -815,8 +1023,13 @@ document.addEventListener('DOMContentLoaded', function() {
         barangTomSelect.addOption({value: '', text: 'Loading...'});
         
         // Fetch products for the selected main category
-        fetch(`{{ route('penerimaan.get-products') }}?main_category_id=${mainCategoryId}`)
-            .then(response => response.json())
+        fetch(`{{ route('penerimaan.get-products') }}?main_category_id=${mainCategoryId}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(parseJsonResponse)
             .then(data => {
                 console.log('Products response:', data);
             
@@ -896,6 +1109,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 diskonPersenInputs.forEach(input => input.setAttribute('readonly', 'readonly'));
                 diskonNominalInputs.forEach(input => input.setAttribute('readonly', 'readonly'));
                 
+                const priceSuggestionContainer = document.getElementById('priceSuggestionContainer');
+                if (priceSuggestionContainer) {
+                    priceSuggestionContainer.innerHTML = '';
+                }
+                
                 // Apply visual feedback
                 hargaInput.parentElement.classList.add('text-muted');
                 diskonPersenInputs.forEach(input => input.parentElement.classList.add('text-muted'));
@@ -927,6 +1145,206 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Product selection with auto-fill price is handled in the TomSelect initialization
     
+    // Clear price suggestion when user manually types in price field
+    if (hargaInput) {
+        hargaInput.addEventListener('input', function() {
+            const priceSuggestionContainer = document.getElementById('priceSuggestionContainer');
+            if (priceSuggestionContainer) {
+                priceSuggestionContainer.innerHTML = '';
+            }
+        });
+        
+        hargaInput.addEventListener('focus', function() {
+            const priceSuggestionContainer = document.getElementById('priceSuggestionContainer');
+            if (priceSuggestionContainer && priceSuggestionContainer.innerHTML.trim() !== '') {
+                clearTimeout(window.priceSuggestionTimeout);
+            }
+        });
+    }
+    
+    // Price History Functionality
+    function loadPriceHistory(productId) {
+        const priceHistoryContent = document.getElementById('priceHistoryContent');
+        
+        if (!productId) {
+            return;
+        }
+        
+        // Show loading state
+        priceHistoryContent.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Memuat history harga...</p>
+            </div>
+        `;
+        
+        // Fetch price history
+        fetch(`/penerimaan/price-history/${productId}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(parseJsonResponse)
+            .then(data => {
+                if (data.success) {
+                    displayPriceHistory(data);
+                } else {
+                    priceHistoryContent.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${data.message || 'Tidak dapat memuat history harga'}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading price history:', error);
+                priceHistoryContent.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        Terjadi kesalahan saat memuat history harga
+                    </div>
+                `;
+            });
+    }
+    
+    function displayPriceHistory(data) {
+        const priceHistoryContent = document.getElementById('priceHistoryContent');
+        const modalTitle = document.getElementById('priceHistoryModalLabel');
+        
+        // Update modal title with product name
+        modalTitle.innerHTML = `<i class="fas fa-history me-2"></i>History Harga & Diskon - ${data.product.name}`;
+        
+        if (data.history.length === 0) {
+            priceHistoryContent.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Belum ada history harga untuk barang ini
+                </div>
+            `;
+            return;
+        }
+        
+        let historyHTML = `
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tanggal</th>
+                            <th>Kode Penerimaan</th>
+                            <th>No. PO</th>
+                            <th class="text-end">Harga</th>
+                            <th>Diskon</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        data.history.forEach(item => {
+            const diskonText = item.diskon_detail.length > 0 
+                ? item.diskon_detail.join('<br>') 
+                : (item.diskon_persen_total > 0 ? `${item.diskon_persen_total}%` : '-');
+            
+            const statusBadge = item.is_free 
+                ? '<span class="badge bg-secondary">Free</span>' 
+                : '<span class="badge bg-success">Berbayar</span>';
+            
+            historyHTML += `
+                <tr>
+                    <td>${item.tanggal_formatted}</td>
+                    <td><small>${item.kode_penerimaan}</small></td>
+                    <td><small>${item.nomor_po || '-'}</small></td>
+                    <td class="text-end fw-medium">${item.harga_formatted}</td>
+                    <td><small>${diskonText}</small></td>
+                    <td>${statusBadge}</td>
+                </tr>
+            `;
+        });
+        
+        historyHTML += `
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-3">
+                <small class="text-muted">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Menampilkan ${data.history.length} transaksi terakhir
+                </small>
+            </div>
+        `;
+        
+        priceHistoryContent.innerHTML = historyHTML;
+    }
+    
+    function suggestLastPrice(productId) {
+        if (!productId) return;
+        
+        const priceSuggestionContainer = document.getElementById('priceSuggestionContainer');
+        if (!priceSuggestionContainer) return;
+
+        clearTimeout(window.priceSuggestionTimeout);
+        priceSuggestionContainer.innerHTML = '';
+
+        fetch(`/penerimaan/price-history/${productId}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(parseJsonResponse)
+            .then(data => {
+                if (data.success && data.history.length > 0) {
+                    const lastTransaction = data.history[0];
+                    
+                    if (!hargaInput.value && !isFreeCheckbox.checked && !lastTransaction.is_free) {
+                        const suggestionDiv = document.createElement('div');
+                        suggestionDiv.id = 'priceSuggestion';
+                        suggestionDiv.className = 'alert alert-info alert-sm mt-0 mb-0';
+                        suggestionDiv.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-lightbulb me-1"></i>
+                                    <small>Harga terakhir: <strong>${lastTransaction.harga_formatted}</strong> (${lastTransaction.tanggal_formatted})</small>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-info" onclick="window.applySuggestedPrice(${lastTransaction.harga})">
+                                    Gunakan
+                                </button>
+                            </div>
+                        `;
+                        
+                        priceSuggestionContainer.appendChild(suggestionDiv);
+                        
+                        window.priceSuggestionTimeout = setTimeout(() => {
+                            priceSuggestionContainer.innerHTML = '';
+                        }, 5000);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error suggesting price:', error);
+            });
+    }
+    
+    window.applySuggestedPrice = function(price) {
+        hargaInput.value = price;
+        
+        const priceSuggestionContainer = document.getElementById('priceSuggestionContainer');
+        if (priceSuggestionContainer) {
+            priceSuggestionContainer.innerHTML = '';
+        }
+        
+        hargaInput.classList.add('flash-success');
+        setTimeout(() => {
+            hargaInput.classList.remove('flash-success');
+        }, 750);
+        
+        qtyInput.focus();
+    };
+    
     // Function to reset all inputs after adding an item
     function resetAllInputs() {
         barangTomSelect.clear();
@@ -941,6 +1359,16 @@ document.addEventListener('DOMContentLoaded', function() {
         hargaInput.removeAttribute('readonly');
         diskonPersenInputs.forEach(input => input.removeAttribute('disabled'));
         diskonNominalInputs.forEach(input => input.removeAttribute('disabled'));
+
+        const priceHistoryContainer = document.getElementById('priceHistoryContainer');
+        if (priceHistoryContainer) {
+            priceHistoryContainer.classList.add('d-none');
+        }
+
+        const priceSuggestionContainer = document.getElementById('priceSuggestionContainer');
+        if (priceSuggestionContainer) {
+            priceSuggestionContainer.innerHTML = '';
+        }
         
         // Focus back on product selection
         setTimeout(() => {
@@ -1331,15 +1759,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify(headerData)
             });
             
-            const headerResult = await headerResponse.json();
+            const headerResult = await parseJsonResponse(headerResponse);
             
             if (!headerResult.success) {
                 throw new Error(headerResult.message || 'Gagal membuat header penerimaan');
+            }
+
+            if (headerResult.kode_penerimaan) {
+                const kodeInput = document.getElementById('kode_penerimaan');
+                if (kodeInput) {
+                    kodeInput.value = headerResult.kode_penerimaan;
+                }
             }
             
             const penerimaanId = headerResult.penerimaan_id;
@@ -1370,12 +1807,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify(detailsData)
             });
             
-            const detailsResult = await detailsResponse.json();
+            const detailsResult = await parseJsonResponse(detailsResponse);
             
             if (!detailsResult.success) {
                 throw new Error(detailsResult.message || 'Gagal menyimpan detail penerimaan');
@@ -1386,19 +1825,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify({})
             });
             
-            const finalizeResult = await finalizeResponse.json();
+            const finalizeResult = await parseJsonResponse(finalizeResponse);
             
             if (!finalizeResult.success) {
                 throw new Error(finalizeResult.message || 'Gagal finalisasi penerimaan');
             }
             
             // Success - redirect
-            window.location.href = '{{ route("penerimaan.index") }}';
+            window.location.href = '{{ route("penerimaan.index", ["success" => 1]) }}';
             
         } catch (error) {
             console.error('Error:', error);

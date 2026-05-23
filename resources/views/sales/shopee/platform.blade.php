@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Platform Shopee')
+@section('title', 'Platform Shopee Lamourad')
 
 @section('content')
     <div class="container-fluid">
@@ -8,12 +8,12 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-header">
-                        <h4 class="card-title">Platform Shopee</h4>
+                        <h4 class="card-title">Platform Shopee Lamourad</h4>
                         <nav aria-label="breadcrumb">
                             <ol class="breadcrumb">
                                 <li class="breadcrumb-item"><a href="{{ route('sales.index') }}">Menu Penjualan</a></li>
                                 <li class="breadcrumb-item"><a href="{{ route('sales.online') }}">Penjualan Online</a></li>
-                                <li class="breadcrumb-item active" aria-current="page">Platform Shopee</li>
+                                <li class="breadcrumb-item active" aria-current="page">Platform Shopee Lamourad</li>
                             </ol>
                         </nav>
                     </div>
@@ -24,7 +24,7 @@
                                     <div class="card-body text-center">
                                         <i class="fas fa-keyboard fa-3x mb-3 text-primary"></i>
                                         <h5 class="card-title">Input Manual</h5>
-                                        <p class="card-text">Input data penjualan Shopee secara manual</p>
+                                        <p class="card-text">Input data penjualan Shopee Lamourad secara manual</p>
                                         <a href="{{ route('sales.online-input', ['platform' => 'shopee']) }}"
                                             class="btn btn-primary mt-2">
                                             <i class="fas fa-plus-circle mr-2"></i> Input Manual
@@ -37,7 +37,7 @@
                                     <div class="card-body text-center">
                                         <i class="fas fa-file-excel fa-3x mb-3 text-success"></i>
                                         <h5 class="card-title">Import Excel</h5>
-                                        <p class="card-text">Import data penjualan Shopee dari file Excel</p>
+                                        <p class="card-text">Import data penjualan Shopee Lamourad dari file Excel</p>
                                         <a href="{{ route('sales.shopee.import-excel') }}" class="btn btn-success mt-2">
                                             <i class="fas fa-file-import mr-2"></i> Import Excel
                                         </a>

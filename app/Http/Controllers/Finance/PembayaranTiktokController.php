@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\TiktokFinancialTransaction;
 use App\Models\Order;
+use App\Models\Platform;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,7 +22,27 @@ class PembayaranTiktokController extends Controller
 {
     public function index(Request $request)
     {
-        $platform = 'tiktok'; // Set platform
+        // Get platform by ID (Tiktok Lamourad = ID 3)
+        $platformModel = Platform::find(3);
+        
+        // Jika tidak ditemukan berdasarkan ID, cari berdasarkan nama dengan case-insensitive
+        if (!$platformModel) {
+            $platformModel = Platform::whereRaw('LOWER(name) = ?', ['tiktok lamourad'])->first();
+        }
+        
+        // Jika masih tidak ditemukan, cari dengan LIKE
+        if (!$platformModel) {
+            $platformModel = Platform::whereRaw('LOWER(name) LIKE ?', ['%tiktok lamourad%'])
+                ->whereRaw('LOWER(name) NOT LIKE ?', ['%tiktok liefmarket%'])
+                ->first();
+        }
+        
+        if (!$platformModel) {
+            return redirect()->back()->with('error', 'Platform Tiktok Lamourad tidak ditemukan');
+        }
+        $platformId = $platformModel->id;
+        $platform = 'tiktok';
+        $platformLabel = 'Tiktok Lamourad';
         
         $query = TiktokFinancialTransaction::with([
             'order.orderItems.platformProduct.mappingBarang', 
@@ -31,111 +52,296 @@ class PembayaranTiktokController extends Controller
         
         // Filter by payment date range
         if ($request->filled('from_date')) {
-            $query->whereDate('tanggal_masuk_pembayaran', '>=', $request->from_date);
+            $query->whereDate('tiktok_financial_transactions.tanggal_masuk_pembayaran', '>=', $request->from_date);
         }
         
         if ($request->filled('to_date')) {
-            $query->whereDate('tanggal_masuk_pembayaran', '<=', $request->to_date);
+            $query->whereDate('tiktok_financial_transactions.tanggal_masuk_pembayaran', '<=', $request->to_date);
         }
         
         // Filter by order date range
         if ($request->filled('from_order_date')) {
-            $query->whereDate('tanggal_order', '>=', $request->from_order_date);
+            $query->whereDate('tiktok_financial_transactions.tanggal_order', '>=', $request->from_order_date);
         }
         
         if ($request->filled('to_order_date')) {
-            $query->whereDate('tanggal_order', '<=', $request->to_order_date);
+            $query->whereDate('tiktok_financial_transactions.tanggal_order', '<=', $request->to_order_date);
         }
         
-        // Filter by order number
+        // Filter by order number - use table alias to avoid ambiguity
         if ($request->filled('order_number')) {
-            $query->where('no_order', 'like', '%' . $request->order_number . '%');
+            $query->where('tiktok_financial_transactions.no_order', 'like', '%' . $request->order_number . '%');
         }
         
-        // Filter by invoice number
+        // Filter by invoice number - use table alias to avoid ambiguity
         if ($request->filled('invoice_number')) {
-            $query->where('no_invoice', 'like', '%' . $request->invoice_number . '%');
+            $query->where('tiktok_financial_transactions.no_invoice', 'like', '%' . $request->invoice_number . '%');
         }
         
-        // Filter by tax ID
+        // Filter by tax ID - use table alias to avoid ambiguity
         if ($request->filled('tax_id')) {
             $taxIds = (array) $request->tax_id;
             $query->where(function($q) use ($taxIds) {
                 foreach ($taxIds as $taxId) {
-                    $q->orWhere('no_invoice', 'like', '%/' . str_pad($taxId, 2, '0', STR_PAD_LEFT));
+                    $q->orWhere('tiktok_financial_transactions.no_invoice', 'like', '%/' . str_pad($taxId, 2, '0', STR_PAD_LEFT));
                 }
             });
         }
         
-        // Filter by payment date
+        // Filter by payment date - use table alias to avoid ambiguity
         if ($request->filled('payment_date')) {
-            $query->whereDate('tanggal_masuk_pembayaran', $request->payment_date);
+            $query->whereDate('tiktok_financial_transactions.tanggal_masuk_pembayaran', $request->payment_date);
         }
         
-        // Filter by nominal range
+        // Filter by nominal range - use table alias to avoid ambiguity
         if ($request->filled('min_nominal')) {
-            $query->where('nominal_fix', '>=', $request->min_nominal);
+            $query->where('tiktok_financial_transactions.nominal_fix', '>=', $request->min_nominal);
         }
         
         if ($request->filled('max_nominal')) {
-            $query->where('nominal_fix', '<=', $request->max_nominal);
+            $query->where('tiktok_financial_transactions.nominal_fix', '<=', $request->max_nominal);
         }
         
-        // Filter by outstanding status
+        // Filter by outstanding status - OPTIMIZED
+        // Menggunakan JOIN dengan derived table yang lebih efisien daripada whereIn
+        // Derived table hanya di-evaluate sekali, bukan untuk setiap row
         if ($request->filled('outstanding_status')) {
             if ($request->outstanding_status === '0') {
-                $query->where('outstanding', 0);
+                // Filter: hanya tampilkan transaksi yang nomor order-nya memiliki total outstanding = 0
+                // Optimasi: gunakan INNER JOIN dengan derived table (lebih cepat dari whereIn)
+                $query->join(DB::raw('(
+                    SELECT no_order
+                    FROM tiktok_financial_transactions
+                    GROUP BY no_order
+                    HAVING SUM(outstanding) = 0
+                ) as outstanding_zero'), 'tiktok_financial_transactions.no_order', '=', 'outstanding_zero.no_order');
             } elseif ($request->outstanding_status === '1') {
-                $query->where(function($q) {
-                    $q->where('outstanding', '>', 0)
-                      ->orWhere('outstanding', '<', 0);
-                });
+                // Filter: hanya tampilkan transaksi yang nomor order-nya memiliki total outstanding != 0
+                // Optimasi: gunakan INNER JOIN dengan derived table (lebih cepat dari whereIn)
+                $query->join(DB::raw('(
+                    SELECT no_order
+                    FROM tiktok_financial_transactions
+                    GROUP BY no_order
+                    HAVING SUM(outstanding) != 0
+                ) as outstanding_nonzero'), 'tiktok_financial_transactions.no_order', '=', 'outstanding_nonzero.no_order');
             }
         }
         
-        // Exclude transactions with fully returned orders at query level
-        $query->whereHas('order', function($q) {
-            // Filter out orders that are fully returned
-            $q->where(function($subQ) {
-                $subQ->whereDoesntHave('returPenjualan', function($rq) {
-                    $rq->whereIn('status', ['draft', 'selesai']);
-                });
-            });
+        // Exclude only fully returned orders (retur full), not partial returns (retur sebagian)
+        // Orders with partial returns should still appear in finance index
+        $query->whereNotExists(function($subQuery) {
+            $subQuery->select(DB::raw(1))
+                ->from('retur_penjualans as rp')
+                ->join('orders as o', 'rp.order_id', '=', 'o.id')
+                ->join('retur_penjualan_details as rpd', 'rp.id', '=', 'rpd.retur_penjualan_id')
+                ->join('order_items as oi', 'rpd.order_item_id', '=', 'oi.id')
+                ->whereColumn('o.order_number', 'tiktok_financial_transactions.no_order')
+                ->whereIn('rp.status', ['draft', 'selesai'])
+                ->whereNotNull('o.order_number')
+                ->where('o.order_number', '!=', '')
+                ->groupBy('o.id')
+                ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
         });
         
-        // Calculate totals for cards from FILTERED data
+        // Calculate totals for cards from FILTERED data - use table alias
         $totalCount = $query->count();
-        $totalNominalFix = $query->sum('nominal_fix');
-        $totalSaldoMasuk = $query->sum('saldo_masuk');
-        $totalOutstanding = $query->sum('outstanding');
+        $totalNominalFix = $query->sum('tiktok_financial_transactions.nominal_fix');
+        $totalSaldoMasuk = $query->sum('tiktok_financial_transactions.saldo_masuk');
+        $totalOutstanding = $query->sum('tiktok_financial_transactions.outstanding');
         
         // Clone query for pagination (this will be filtered)
         $transactions = clone $query;
-        $transactions = $transactions->orderBy('tanggal_order', 'desc')
+        $transactions = $transactions->orderBy('tiktok_financial_transactions.tanggal_order', 'desc')
             ->paginate(15)
             ->withQueryString(); // Preserves query parameters in pagination links
             
         // Group transactions by order number for display
         $groupedTransactions = $transactions->groupBy('no_order');
         
-        // Get all orders that don't have financial transactions
-        $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
+        // Get unpaid orders with optimized SQL query
+        // Calculate total_value and days_since_order directly in SQL
+        // Filter fully returned orders at SQL level (NOT EXISTS)
+        // Use pagination to limit data load
+        $missingOrdersQuery = Order::query()
+            ->select([
+                'orders.id',
+                'orders.order_number',
+                'orders.tanggal',
+                'orders.status',
+                DB::raw('COALESCE(SUM(order_items.price_after_discount * order_items.quantity), 0) as total_value'),
+                DB::raw('COALESCE(DATEDIFF(NOW(), orders.tanggal), 0) as days_since_order'),
+                DB::raw('COALESCE(SUM(order_items.quantity), 0) as order_total_quantity'),
+                DB::raw('COALESCE((
+                    SELECT SUM(rpd.qty)
+                    FROM retur_penjualan_details rpd
+                    INNER JOIN retur_penjualans rp ON rpd.retur_penjualan_id = rp.id
+                    INNER JOIN order_items oi ON rpd.order_item_id = oi.id
+                    WHERE oi.order_id = orders.id
+                    AND rp.status IN ("draft", "selesai")
+                ), 0) as returned_quantity')
+            ])
+            ->leftJoin('order_items', 'orders.id', '=', 'order_items.order_id')
             ->whereDoesntHave('tiktokFinancialTransactions')
-            ->whereHas('platform', function($query) {
-                $query->where('name', 'tiktok');
-            })
-            ->orderBy('tanggal', 'desc') // Use tanggal instead of order_date
-            ->get()
-            ->filter(function($order) {
-                // Filter out fully returned orders
-                return !$order->isFullyReturned();
-            });
+            ->where('orders.platform_id', $platformId)
+            ->whereRaw('NOT EXISTS (
+                SELECT 1 FROM retur_penjualan_details rpd
+                INNER JOIN retur_penjualans rp ON rpd.retur_penjualan_id = rp.id
+                INNER JOIN order_items oi ON rpd.order_item_id = oi.id
+                WHERE oi.order_id = orders.id
+                AND rp.status IN ("draft", "selesai")
+                GROUP BY oi.order_id
+                HAVING SUM(rpd.qty) >= (
+                    SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = orders.id
+                )
+            )')
+            ->groupBy('orders.id', 'orders.order_number', 'orders.tanggal', 'orders.status')
+            ->havingRaw('(returned_quantity < order_total_quantity OR returned_quantity = 0)');
+        
+        // Apply filters for unpaid orders
+        $fromUnpaidDate = $request->filled('from_order_date') ? $request->from_order_date : $request->from_date;
+        $toUnpaidDate = $request->filled('to_order_date') ? $request->to_order_date : $request->to_date;
+        
+        if (!empty($fromUnpaidDate)) {
+            $missingOrdersQuery->whereDate('orders.tanggal', '>=', $fromUnpaidDate);
+        }
+        
+        if (!empty($toUnpaidDate)) {
+            $missingOrdersQuery->whereDate('orders.tanggal', '<=', $toUnpaidDate);
+        }
+        
+        // Filter by order number
+        if ($request->filled('order_number')) {
+            $missingOrdersQuery->where('orders.order_number', 'like', '%' . $request->order_number . '%');
+        }
+        
+        // Filter by min/max value (using having clause after groupBy)
+        if ($request->filled('min_nominal')) {
+            $missingOrdersQuery->havingRaw('total_value >= ?', [$request->min_nominal]);
+        }
+        
+        if ($request->filled('max_nominal')) {
+            $missingOrdersQuery->havingRaw('total_value <= ?', [$request->max_nominal]);
+        }
+        
+        // Filter by age (days since order)
+        if ($request->filled('min_age')) {
+            $missingOrdersQuery->havingRaw('days_since_order >= ?', [$request->min_age]);
+        }
+        
+        if ($request->filled('max_age')) {
+            $missingOrdersQuery->havingRaw('days_since_order <= ?', [$request->max_age]);
+        }
+        
+        // Order by
+        $orderBy = $request->get('sort_by', 'tanggal');
+        $orderDirection = $request->get('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
+        
+        if ($orderBy === 'tanggal') {
+            $missingOrdersQuery->orderBy('orders.tanggal', $orderDirection);
+        } elseif ($orderBy === 'order_number') {
+            $missingOrdersQuery->orderBy('orders.order_number', $orderDirection);
+        } elseif ($orderBy === 'total_value') {
+            $missingOrdersQuery->orderBy('total_value', $orderDirection);
+        } else {
+            $missingOrdersQuery->orderBy('orders.tanggal', 'desc');
+        }
+        
+        // Paginate with 30 items per page
+        $missingOrders = $missingOrdersQuery->paginate(30, ['*'], 'unpaid_page')
+            ->withQueryString(); // Preserve query parameters
+        
+        // Calculate total unpaid nominal using SQL (for summary card)
+        $unpaidQueryParams = [$platformId];
+        $unpaidInnerFilter = "";
+        $unpaidOuterFilter = "";
+        
+        if (!empty($fromUnpaidDate)) {
+            $unpaidInnerFilter .= " AND DATE(orders.tanggal) >= ?";
+            $unpaidQueryParams[] = $fromUnpaidDate;
+        }
+        
+        if (!empty($toUnpaidDate)) {
+            $unpaidInnerFilter .= " AND DATE(orders.tanggal) <= ?";
+            $unpaidQueryParams[] = $toUnpaidDate;
+        }
+        
+        if ($request->filled('order_number')) {
+            $unpaidInnerFilter .= " AND orders.order_number LIKE ?";
+            $unpaidQueryParams[] = '%' . $request->order_number . '%';
+        }
+        
+        if ($request->filled('min_nominal')) {
+            $unpaidOuterFilter .= " AND total_value >= ?";
+            $unpaidQueryParams[] = $request->min_nominal;
+        }
+        
+        if ($request->filled('max_nominal')) {
+            $unpaidOuterFilter .= " AND total_value <= ?";
+            $unpaidQueryParams[] = $request->max_nominal;
+        }
+        
+        if ($request->filled('min_age')) {
+            $unpaidOuterFilter .= " AND days_since_order >= ?";
+            $unpaidQueryParams[] = $request->min_age;
+        }
+        
+        if ($request->filled('max_age')) {
+            $unpaidOuterFilter .= " AND days_since_order <= ?";
+            $unpaidQueryParams[] = $request->max_age;
+        }
+
+        $unpaidNominal = DB::selectOne("
+            SELECT COALESCE(SUM(total_value), 0) as total
+            FROM (
+                SELECT 
+                    orders.id,
+                    orders.order_number,
+                    COALESCE(SUM(order_items.price_after_discount * order_items.quantity), 0) as total_value,
+                    COALESCE(DATEDIFF(NOW(), orders.tanggal), 0) as days_since_order,
+                    COALESCE(SUM(order_items.quantity), 0) as order_total_quantity,
+                    COALESCE((
+                        SELECT SUM(rpd.qty)
+                        FROM retur_penjualan_details rpd
+                        INNER JOIN retur_penjualans rp ON rpd.retur_penjualan_id = rp.id
+                        INNER JOIN order_items oi ON rpd.order_item_id = oi.id
+                        WHERE oi.order_id = orders.id
+                        AND rp.status IN ('draft', 'selesai')
+                    ), 0) as returned_quantity
+                FROM orders
+                LEFT JOIN order_items ON orders.id = order_items.order_id
+                WHERE orders.platform_id = ?
+                {$unpaidInnerFilter}
+                AND NOT EXISTS (
+                    SELECT 1 FROM tiktok_financial_transactions 
+                    WHERE tiktok_financial_transactions.order_id = orders.id
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM retur_penjualan_details rpd
+                    INNER JOIN retur_penjualans rp ON rpd.retur_penjualan_id = rp.id
+                    INNER JOIN order_items oi ON rpd.order_item_id = oi.id
+                    WHERE oi.order_id = orders.id
+                    AND rp.status IN ('draft', 'selesai')
+                    GROUP BY oi.order_id
+                    HAVING SUM(rpd.qty) >= (
+                        SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = orders.id
+                    )
+                )
+                GROUP BY orders.id, orders.order_number, orders.tanggal
+                HAVING (returned_quantity < order_total_quantity OR returned_quantity = 0)
+            ) as unpaid_orders
+            WHERE 1=1
+            {$unpaidOuterFilter}
+        ", $unpaidQueryParams);
+        
+        $unpaidNominal = $unpaidNominal->total ?? 0;
             
         return view('financial.tiktok.index', compact(
             'transactions', 
             'groupedTransactions', 
             'platform', 
+            'platformLabel',
             'missingOrders',
+            'unpaidNominal',
             'totalCount',
             'totalNominalFix',
             'totalSaldoMasuk',
@@ -251,7 +457,7 @@ class PembayaranTiktokController extends Controller
             // Look for the 'Order details' sheet
             $orderDetailsSheet = null;
             foreach ($spreadsheet->getAllSheets() as $sheet) {
-                \Log::info("Found sheet: " . $sheet->getTitle());
+                Log::info("Found sheet: " . $sheet->getTitle());
                 if (strtolower($sheet->getTitle()) === 'order details') {
                     $orderDetailsSheet = $sheet;
                     break;
@@ -260,7 +466,7 @@ class PembayaranTiktokController extends Controller
             
             if (!$orderDetailsSheet) {
                 // Let's try to use the first sheet if Order details isn't found
-                \Log::warning("Sheet 'Order details' not found, attempting to use first sheet");
+                Log::warning("Sheet 'Order details' not found, attempting to use first sheet");
                 $orderDetailsSheet = $spreadsheet->getSheet(0);
                 if (!$orderDetailsSheet) {
                     // Free memory
@@ -272,7 +478,7 @@ class PembayaranTiktokController extends Controller
             }
             
             $worksheet = $orderDetailsSheet;
-            \Log::info("Using sheet: " . $worksheet->getTitle());
+            Log::info("Using sheet: " . $worksheet->getTitle());
             
             // Get highest row and column to limit processing
             $highestRow = $worksheet->getHighestRow();
@@ -291,7 +497,7 @@ class PembayaranTiktokController extends Controller
             
             // Clean headers from extra spaces
             $headers = array_map('trim', $headerRow);
-            \Log::info("Headers found: " . json_encode($headers));
+            Log::info("Headers found: " . json_encode($headers));
             
             // Validate required headers (only essential fields)
             $requiredHeaders = [
@@ -403,7 +609,7 @@ class PembayaranTiktokController extends Controller
             
             // Replace original headers with mapped ones for further processing
             $headers = $mappedHeaders;
-            \Log::info("Mapped headers: " . json_encode($headers));
+            Log::info("Mapped headers: " . json_encode($headers));
             
             // Check for missing required headers
             $foundRequiredHeaders = [];
@@ -414,7 +620,7 @@ class PembayaranTiktokController extends Controller
             }
             $missingHeaders = array_diff($requiredHeaders, $foundRequiredHeaders);
             if (!empty($missingHeaders)) {
-                \Log::warning("Missing required headers: " . json_encode($missingHeaders));
+                Log::warning("Missing required headers: " . json_encode($missingHeaders));
                 return redirect()->back()->with('error', 'Format file tidak sesuai. Kolom yang tidak ditemukan: ' . implode(', ', $missingHeaders));
             }
             
@@ -505,7 +711,7 @@ class PembayaranTiktokController extends Controller
             
             // Batch query: Get all orders and their items in one query
             $orders = [];
-            $existingTransactions = [];
+            $existingTransactionsByOrder = [];
             
             if (!empty($orderNumbers)) {
                 // Remove duplicates to avoid unnecessary queries
@@ -522,7 +728,7 @@ class PembayaranTiktokController extends Controller
                     ->pluck('no_order')
                     ->toArray();
                 
-                \Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
+                Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
             }
             
             // Second pass: process rows with pre-loaded data
@@ -555,7 +761,7 @@ class PembayaranTiktokController extends Controller
                                 $rowData['TANGGAL MASUK PEMBAYARAN'] = $excelDate->format('Y-m-d');
                                 $date = true;
                             } catch (\Exception $e) {
-                                \Log::warning("Failed to convert Excel date: " . $e->getMessage());
+                                Log::warning("Failed to convert Excel date: " . $e->getMessage());
                             }
                         } else {
                             // Try multiple formats
@@ -575,7 +781,7 @@ class PembayaranTiktokController extends Controller
                         }
                         
                         if (!$date) {
-                            \Log::warning("Invalid date format: " . $dateValue);
+                            Log::warning("Invalid date format: " . $dateValue);
                             $rowIssues[] = 'Format tanggal tidak valid. Format yang didukung: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY';
                         }
                     }
@@ -601,7 +807,7 @@ class PembayaranTiktokController extends Controller
                 $order = $orders[$orderNumber] ?? null;
                 
                 if (!$order) {
-                    \Log::warning("Order tidak ditemukan untuk nomor pesanan: {$orderNumber}");
+                    Log::warning("Order tidak ditemukan untuk nomor pesanan: {$orderNumber}");
                     $rowIssues[] = 'Nomor order tidak ditemukan di database';
                     
                     // Skip this transaction instead of creating placeholder data
@@ -618,7 +824,7 @@ class PembayaranTiktokController extends Controller
                 // 6. Check if transaction already exists (using pre-loaded data)
                 $transactionExists = in_array($orderNumber, $existingTransactions);
                 if ($transactionExists) {
-                    \Log::warning("Transaksi sudah ada untuk order: {$orderNumber}");
+                    Log::warning("Transaksi sudah ada untuk order: {$orderNumber}");
                     $rowIssues[] = 'Transaksi untuk order ini sudah ada';
                 }
                 
@@ -645,24 +851,24 @@ class PembayaranTiktokController extends Controller
                     'no_invoice' => 'PREVIEW-' . $order->order_number,
                     'qty' => $totalQty,
                     'nominal_harga' => $nominal_harga,
-                    'nominal_diskon1' => !empty($rowData['BIAYA ADMIN']) ? -abs((float) $rowData['BIAYA ADMIN']) : 0,
-                    'nominal_diskon2' => !empty($rowData['AFFILIATE COMMISSION']) ? -abs((float) $rowData['AFFILIATE COMMISSION']) : 0,
-                    'nominal_diskon3' => !empty($rowData['SELLER SHIPPING FEE + SFP SERVICE FEE']) ? -abs((float) $rowData['SELLER SHIPPING FEE + SFP SERVICE FEE']) : 0,
-                    'nominal_diskon4' => !empty($rowData['VOUCHER XTRA SERVICE FEE']) ? -abs((float) $rowData['VOUCHER XTRA SERVICE FEE']) : 0,
-                    'nominal_diskon5' => !empty($rowData['CASHBACK FEE']) ? -abs((float) $rowData['CASHBACK FEE']) : 0,
-                    'nominal_diskon6' => !empty($rowData['BIAYA6']) ? -abs((float) $rowData['BIAYA6']) : 0,
-                    'nominal_diskon7' => !empty($rowData['BIAYA7']) ? -abs((float) $rowData['BIAYA7']) : 0,
-                    'nominal_diskon8' => !empty($rowData['BIAYA8']) ? -abs((float) $rowData['BIAYA8']) : 0,
-                    'nominal_diskon9' => !empty($rowData['BIAYA9']) ? -abs((float) $rowData['BIAYA9']) : 0,
-                    'nominal_diskon10' => !empty($rowData['BIAYA10']) ? -abs((float) $rowData['BIAYA10']) : 0,
-                    'nominal_diskon11' => !empty($rowData['BIAYA11']) ? -abs((float) $rowData['BIAYA11']) : 0,
-                    'nominal_diskon12' => !empty($rowData['BIAYA12']) ? -abs((float) $rowData['BIAYA12']) : 0,
+                    'nominal_diskon1' => $nd1 = !empty($rowData['BIAYA ADMIN']) ? -abs((float) $rowData['BIAYA ADMIN']) : 0,
+                    'nominal_diskon2' => $nd2 = !empty($rowData['AFFILIATE COMMISSION']) ? -abs((float) $rowData['AFFILIATE COMMISSION']) : 0,
+                    'nominal_diskon3' => $nd3 = !empty($rowData['SELLER SHIPPING FEE + SFP SERVICE FEE']) ? -abs((float) $rowData['SELLER SHIPPING FEE + SFP SERVICE FEE']) : 0,
+                    'nominal_diskon4' => $nd4 = !empty($rowData['VOUCHER XTRA SERVICE FEE']) ? -abs((float) $rowData['VOUCHER XTRA SERVICE FEE']) : 0,
+                    'nominal_diskon5' => $nd5 = !empty($rowData['CASHBACK FEE']) ? -abs((float) $rowData['CASHBACK FEE']) : 0,
+                    'nominal_diskon6' => $nd6 = !empty($rowData['BIAYA6']) ? -abs((float) $rowData['BIAYA6']) : 0,
+                    'nominal_diskon7' => $nd7 = !empty($rowData['BIAYA7']) ? -abs((float) $rowData['BIAYA7']) : 0,
+                    'nominal_diskon8' => $nd8 = !empty($rowData['BIAYA8']) ? -abs((float) $rowData['BIAYA8']) : 0,
+                    'nominal_diskon9' => $nd9 = !empty($rowData['BIAYA9']) ? -abs((float) $rowData['BIAYA9']) : 0,
+                    'nominal_diskon10' => $nd10 = !empty($rowData['BIAYA10']) ? -abs((float) $rowData['BIAYA10']) : 0,
+                    'nominal_diskon11' => $nd11 = !empty($rowData['BIAYA11']) ? -abs((float) $rowData['BIAYA11']) : 0,
+                    'nominal_diskon12' => $nd12 = !empty($rowData['BIAYA12']) ? -abs((float) $rowData['BIAYA12']) : 0,
                     'adjustment' => 0,
-                    'nominal_fix' => 0,
-                    'saldo_masuk' => isset($rowData['JUMLAH MASUK PEMBAYARAN']) ? (float) $rowData['JUMLAH MASUK PEMBAYARAN'] : 0,
+                    'nominal_fix' => $fix = $nominal_harga + $nd1 + $nd2 + $nd3 + $nd4 + $nd5 + $nd6 + $nd7 + $nd8 + $nd9 + $nd10 + $nd11 + $nd12,
+                    'saldo_masuk' => $sm = isset($rowData['JUMLAH MASUK PEMBAYARAN']) ? (float) $rowData['JUMLAH MASUK PEMBAYARAN'] : 0,
                     'tanggal_masuk_pembayaran' => $rowData['TANGGAL MASUK PEMBAYARAN'],
                     'hari_masuk_pembayaran' => $rowData['HARI MASUK PEMBAYARAN'],
-                    'outstanding' => 0,
+                    'outstanding' => $fix - $sm,
                     'persentase_diskon1' => 0,
                     'persentase_diskon2' => 0,
                     'persentase_diskon3' => 0,
@@ -691,8 +897,8 @@ class PembayaranTiktokController extends Controller
                 $data[] = $rowData;
             }
         } catch (\Exception $e) {
-            \Log::error("Excel file processing error: " . $e->getMessage());
-            \Log::error($e->getTraceAsString());
+            Log::error("Excel file processing error: " . $e->getMessage());
+            Log::error($e->getTraceAsString());
             return redirect()->back()->with('error', 'Gagal membaca file Excel: ' . $e->getMessage());
         }
         
@@ -863,12 +1069,31 @@ class PembayaranTiktokController extends Controller
                     ->get()
                     ->keyBy('order_number');
                 
-                // Get all existing transactions in one query
-                $existingTransactions = TiktokFinancialTransaction::whereIn('no_order', $allOrderNumbers)
-                    ->pluck('no_order')
-                    ->toArray();
+                // Get all existing transactions (no_order + no_invoice) in one query
+                $existingTransRows = TiktokFinancialTransaction::whereIn('no_order', $allOrderNumbers)
+                    ->get(['no_order', 'no_invoice']);
+                // Group by order and map to existing tax status set (PKP/NON_PKP)
+                foreach ($existingTransRows as $row) {
+                    $orderNo = $row->no_order;
+                    $inv = $row->no_invoice ?? '';
+                    $status = null;
+                    if (strpos($inv, '/01') !== false) {
+                        $status = 'PKP';
+                    } elseif (strpos($inv, '/02') !== false) {
+                        $status = 'NON_PKP';
+                    }
+                    if (!isset($existingTransactionsByOrder[$orderNo])) {
+                        $existingTransactionsByOrder[$orderNo] = [];
+                    }
+                    if ($status) {
+                        $existingTransactionsByOrder[$orderNo][$status] = true;
+                    } else {
+                        // If no recognizable suffix, mark as generic existing
+                        $existingTransactionsByOrder[$orderNo]['ANY'] = true;
+                    }
+                }
                 
-                Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransactions) . " existing transactions");
+                Log::info("Batch loaded " . count($orders) . " orders and " . count($existingTransRows) . " existing transactions");
             }
             
             // Process rows with pre-loaded data
@@ -888,18 +1113,14 @@ class PembayaranTiktokController extends Controller
                         continue;
                     }
                     
-                    // Check if transaction already exists (using pre-loaded data)
-                    if (in_array($rowData['NOMOR PESANAN'], $existingTransactions)) {
-                        $skippedCount++;
-                        $skippedReasons[] = "Row #$index: Transaction for order {$rowData['NOMOR PESANAN']} already exists";
-                        continue;
-                    }
+                    // Do not skip entire order if any transaction exists; we will create only missing PKP/NON_PKP groups
                     
                     // Use pre-loaded order items
                     $orderItems = $order->orderItems;
                     
-                    // Group OrderItems by tax_id
-                    $itemsByTaxId = [];
+                    // Group OrderItems by tax status (PKP/Non-PKP) instead of tax_id
+                    // This ensures 1 order with same tax status only gets 1 invoice
+                    $itemsByTaxStatus = [];
                     $totalQty = 0;
                     
                     foreach ($orderItems as $item) {
@@ -913,10 +1134,17 @@ class PembayaranTiktokController extends Controller
                             $taxId = 4;
                         }
                         
-                        if (!isset($itemsByTaxId[$taxId])) {
-                            $itemsByTaxId[$taxId] = [];
+                        // Determine tax status (PKP or Non-PKP)
+                        $isPKP = in_array($taxId, [1, 3, 5, 7]);
+                        $taxStatus = $isPKP ? 'PKP' : 'NON_PKP';
+                        
+                        if (!isset($itemsByTaxStatus[$taxStatus])) {
+                            $itemsByTaxStatus[$taxStatus] = [];
                         }
-                        $itemsByTaxId[$taxId][] = $item;
+                        $itemsByTaxStatus[$taxStatus][] = [
+                            'item' => $item,
+                            'tax_id' => $taxId
+                        ];
                         $totalQty += $item->quantity;
                     }
                     
@@ -924,16 +1152,16 @@ class PembayaranTiktokController extends Controller
                     $validOrders[$order->id] = [
                         'order' => $order,
                         'rowData' => $rowData,
-                        'taxGroups' => $itemsByTaxId,
+                        'taxGroups' => $itemsByTaxStatus,
                         'totalQty' => $totalQty
                     ];
                     
-                    // Track all tax groups needed
-                    foreach ($itemsByTaxId as $taxId => $items) {
-                        if (!isset($validTaxGroups[$taxId])) {
-                            $validTaxGroups[$taxId] = 0;
+                    // Track all tax status groups needed
+                    foreach ($itemsByTaxStatus as $taxStatus => $items) {
+                        if (!isset($validTaxGroups[$taxStatus])) {
+                            $validTaxGroups[$taxStatus] = 0;
                         }
-                        $validTaxGroups[$taxId]++;
+                        $validTaxGroups[$taxStatus]++;
                     }
                     
                 } catch (\Exception $e) {
@@ -945,38 +1173,52 @@ class PembayaranTiktokController extends Controller
                 }
             }
             
-            // Sekarang, dapatkan nomor invoice untuk setiap kelompok pajak secara batch
-            $invoiceNumbersByTaxId = [];
-            foreach ($validTaxGroups as $taxId => $count) {
-                // Mendapatkan kategori berdasarkan tax_id
-                $category = ($taxId == 1 || $taxId == 2 || $taxId == 5 || $taxId == 6) 
-                    ? InvoiceSequence::CATEGORY_KOPI 
-                    : InvoiceSequence::CATEGORY_SKINCARE;
-                    
-                // Mendapatkan jenis penjualan (untuk Tiktok selalu ONLINE)
-                $salesType = InvoiceSequence::SALES_ONLINE;
-                
-                // Mendapatkan status pajak
-                $taxStatus = in_array($taxId, [1, 3, 5, 7]) 
-                    ? InvoiceSequence::TAX_PKP 
-                    : InvoiceSequence::TAX_NON_PKP;
-                
-                // Cari order pertama untuk mendapatkan tanggal order
+            // Sekarang, dapatkan nomor invoice untuk setiap kelompok status pajak secara batch
+            // Grouping berdasarkan PKP/Non-PKP saja, bukan per tax_id
+            $invoiceNumbersByTaxStatus = [];
+            foreach ($validTaxGroups as $taxStatus => $count) {
+                // Cari order pertama untuk mendapatkan tanggal order dan kategori dominan
                 $firstOrder = null;
+                $dominantCategory = InvoiceSequence::CATEGORY_SKINCARE; // Default SKINCARE untuk TikTok
+                
                 foreach ($validOrders as $orderData) {
-                    if (isset($orderData['taxGroups'][$taxId])) {
+                    if (isset($orderData['taxGroups'][$taxStatus])) {
                         $firstOrder = $orderData['order'];
+                        
+                        // Tentukan kategori dominan berdasarkan tax_id yang ada di group ini
+                        $taxIdsInGroup = [];
+                        foreach ($orderData['taxGroups'][$taxStatus] as $itemData) {
+                            $taxIdsInGroup[] = $itemData['tax_id'];
+                        }
+                        
+                        // Jika ada KOPI (tax_id 1,2,5,6), gunakan KOPI, else SKINCARE
+                        $hasKopi = false;
+                        foreach ($taxIdsInGroup as $tid) {
+                            if (in_array($tid, [1, 2, 5, 6])) {
+                                $hasKopi = true;
+                                break;
+                            }
+                        }
+                        $dominantCategory = $hasKopi ? InvoiceSequence::CATEGORY_KOPI : InvoiceSequence::CATEGORY_SKINCARE;
                         break;
                     }
                 }
                 
                 $orderDate = $firstOrder ? $firstOrder->tanggal : null;
                 
+                // Mendapatkan jenis penjualan (untuk Tiktok selalu ONLINE)
+                $salesType = InvoiceSequence::SALES_ONLINE;
+                
+                // Convert tax status string ke format InvoiceSequence
+                $taxStatusEnum = ($taxStatus === 'PKP') 
+                    ? InvoiceSequence::TAX_PKP 
+                    : InvoiceSequence::TAX_NON_PKP;
+                
                 // Mendapatkan batch nomor invoice dengan tanggal order
-                $invoiceNumbersByTaxId[$taxId] = InvoiceSequence::getBatchInvoiceNumbers(
-                    $category, 
+                $invoiceNumbersByTaxStatus[$taxStatus] = InvoiceSequence::getBatchInvoiceNumbers(
+                    $dominantCategory, 
                     $salesType, 
-                    $taxStatus, 
+                    $taxStatusEnum, 
                     $count,
                     $orderDate
                 );
@@ -994,7 +1236,7 @@ class PembayaranTiktokController extends Controller
                 }
                 $order = $orderData['order'];
                 $rowData = $orderData['rowData'];
-                $itemsByTaxId = $orderData['taxGroups'];
+                $itemsByTaxStatus = $orderData['taxGroups'];
                 $totalQty = $orderData['totalQty'];
                 
                 try {
@@ -1018,18 +1260,29 @@ class PembayaranTiktokController extends Controller
                     $nominal_diskon11 = !empty($rowData['BIAYA11']) ? -abs((float) $rowData['BIAYA11']) : 0;
                     $nominal_diskon12 = !empty($rowData['BIAYA12']) ? -abs((float) $rowData['BIAYA12']) : 0;
                     
-                    // Sort tax groups to ensure consistent processing order: PKP first (1,3,5,7), then Non-PKP (2,4,6)
-                    ksort($itemsByTaxId);
+                    // Sort tax status groups to ensure consistent processing order: PKP first, then Non-PKP
+                    $sortedTaxStatuses = ['PKP', 'NON_PKP'];
+                    $sortedItemsByTaxStatus = [];
+                    foreach ($sortedTaxStatuses as $status) {
+                        if (isset($itemsByTaxStatus[$status])) {
+                            $sortedItemsByTaxStatus[$status] = $itemsByTaxStatus[$status];
+                        }
+                    }
                     
-                    // Process each tax group and create a transaction for each
-                    foreach ($itemsByTaxId as $taxId => $items) {
+                    // Process each tax status group and create a transaction for each
+                    foreach ($sortedItemsByTaxStatus as $taxStatus => $itemsData) {
+                        // Skip if this taxStatus already has a transaction for this order
+                        $existingForOrder = $existingTransactionsByOrder[$order->order_number] ?? [];
+                        if (!empty($existingForOrder[$taxStatus])) {
+                            continue;
+                        }
                         // Get the next invoice number from the pre-generated batch
-                        $invoiceData = array_shift($invoiceNumbersByTaxId[$taxId]);
+                        $invoiceData = array_shift($invoiceNumbersByTaxStatus[$taxStatus]);
                         if (!$invoiceData) {
-                            throw new \Exception("No invoice number available for tax ID $taxId");
+                            throw new \Exception("No invoice number available for tax status $taxStatus");
                         }
                         
-                        // Create transaction for this tax group
+                        // Create transaction for this tax status group
                         $transaction = new TiktokFinancialTransaction();
                         // Use the actual order's tanggal directly, not the derived orderDate
                         $transaction->tanggal_order = $order->tanggal;
@@ -1038,11 +1291,12 @@ class PembayaranTiktokController extends Controller
                         $transaction->no_invoice = $invoiceData['invoice_number'];
                         $transaction->order_id = $order->id;
                         
-                        // Calculate value-based proportion for this tax group
+                        // Calculate value-based proportion for this tax status group
                         $groupQty = 0;
                         $groupValue = 0;
                         
-                        foreach ($items as $item) {
+                        foreach ($itemsData as $itemData) {
+                            $item = $itemData['item'];
                             $itemQty = $item->quantity;
                             $groupQty += $itemQty;
                             
@@ -1108,7 +1362,7 @@ class PembayaranTiktokController extends Controller
                         if ($transaction->saldo_masuk > 0 && $transaction->nominal_fix > 0) {
                             $ratio = $transaction->saldo_masuk / $transaction->nominal_fix;
                             if ($ratio > 3.0) { // If payment is more than 3x the expected amount
-                                \Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$transaction->saldo_masuk}, nominal_fix={$transaction->nominal_fix}");
+                                Log::warning("Potential overpayment detected for order {$order->order_number}: saldo_masuk={$transaction->saldo_masuk}, nominal_fix={$transaction->nominal_fix}");
                             }
                         }
                         
@@ -1161,9 +1415,12 @@ class PembayaranTiktokController extends Controller
                 'tiktok_process_token'
             ]);
             
-            // Store skipped reasons in session if any
+            // Store skipped reasons in session if any (platform-specific)
             if (!empty($skippedReasons)) {
-                session(['skipped_reasons' => $skippedReasons]);
+                session(['tiktok_skipped_reasons' => $skippedReasons]);
+            } else {
+                // Clear any old skipped reasons if no new ones
+                session()->forget('tiktok_skipped_reasons');
             }
             
             return redirect()->route('finance.tiktok.index')
@@ -1181,14 +1438,29 @@ class PembayaranTiktokController extends Controller
 
     public function manual()
     {
-        // Implementation of manual input page if needed
-        return view('financial.tiktok.manual');
+        // Get TikTok platform ID (ID 3 for TikTok Lamourad)
+        $tiktokPlatformId = 3;
+        $platformLabel = 'Tiktok Lamourad';
+        
+        // Get order_id from request if available
+        $orderId = request('order_id');
+        $order = null;
+        
+        // If order_id is provided, try to find the order
+        if ($orderId) {
+            $order = Order::where('platform_id', $tiktokPlatformId)->find($orderId);
+        }
+        
+        return view('financial.tiktok.manual', compact('order', 'platformLabel'));
     }
 
     public function storeManual(Request $request)
     {
         $request->validate([
-            'order_id' => 'required|exists:orders,id',
+            'order_id' => [
+                'required',
+                'exists:orders,id',
+            ],
             'saldo_masuk' => 'required|numeric',
             'tanggal_masuk_pembayaran' => 'required|date',
             'hari_masuk_pembayaran' => 'required|string',
@@ -1205,46 +1477,99 @@ class PembayaranTiktokController extends Controller
             'nominal_diskon11' => 'nullable|numeric',
             'nominal_diskon12' => 'nullable|numeric',
             'adjustment' => 'nullable|numeric',
+        ], [
+            'order_id.required' => 'Nomor pesanan wajib dipilih. Silakan pilih nomor pesanan dari dropdown.',
+            'order_id.exists' => 'Nomor pesanan yang dipilih tidak valid atau tidak ditemukan.',
         ]);
         
         try {
             DB::beginTransaction();
             
-            $order = Order::with(['orderItems.warehouseStock.tax', 'mainCategory'])->findOrFail($request->order_id);
+            // Get TikTok platform ID (ID 3 for TikTok)
+            $tiktokPlatformId = 3;
+            
+            $order = Order::with(['orderItems.warehouseStock.tax', 'mainCategory', 'platform'])->findOrFail($request->order_id);
+            
+            // Check if order is from TikTok platform (by platform_id)
+            if (!$order->platform_id || $order->platform_id !== $tiktokPlatformId) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Nomor pesanan yang dipilih bukan dari platform TikTok.');
+            }
             
             // Check if transaction already exists for this order
             $exists = TiktokFinancialTransaction::where('order_id', $order->id)->exists();
             if ($exists) {
-                return redirect()->back()->with('error', 'Transaksi untuk order ini sudah ada.');
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Transaksi untuk nomor pesanan "' . $order->order_number . '" sudah ada. Silakan pilih nomor pesanan lain yang belum memiliki transaksi.');
             }
             
-            // Get order items with their warehouse stocks
-            $orderItems = $order->orderItems()->with('warehouseStock')->get();
+            // Group order items by tax_id from barang keluar
+            $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($query) use ($order) {
+                $query->where('order_id', $order->id);
+            })->with(['warehouseStock', 'orderItem'])->get();
             
-            // Use OrderItems for calculation to avoid BarangKeluar duplication issues
-            // Group OrderItems by tax_id
-            $itemsByTaxId = [];
-            $totalQty = 0;
+            // Group by tax_id
+            $taxGroups = [];
             
-            foreach ($orderItems as $item) {
-                // Get tax_id from warehouse_stock, or use a default tax_id if not available
-                $taxId = null;
-                if ($item->warehouseStock && $item->warehouseStock->tax_id) {
-                    $taxId = $item->warehouseStock->tax_id;
-                } else {
-                    // Default to tax_id 4 (Non PKP - Skincare) for items without tax info
-                    // This ensures all order items are included in financial transactions
-                    $taxId = 4;
+            foreach ($barangKeluarItems as $bk) {
+                if ($bk->warehouseStock && $bk->warehouseStock->tax_id) {
+                    $taxId = $bk->warehouseStock->tax_id;
+                    
+                    if (!isset($taxGroups[$taxId])) {
+                        $taxGroups[$taxId] = [
+                            'order_items' => [],
+                            'barang_keluar' => [],
+                            'total_qty' => 0,
+                            'total_nominal' => 0,
+                        ];
+                    }
+                    
+                    // Add barang keluar item
+                    $taxGroups[$taxId]['barang_keluar'][] = $bk;
+                    $taxGroups[$taxId]['total_qty'] += $bk->qty;
+                    
+                    // Add order item if not already added
+                    if ($bk->orderItem) {
+                        $orderItemId = $bk->orderItem->id;
+                        if (!isset($taxGroups[$taxId]['order_items'][$orderItemId])) {
+                            $taxGroups[$taxId]['order_items'][$orderItemId] = $bk->orderItem;
+                            $taxGroups[$taxId]['total_nominal'] += $bk->orderItem->price_after_discount * $bk->orderItem->quantity;
+                        }
+                    }
                 }
+            }
+            
+            // If no BarangKeluar items, fall back to order items
+            if (empty($taxGroups)) {
+                $orderItems = $order->orderItems()->with('warehouseStock')->get();
                 
-                if (!isset($itemsByTaxId[$taxId])) {
-                    $itemsByTaxId[$taxId] = [];
+                foreach ($orderItems as $item) {
+                    if ($item->warehouseStock && $item->warehouseStock->tax_id) {
+                        $taxId = $item->warehouseStock->tax_id;
+                        
+                        if (!isset($taxGroups[$taxId])) {
+                            $taxGroups[$taxId] = [
+                                'order_items' => [],
+                                'barang_keluar' => [],
+                                'total_qty' => 0,
+                                'total_nominal' => 0,
+                            ];
+                        }
+                        
+                        $taxGroups[$taxId]['order_items'][$item->id] = $item;
+                        $taxGroups[$taxId]['total_qty'] += $item->quantity;
+                        $taxGroups[$taxId]['total_nominal'] += $item->price_after_discount * $item->quantity;
+                    }
                 }
-                $itemsByTaxId[$taxId][] = $item;
-                $totalQty += $item->quantity;
             }
             
-            // Calculate total order price
+            if (empty($taxGroups)) {
+                return redirect()->back()->with('error', 'Tidak ada barang keluar dengan tax_id untuk order ini.');
+            }
+            
+            // Calculate total order price for proportion
             $totalOrderPrice = 0;
             foreach ($order->orderItems as $item) {
                 $totalOrderPrice += $item->price_after_discount * $item->quantity;
@@ -1264,62 +1589,27 @@ class PembayaranTiktokController extends Controller
             $nominal_diskon11 = !empty($request->nominal_diskon11) ? -abs((float) $request->nominal_diskon11) : 0;
             $nominal_diskon12 = !empty($request->nominal_diskon12) ? -abs((float) $request->nominal_diskon12) : 0;
             
-            // Get invoice numbers for each tax group
-            $invoiceNumbersByTaxId = [];
-            foreach ($itemsByTaxId as $taxId => $items) {
-                // Get category based on tax_id
-                $category = ($taxId == 1 || $taxId == 2 || $taxId == 5 || $taxId == 6) 
-                    ? InvoiceSequence::CATEGORY_KOPI 
-                    : InvoiceSequence::CATEGORY_SKINCARE;
-                    
-                // Get sales type (always ONLINE for Tiktok)
-                $salesType = InvoiceSequence::SALES_ONLINE;
-                
-                // Get tax status
-                $taxStatus = in_array($taxId, [1, 3, 5, 7]) 
-                    ? InvoiceSequence::TAX_PKP 
-                    : InvoiceSequence::TAX_NON_PKP;
-                
-                // Get invoice number with order date - WAJIB dari tabel orders
-                // Ensure we have the order date from the loaded order object
-                if (!$order->tanggal) {
-                    throw new \Exception("Tanggal order tidak ditemukan untuk Order {$order->order_number}");
-                }
-                $orderDate = $order->tanggal;
-                
-                $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate);
-                $invoiceNumbersByTaxId[$taxId] = $invoiceData['invoice_number'];
-            }
+            // Process each tax_id group and create a transaction for each
+            $invoiceMessages = [];
             
-            // Process each tax group and create a transaction for each
-            foreach ($itemsByTaxId as $taxId => $items) {
-                // Get the invoice number for this tax group
-                $invoiceNumber = $invoiceNumbersByTaxId[$taxId] ?? $this->generateInvoiceForOrder($order);
+            foreach ($taxGroups as $taxId => $group) {
+                // Generate invoice number for this tax_id
+                $invoiceNumber = TiktokFinancialTransaction::generateInvoiceNumber($order, $taxId);
                 
-                // Create transaction for this tax group
+                // Create transaction for this tax_id group
                 $transaction = new TiktokFinancialTransaction();
-                // Use the actual order's tanggal directly, ensuring consistency
                 $transaction->tanggal_order = $order->tanggal;
                 $transaction->hari_order = $order->hari;
                 $transaction->no_order = $order->order_number;
                 $transaction->no_invoice = $invoiceNumber;
                 $transaction->order_id = $order->id;
                 
-                // Calculate value-based proportion for this tax group
-                $groupQty = 0;
-                $groupValue = 0;
-                
-                foreach ($items as $item) {
-                    $itemQty = $item->quantity;
-                    $groupQty += $itemQty;
-                    
-                    // Calculate value using OrderItem (price_after_discount is per unit)
-                    $unitPrice = $item->price_after_discount;
-                    $groupValue += $unitPrice * $itemQty;
-                }
+                // Calculate value-based proportion for this tax_id group
+                $groupQty = $group['total_qty'];
+                $groupValue = $group['total_nominal'];
                 
                 // Calculate proportion based on VALUE, not quantity
-                $proportion = ($totalOrderPrice > 0) ? $groupValue / $totalOrderPrice : 1;
+                $proportion = ($totalOrderPrice > 0) ? $groupValue / $totalOrderPrice : (1 / count($taxGroups));
                 
                 // Set values based on value-based proportion
                 $transaction->nominal_harga = round($groupValue, 2); // Use actual group value
@@ -1343,7 +1633,7 @@ class PembayaranTiktokController extends Controller
                 $transaction->saldo_masuk = round($request->saldo_masuk * $proportion, 2);
                 
                 // Set adjustment from form or 0 by default
-                $transaction->adjustment = $request->adjustment ?? 0;
+                $transaction->adjustment = ($request->adjustment ?? 0) * $proportion;
                 
                 // Calculate nominal_fix
                 $transaction->calculateNominalFix();
@@ -1355,15 +1645,39 @@ class PembayaranTiktokController extends Controller
                 $transaction->calculatePercentages();
                 
                 $transaction->save();
+                
+                $taxCategory = in_array($taxId, [1, 3, 5, 7]) ? 'PKP' : 'Non-PKP';
+                $invoiceMessages[] = "Invoice {$invoiceNumber} berhasil dibuat untuk barang {$taxCategory}";
             }
             
             DB::commit();
             
-            return redirect()->route('finance.tiktok.index')->with('success', 'Transaksi keuangan berhasil ditambahkan.');
+            return redirect()->route('finance.tiktok.index')
+                ->with('success', implode('<br>', $invoiceMessages));
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Re-throw validation exceptions to show proper error messages
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Error saat menambahkan transaksi TikTok manual: " . $e->getMessage());
-            return redirect()->back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
+            Log::error("Request data: " . json_encode($request->all()));
+            
+            // Get order info if available for better error message
+            $orderInfo = '';
+            if ($request->has('order_id') && $request->order_id) {
+                try {
+                    $order = Order::find($request->order_id);
+                    if ($order) {
+                        $orderInfo = " untuk nomor pesanan: {$order->order_number}";
+                    }
+                } catch (\Exception $orderEx) {
+                    // Ignore if we can't get order info
+                }
+            }
+            
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Terjadi kesalahan saat menyimpan data' . $orderInfo . ': ' . $e->getMessage());
         }
     }
 
@@ -1468,24 +1782,17 @@ class PembayaranTiktokController extends Controller
                 
             // Determine the tax_id from the invoice number and set logo accordingly
             $taxId = null;
-            $logoFile = 'HGN.jpeg'; // Default logo file
+            $logoFile = 'PKP.jpeg'; // Default logo file
             $isPKP = true; // Default to PKP
             
-            if (strpos($transaction->no_invoice, 'HPNSDA-OLK/01') !== false) {
-                $taxId = 1; // PKP - Coffee
-                $logoFile = 'HGN.jpeg';
+            // Format baru: 0001/2601/AMP/01 atau 0001/2601/AMP/02
+            if (strpos($transaction->no_invoice, 'AMP/01') !== false) {
+                $taxId = 3; // PKP - Skincare (HGN -> PKP)
+                $logoFile = 'PKP.jpeg';
                 $isPKP = true;
-            } elseif (strpos($transaction->no_invoice, 'HPNSDA-OLK/02') !== false) {
-                $taxId = 2; // Non PKP - Coffee
-                $logoFile = 'LM.jpeg';
-                $isPKP = false;
-            } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/01') !== false) {
-                $taxId = 3; // PKP - Skincare
-                $logoFile = 'HGN.jpeg';
-                $isPKP = true;
-            } elseif (strpos($transaction->no_invoice, 'HGNSDA-OL/02') !== false) {
-                $taxId = 4; // Non PKP - Skincare
-                $logoFile = 'LM.jpeg';
+            } elseif (strpos($transaction->no_invoice, 'AMP/02') !== false) {
+                $taxId = 4; // Non PKP - Skincare (LM -> NON PKP)
+                $logoFile = 'NONPKP.jpeg';
                 $isPKP = false;
             } else {
                 // If we can't determine from pattern, extract the last 2 digits
@@ -1493,7 +1800,7 @@ class PembayaranTiktokController extends Controller
                 if (!empty($matches[1])) {
                     $taxId = (int) $matches[1];
                     $isPKP = in_array($taxId, [1, 3, 5, 7]);
-                    $logoFile = $isPKP ? 'HGN.jpeg' : 'LM.jpeg';
+                    $logoFile = $isPKP ? 'PKP.jpeg' : 'NONPKP.jpeg';
                 }
             }
             
@@ -1624,7 +1931,7 @@ class PembayaranTiktokController extends Controller
                 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error("Error creating sample transaction: " . $e->getMessage());
+            Log::error("Error creating sample transaction: " . $e->getMessage());
             return redirect()->route('finance.tiktok.index')
                 ->with('error', 'Error creating sample transaction: ' . $e->getMessage());
         }

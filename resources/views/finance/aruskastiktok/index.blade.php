@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('page-title', 'Arus Kas TikTok')
+@section('page-title', 'Arus Kas Tiktok Lamourad')
 
 @section('content')
 <div class="container-fluid">
@@ -8,7 +8,7 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold">Data Arus Kas TikTok</h5>
+                    <h5 class="mb-0 fw-bold">Data Arus Kas Tiktok Lamourad</h5>
                     <div>
                         <a href="{{ route('finance.aruskastiktok.import') }}" class="btn btn-primary">
                             <i class="fas fa-file-import me-1"></i> Import Data

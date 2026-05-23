@@ -5,8 +5,8 @@
     <!-- Page Header -->
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
-            <h1 class="h3 mb-0 text-gray-800">Analytic Keuangan TikTok</h1>
-            <p class="text-muted small mb-0">Analisis data transaksi keuangan TikTok</p>
+            <h1 class="h3 mb-0 text-gray-800">Analytic Keuangan TikTok Lamourad</h1>
+            <p class="text-muted small mb-0">Analisis data transaksi keuangan TikTok Lamourad</p>
         </div>
         <div class="col-md-6 text-end">
             <div class="btn-group shadow-sm" role="group">

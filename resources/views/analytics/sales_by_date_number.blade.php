@@ -131,11 +131,6 @@
             font-weight: 500;
         }
         
-        .platform-tokopedia {
-            background-color: #42b549;
-            color: white;
-        }
-        
         .platform-shopee {
             background-color: #f53d2d;
             color: white;
@@ -143,16 +138,6 @@
         
         .platform-tiktok {
             background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095da;
-            color: white;
-        }
-        
-        .platform-lazada {
-            background-color: #f27e30;
             color: white;
         }
         
@@ -464,10 +449,98 @@
                     </div>
                 </div>
                 
-                <!-- Date Number Detail Table -->
-                <h5 class="mb-3">Detail Saldo Masuk per Tanggal (1-31)</h5>
+                <!-- Monthly Breakdown Tables -->
+                @if(isset($monthlyData) && count($monthlyData) > 0)
+                    @foreach($monthlyData as $monthKey => $monthInfo)
+                    <div class="card mb-4">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0">
+                                <i class="bi bi-calendar-month me-2"></i>
+                                Tabel {{ $monthInfo['month_name'] }}
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-bordered">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th class="text-end">Jumlah Order</th>
+                                            <th class="text-end">Total Nominal Penjualan (Rp)</th>
+                                            <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                            <th class="text-end">Gross Profit (Rp)</th>
+                                            <th class="text-end">Total Volume (pcs)</th>
+                                            <th class="text-end">Avg Saldo/Order (Rp)</th>
+                                            <th class="text-end">Avg Volume/Order</th>
+                                            <th class="text-end">Saldo/Volume (Rp)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for($day = $monthInfo['first_day']; $day <= $monthInfo['last_day']; $day++)
+                                            @php
+                                                $dateKey = sprintf('%02d', $day);
+                                                $data = $monthInfo['date_data'][$dateKey] ?? [
+                                                    'date_number' => $dateKey,
+                                                    'order_count' => 0,
+                                                    'total_value' => 0,
+                                                    'total_nominal' => 0,
+                                                    'total_hpp' => 0,
+                                                    'total_volume' => 0
+                                                ];
+                                                $avgValue = $data['order_count'] > 0 ? $data['total_value'] / $data['order_count'] : 0;
+                                                $avgVolume = $data['order_count'] > 0 ? $data['total_volume'] / $data['order_count'] : 0;
+                                                $valueVolumeRatio = $data['total_volume'] > 0 ? $data['total_value'] / $data['total_volume'] : 0;
+                                                $grossProfit = $data['total_value'] - ($data['total_hpp'] ?? 0);
+                                            @endphp
+                                            <tr class="{{ $data['order_count'] > 0 ? '' : 'table-secondary' }}">
+                                                <td class="fw-bold">{{ $dateKey }}</td>
+                                                <td class="text-end">{{ number_format($data['order_count']) }}</td>
+                                                <td class="text-end">{{ number_format($data['total_nominal'] ?? 0, 0, ',', '.') }}</td>
+                                                <td class="text-end">{{ number_format($data['total_value'], 0, ',', '.') }}</td>
+                                                <td class="text-end">{{ number_format($grossProfit, 0, ',', '.') }}</td>
+                                                <td class="text-end">{{ number_format($data['total_volume']) }}</td>
+                                                <td class="text-end">{{ number_format($avgValue, 0, ',', '.') }}</td>
+                                                <td class="text-end">{{ number_format($avgVolume, 1) }}</td>
+                                                <td class="text-end">{{ number_format($valueVolumeRatio, 0, ',', '.') }}</td>
+                                            </tr>
+                                        @endfor
+                                    </tbody>
+                                    <tfoot class="table-dark">
+                                        <tr>
+                                            <th>TOTAL {{ strtoupper($monthInfo['month_name']) }}</th>
+                                            <th class="text-end">{{ number_format($monthInfo['summary']['total_orders']) }}</th>
+                                            <th class="text-end">{{ number_format($monthInfo['summary']['total_nominal'] ?? 0, 0, ',', '.') }}</th>
+                                            <th class="text-end">{{ number_format($monthInfo['summary']['total_value'], 0, ',', '.') }}</th>
+                                            <th class="text-end">{{ number_format($monthInfo['summary']['total_gross_profit'] ?? 0, 0, ',', '.') }}</th>
+                                            <th class="text-end">{{ number_format($monthInfo['summary']['total_volume']) }}</th>
+                                            <th class="text-end">
+                                                {{ $monthInfo['summary']['total_orders'] > 0 ? number_format($monthInfo['summary']['total_value'] / $monthInfo['summary']['total_orders'], 0, ',', '.') : '0' }}
+                                            </th>
+                                            <th class="text-end">
+                                                {{ $monthInfo['summary']['total_orders'] > 0 ? number_format($monthInfo['summary']['total_volume'] / $monthInfo['summary']['total_orders'], 1) : '0' }}
+                                            </th>
+                                            <th class="text-end">
+                                                {{ $monthInfo['summary']['total_volume'] > 0 ? number_format($monthInfo['summary']['total_value'] / $monthInfo['summary']['total_volume'], 0, ',', '.') : '0' }}
+                                            </th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    @endforeach
+                @endif
                 
-                @if(isset($debugInfo) && !empty($debugInfo))
+                <!-- Date Number Detail Table (Summary) -->
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-bar-chart me-2"></i>
+                            Tabel Summary - Detail Saldo Masuk per Tanggal (1-31)
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        @if(isset($debugInfo) && !empty($debugInfo))
                 <div class="alert alert-warning mb-3">
                     <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Peringatan: Orders Tanpa Financial Transactions</h6>
                     <p class="mb-2">Tanggal berikut memiliki orders tapi tidak memiliki financial transactions:</p>
@@ -512,7 +585,7 @@
                 </div>
                 @endif
                 
-                <div class="table-responsive mb-4">
+                <div class="table-responsive">
                     <table class="table table-striped table-bordered">
                         <thead class="table-dark">
                             <tr>
@@ -521,7 +594,9 @@
                                 @if(isset($allOrdersByDate))
                                 <th class="text-end">Total All Orders<br><small class="fw-normal">(semua orders)</small></th>
                                 @endif
+                                <th class="text-end">Total Nominal Penjualan (Rp)</th>
                                 <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">Avg Saldo/Order (Rp)</th>
                                 <th class="text-end">Avg Volume/Order</th>
@@ -536,6 +611,8 @@
                                         'date_number' => $dateKey,
                                         'order_count' => 0,
                                         'total_value' => 0,
+                                        'total_nominal' => 0,
+                                        'total_hpp' => 0,
                                         'total_volume' => 0
                                     ];
                                     $allOrdersCount = $allOrdersByDate[$dateKey] ?? 0;
@@ -543,6 +620,7 @@
                                     $avgValue = $data['order_count'] > 0 ? $data['total_value'] / $data['order_count'] : 0;
                                     $avgVolume = $data['order_count'] > 0 ? $data['total_volume'] / $data['order_count'] : 0;
                                     $valueVolumeRatio = $data['total_volume'] > 0 ? $data['total_value'] / $data['total_volume'] : 0;
+                                    $grossProfit = $data['total_value'] - ($data['total_hpp'] ?? 0);
                                 @endphp
                                 <tr class="{{ $data['order_count'] > 0 ? '' : ($allOrdersCount > 0 ? 'table-warning' : 'table-secondary') }}">
                                     <td class="fw-bold">
@@ -560,7 +638,9 @@
                                         @endif
                                     </td>
                                     @endif
+                                    <td class="text-end">{{ number_format($data['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($data['total_value'], 0, ',', '.') }}</td>
+                                    <td class="text-end">{{ number_format($grossProfit, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($data['total_volume']) }}</td>
                                     <td class="text-end">{{ number_format($avgValue, 0, ',', '.') }}</td>
                                     <td class="text-end">{{ number_format($avgVolume, 1) }}</td>
@@ -575,7 +655,9 @@
                                 @if(isset($allOrdersByDate))
                                 <th class="text-end">{{ number_format($summary['total_all_orders']) }}</th>
                                 @endif
+                                <th class="text-end">{{ number_format($summary['total_nominal'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_value'], 0, ',', '.') }}</th>
+                                <th class="text-end">{{ number_format($summary['total_gross_profit'] ?? 0, 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['total_volume']) }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_value'], 0, ',', '.') }}</th>
                                 <th class="text-end">{{ number_format($summary['avg_order_volume'], 1) }}</th>
@@ -584,6 +666,8 @@
                         </tfoot>
                     </table>
                 </div>
+            </div>
+        </div>
                 
                 <!-- Platform Summary -->
                 @if(count($platformSummary) > 1)
@@ -594,7 +678,9 @@
                             <tr>
                                 <th>Platform</th>
                                 <th class="text-end">Jumlah Order</th>
+                                <th class="text-end">Total Nominal Penjualan (Rp)</th>
                                 <th class="text-end">Total Saldo Masuk (Rp)</th>
+                                <th class="text-end">Gross Profit (Rp)</th>
                                 <th class="text-end">Total Volume (pcs)</th>
                                 <th class="text-end">% dari Total</th>
                                 <th class="text-end">Saldo/Volume (Rp)</th>
@@ -609,7 +695,9 @@
                                     </div>
                                 </td>
                                 <td class="text-end">{{ number_format($platformData['order_count']) }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_nominal'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_value'], 0, ',', '.') }}</td>
+                                <td class="text-end">{{ number_format($platformData['total_gross_profit'] ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ number_format($platformData['total_volume']) }}</td>
                                 <td class="text-end">
                                     @if(isset($platformData['total_volume']) && $summary['total_volume'] > 0)
@@ -628,7 +716,7 @@
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="6" class="text-center">Tidak ada data platform</td>
+                                <td colspan="8" class="text-center">Tidak ada data platform</td>
                             </tr>
                             @endforelse
                         </tbody>

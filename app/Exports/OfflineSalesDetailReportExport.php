@@ -218,8 +218,8 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
             }
             
             // Calculate PPN for this sale
-            $hgnValue = 0;
-            $lmValue = 0;
+            $pkpValue = 0;
+            $nonpkpValue = 0;
             $totalPPNAmount = 0;
             $totalWithPPN = 0;
             
@@ -227,17 +227,17 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
                 $itemValue = $this->calculateTotalAfterDiscounts($item);
                 
                 if($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
-                    // HGN/PKP items - add PPN
-                    $hgnValue += $itemValue;
+                    // PKP items - add PPN
+                    $pkpValue += $itemValue;
                 } else {
-                    // LM/Non-PKP items - no PPN
-                    $lmValue += $itemValue;
+                    // NON PKP items - no PPN
+                    $nonpkpValue += $itemValue;
                 }
             }
             
-            // Calculate PPN for HGN items only
-            $totalPPNAmount = $hgnValue * 0.11;
-            $totalWithPPN = $hgnValue + $totalPPNAmount + $lmValue; // HGN + PPN + LM
+            // Calculate PPN for PKP items only
+            $totalPPNAmount = $pkpValue * 0.11;
+            $totalWithPPN = $pkpValue + $totalPPNAmount + $nonpkpValue; // PKP + PPN + NON PKP
             
             // Get invoice numbers - financeOffline is a collection/method, not a single object
             $invoiceNumbers = '-';
@@ -307,11 +307,11 @@ class OfflineSalesDetailReportExport implements FromCollection, WithHeadings, Wi
             // Calculate PPN for this item
             $itemWithPPN = $hargaTotalSetelahDiskon;
             if($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
-                // HGN/PKP items - add PPN
+                // PKP items - add PPN
                 $ppnAmount = $hargaTotalSetelahDiskon * 0.11;
                 $itemWithPPN = $hargaTotalSetelahDiskon + $ppnAmount;
             }
-            // LM/Non-PKP items - no PPN (itemWithPPN = hargaTotalSetelahDiskon)
+            // NON PKP items - no PPN (itemWithPPN = hargaTotalSetelahDiskon)
             
             // Get invoice numbers - financeOffline is a collection/method, not a single object
             $invoiceNumbers = '-';

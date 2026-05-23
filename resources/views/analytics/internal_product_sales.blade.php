@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analytics Penjualan Barang Internal</title>
+    <title>Analytics Penjualan Master Internal</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -147,33 +147,12 @@
         }
         
         /* Platform specific colors */
-        .platform-tokopedia {
-            background-color: #42B549;
-            color: white;
-        }
-        
         .platform-shopee {
             background-color: #EE4D2D;
             color: white;
         }
-        
-        .platform-lazada {
-            background-color: #0F146D;
-            color: white;
-        }
-        
         .platform-tiktok {
             background-color: #000000;
-            color: white;
-        }
-        
-        .platform-blibli {
-            background-color: #0095DA;
-            color: white;
-        }
-        
-        .platform-bukalapak {
-            background-color: #E31E52;
             color: white;
         }
         
@@ -247,14 +226,14 @@
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{{ route('dashboard') }}">Dashboard</a></li>
             <li class="breadcrumb-item">Analytics</li>
-            <li class="breadcrumb-item active">Penjualan Barang Internal</li>
+            <li class="breadcrumb-item active">Penjualan Master Internal</li>
         </ol>
     </nav>
 
     <div class="card shadow-sm">
         <div class="card-header bg-primary text-white py-3">
-            <h5 class="m-0 font-weight-bold">Analytics Penjualan Barang Internal</h5>
-            <small class="text-white-50">Laporan penjualan barang internal yang terjual melalui platform online</small>
+            <h5 class="m-0 font-weight-bold">Analytics Penjualan Master Internal</h5>
+            <small class="text-white-50">Laporan penjualan master internal yang terjual melalui platform online</small>
         </div>
         <div class="card-body">
             <!-- Filter Form -->
@@ -319,6 +298,9 @@
                             </button>
                             <a href="{{ route('analytics.internal-product-sales') }}" class="btn btn-outline-secondary">
                                 <i class="bi bi-arrow-counterclockwise"></i> Reset
+                            </a>
+                            <a href="{{ route('analytics.internal-product-sales.export', request()->query()) }}" class="btn btn-success">
+                                <i class="bi bi-download"></i> Export Excel
                             </a>
                         </div>
                     </div>
@@ -445,7 +427,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center py-4">Tidak ada data penjualan barang internal</td>
+                                <td colspan="6" class="text-center py-4">Tidak ada data penjualan master internal</td>
                             </tr>
                         @endforelse
                     </tbody>

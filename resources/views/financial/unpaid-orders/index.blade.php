@@ -278,8 +278,8 @@
                                     $totalValue = $order->total_value ?? 0;
                                     $daysSinceOrder = $order->days_since_order ?? 0;
                                     
-                                    // Check if this order has full return
-                                    $isFullReturn = isset($order->is_return_unpaid) && $order->is_return_unpaid;
+                                    // Check if this order has partial return (retur sebagian)
+                                    $isPartialReturn = isset($order->is_return_unpaid) && $order->is_return_unpaid;
                                 @endphp
                                 <tr class="{{ $daysSinceOrder > 30 ? 'table-warning' : '' }}">
                                     <td>
@@ -295,8 +295,8 @@
                                         <strong>Rp {{ number_format($totalValue, 0, ',', '.') }}</strong>
                                     </td>
                                     <td>
-                                        @if($isFullReturn)
-                                            <span class="badge bg-danger">{{ $order->unpaid_reason ?? 'RETUR FULL' }}</span>
+                                        @if($isPartialReturn)
+                                            <span class="badge bg-warning">{{ $order->unpaid_reason ?? 'RETUR SEBAGIAN' }}</span>
                                         @else
                                             <span class="badge bg-{{ $order->status == 'completed' ? 'success' : 'warning' }}">
                                                 {{ $order->status ?? 'Belum Lunas' }}

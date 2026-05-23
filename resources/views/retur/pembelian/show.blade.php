@@ -11,9 +11,9 @@
                         <a href="{{ route('retur-pembelian.index') }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Kembali
                         </a>
-                        <button class="btn btn-primary" onclick="window.print()">
-                            <i class="fas fa-print"></i> Cetak
-                        </button>
+                        <a href="{{ route('retur-pembelian.print', $returPembelian->id) }}" class="btn btn-primary" target="_blank">
+                            <i class="fas fa-print"></i> Cetak Invoice
+                        </a>
                     </div>
                 </div>
                 <div class="card-body">
@@ -106,7 +106,32 @@
                                 @endphp
                                 @forelse($returPembelian->details as $index => $detail)
                                 @php
-                                    $hargaHpp = $detail->penerimaanDetail ? $detail->penerimaanDetail->harga_hpp : 0;
+                                    // Calculate harga per unit after tiered discounts
+                                    $hargaHpp = 0;
+                                    if ($detail->penerimaanDetail) {
+                                        $penerimaanDetail = $detail->penerimaanDetail;
+                                        // Use subtotal (already includes all tiered discounts) divided by qty to get unit price
+                                        if ($penerimaanDetail->qty > 0 && $penerimaanDetail->subtotal > 0) {
+                                            $hargaHpp = $penerimaanDetail->subtotal / $penerimaanDetail->qty;
+                                        } else {
+                                            // Fallback: calculate from harga_hpp with discounts
+                                            $hargaHpp = $penerimaanDetail->harga_hpp;
+                                            // Apply percentage discounts in sequence (tiered discounts)
+                                            for ($i = 1; $i <= 5; $i++) {
+                                                $diskonPersen = $penerimaanDetail->{"diskon_persen_$i"} ?? 0;
+                                                if ($diskonPersen > 0) {
+                                                    $hargaHpp = $hargaHpp * (1 - $diskonPersen / 100);
+                                                }
+                                            }
+                                            // Apply nominal discounts (per unit)
+                                            for ($i = 1; $i <= 5; $i++) {
+                                                $diskonNominal = $penerimaanDetail->{"diskon_nominal_$i"} ?? 0;
+                                                if ($diskonNominal > 0) {
+                                                    $hargaHpp = $hargaHpp - ($diskonNominal / $penerimaanDetail->qty);
+                                                }
+                                            }
+                                        }
+                                    }
                                     $totalNominal = $hargaHpp * $detail->qty;
                                     $grandTotalNominal += $totalNominal;
                                 @endphp
@@ -135,9 +160,65 @@
                         </table>
                     </div>
 
+                    @php
+                        // Get tax_category_id from penerimaan
+                        $taxId = $returPembelian->penerimaan->tax_category_id ?? null;
+                        
+                        // Calculate DPP, PPN, and Grand Total
+                        // grandTotalNominal adalah total retur (DPP retur)
+                        $dpp = \App\Helpers\NumberFormatter::calculateDPP($grandTotalNominal);
+                        $ppn = 0;
+                        $grandTotal = $dpp;
+                        
+                        if ($taxId == 3) {
+                            // PKP: Calculate PPN
+                            // DPP = grandTotalNominal (total retur)
+                            // DPP 11/12 = DPP * (11/12)
+                            // PPN = DPP 11/12 * 12% = DPP * 0.11
+                            $dpp11_12 = \App\Helpers\NumberFormatter::calculateDPP1112($dpp);
+                            $ppn = \App\Helpers\NumberFormatter::calculatePPN($dpp11_12);
+                            $grandTotal = \App\Helpers\NumberFormatter::calculateGrandTotal($dpp, $ppn);
+                        } else {
+                            // Non-PKP: No PPN
+                            $dpp11_12 = 0;
+                            $ppn = 0;
+                            $grandTotal = \App\Helpers\NumberFormatter::roundToWholeNumber($dpp);
+                        }
+                        // grandTotal adalah nominal retur (pembayaran) = DPP + PPN
+                    @endphp
+
+                    <div class="card mt-3">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0">Rincian Pembayaran</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 offset-md-6">
+                                    <table class="table table-bordered">
+                                        <tr>
+                                            <th width="50%">DPP (Dasar Pengenaan Pajak)</th>
+                                            <td class="text-right"><strong>Rp {{ number_format($dpp, 0, ',', '.') }}</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <th>PPN (11%)</th>
+                                            <td class="text-right"><strong>Rp {{ number_format($ppn, 0, ',', '.') }}</strong></td>
+                                        </tr>
+                                        <tr class="table-info">
+                                            <th>TOTAL (DPP + PPN)</th>
+                                            <td class="text-right"><strong>Rp {{ number_format($grandTotal, 0, ',', '.') }}</strong></td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row mt-4">
                         <div class="col-md-12 text-right">
-                            <form action="{{ route('retur-pembelian.destroy', $returPembelian->id) }}" method="POST" class="d-inline">
+                            <a href="{{ route('retur-pembelian.edit', $returPembelian->id) }}" class="btn btn-warning">
+                                <i class="fas fa-edit"></i> Edit Retur
+                            </a>
+                            <form action="{{ route('retur-pembelian.destroy', $returPembelian->id) }}" method="POST" class="d-inline ml-2">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-danger" onclick="return confirm('Yakin ingin menghapus retur ini? Stok akan dikembalikan ke gudang.')">

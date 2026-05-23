@@ -129,34 +129,6 @@ class UnpaidOrdersPlatformSheet extends DefaultValueBinder implements FromCollec
     private function getPlatformSpecificCostHeaders(): array
     {
         switch (strtolower($this->platform)) {
-            case 'blibli':
-                return [
-                    'Biaya Admin (Rp)',
-                    'Biaya Admin (%)',
-                    'Biaya Layanan (Rp)',
-                    'Biaya Layanan (%)',
-                    'Biaya 3 (Rp)',
-                    'Biaya 3 (%)',
-                    'Biaya 4 (Rp)',
-                    'Biaya 4 (%)',
-                    'Biaya 5 (Rp)',
-                    'Biaya 5 (%)',
-                    'Biaya 6 (Rp)',
-                    'Biaya 6 (%)',
-                    'Biaya 7 (Rp)',
-                    'Biaya 7 (%)',
-                    'Biaya 8 (Rp)',
-                    'Biaya 8 (%)',
-                    'Biaya 9 (Rp)',
-                    'Biaya 9 (%)',
-                    'Biaya 10 (Rp)',
-                    'Biaya 10 (%)',
-                    'Biaya 11 (Rp)',
-                    'Biaya 11 (%)',
-                    'Biaya 12 (Rp)',
-                    'Biaya 12 (%)',
-                ];
-
             case 'shopee':
                 return [
                     'Voucher (Rp)',
@@ -197,34 +169,6 @@ class UnpaidOrdersPlatformSheet extends DefaultValueBinder implements FromCollec
                     'Voucher Fee (%)',
                     'Cashback (Rp)',
                     'Cashback (%)',
-                    'Biaya 6 (Rp)',
-                    'Biaya 6 (%)',
-                    'Biaya 7 (Rp)',
-                    'Biaya 7 (%)',
-                    'Biaya 8 (Rp)',
-                    'Biaya 8 (%)',
-                    'Biaya 9 (Rp)',
-                    'Biaya 9 (%)',
-                    'Biaya 10 (Rp)',
-                    'Biaya 10 (%)',
-                    'Biaya 11 (Rp)',
-                    'Biaya 11 (%)',
-                    'Biaya 12 (Rp)',
-                    'Biaya 12 (%)',
-                ];
-
-            case 'tokopedia':
-                return [
-                    'Komisi (Rp)',
-                    'Komisi (%)',
-                    'Biaya Admin (Rp)',
-                    'Biaya Admin (%)',
-                    'Biaya Layanan (Rp)',
-                    'Biaya Layanan (%)',
-                    'Ongkir (Rp)',
-                    'Ongkir (%)',
-                    'Biaya 5 (Rp)',
-                    'Biaya 5 (%)',
                     'Biaya 6 (Rp)',
                     'Biaya 6 (%)',
                     'Biaya 7 (Rp)',
@@ -285,10 +229,14 @@ class UnpaidOrdersPlatformSheet extends DefaultValueBinder implements FromCollec
         
         // Calculate price from order_items table using price_after_discount column
         // For returned orders, we should use current quantity (after returns), not original
-        $harga = $order->orderItems->sum(function($item) {
-            $currentQty = $item->quantity; // This is already quantity after returns
-            return $item->price_after_discount * $currentQty;
-        });
+        $harga = 0;
+        if ($order->orderItems && $order->orderItems->count() > 0) {
+            $harga = $order->orderItems->sum(function($item) {
+                $currentQty = $item->quantity ?? 0; // This is already quantity after returns
+                $price = $item->price_after_discount ?? 0;
+                return $price * $currentQty;
+            });
+        }
         
         // Add shipping cost to the total
         $shippingCost = $order->shipping_cost ?? 0;
@@ -329,7 +277,10 @@ class UnpaidOrdersPlatformSheet extends DefaultValueBinder implements FromCollec
             $totalCurrentQuantity = 0;
             $totalReturnedIndividual = 0;
             
-            foreach ($order->orderItems as $item) {
+            if (!$order->orderItems || $order->orderItems->isEmpty()) {
+                // No order items, skip return checking
+            } else {
+                foreach ($order->orderItems as $item) {
                 $currentQuantity = $item->quantity;
                 $totalCurrentQuantity += $currentQuantity;
                 
@@ -340,14 +291,16 @@ class UnpaidOrdersPlatformSheet extends DefaultValueBinder implements FromCollec
                     })
                     ->sum('qty');
                 
-                $totalReturnedIndividual += $returnedQuantityIndividual;
+                    $totalReturnedIndividual += $returnedQuantityIndividual;
+                }
             }
             
             // If there are any returns but not full return, this is partial return
             if ($totalReturnedIndividual > 0) {
                 // Calculate how many items were returned
                 $totalReturnedPackages = 0;
-                foreach ($order->orderItems as $item) {
+                if ($order->orderItems && $order->orderItems->count() > 0) {
+                    foreach ($order->orderItems as $item) {
                     $returnedIndividual = \App\Models\ReturPenjualanDetail::where('order_item_id', $item->id)
                         ->whereHas('returPenjualan', function($q) { 
                             $q->whereIn('status', ['draft', 'selesai']); 
@@ -360,8 +313,9 @@ class UnpaidOrdersPlatformSheet extends DefaultValueBinder implements FromCollec
                         $packageQuantity = $item->platformProduct->mappingBarang->sum('quantity');
                     }
                     
-                    $returnedPackages = $packageQuantity > 0 ? $returnedIndividual / $packageQuantity : $returnedIndividual;
-                    $totalReturnedPackages += $returnedPackages;
+                        $returnedPackages = $packageQuantity > 0 ? $returnedIndividual / $packageQuantity : $returnedIndividual;
+                        $totalReturnedPackages += $returnedPackages;
+                    }
                 }
                 
                 if ($totalReturnedPackages == 1) {
@@ -379,7 +333,7 @@ class UnpaidOrdersPlatformSheet extends DefaultValueBinder implements FromCollec
             $no,
             $order->tanggal ? $order->tanggal->format('d/m/Y') : '-',
             $hariOrder,
-            (string)($order->order_number ?? '-'),
+            "'" . ($order->order_number ?? '-'),
             '-', // No invoice yet for unpaid orders
             $taxStatus,
             $harga, // Price column filled with total order value

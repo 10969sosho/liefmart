@@ -17,7 +17,7 @@ class Shopee2Controller extends Controller
      */
     public function __construct()
     {
-        $routeParam = 'shopee2';
+        $routeParam = 'shopee liefmarket';
         $this->platform = $this->getPlatformByRouteParam($routeParam);
     }
     
@@ -43,9 +43,9 @@ class Shopee2Controller extends Controller
             $platform = Platform::whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($routeParam) . '%'])->first();
         }
         
-        // 4. Jika masih tidak ditemukan, gunakan platform ID default untuk Shopee2 (ID 6)
+        // 4. Jika masih tidak ditemukan, gunakan platform ID default untuk Shopee Liefmarket (ID 6)
         if (!$platform) {
-            $platform = Platform::find(6); // Shopee2 = ID 6
+            $platform = Platform::find(6); // Shopee Liefmarket = ID 6
         }
         
         // 5. Jika benar-benar tidak ada platform di database
@@ -57,7 +57,7 @@ class Shopee2Controller extends Controller
     }
     
     /**
-     * Tampilkan halaman import Excel Shopee2
+     * Tampilkan halaman import Excel Shopee Liefmarket
      */
     public function importExcel()
     {
@@ -69,7 +69,7 @@ class Shopee2Controller extends Controller
      */
     public function previewImport(Request $request)
     {
-        \Log::info('---------- MULAI PROSES IMPORT SHOPEE2 ----------');
+        \Log::info('---------- MULAI PROSES IMPORT SHOPEE LIEF MART ----------');
         
         // Validasi file yang diupload
         try {
@@ -189,7 +189,7 @@ class Shopee2Controller extends Controller
             $duplicateOrdersInDatabase = $import->getDuplicateOrdersInDatabase();
             
             if (!empty($duplicateOrders)) {
-                \Log::info('Duplicate orders found: ' . count($duplicateOrders));
+                \Log::info('Duplicate orders found: ' . $duplicateOrders);
             }
             if (!empty($duplicateOrdersInFile)) {
                 \Log::info('Duplicate orders in file: ' . count($duplicateOrdersInFile));

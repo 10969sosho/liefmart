@@ -28,13 +28,11 @@ class DatabaseSeeder extends Seeder
             UsersTableSeeder::class,
             
             // CustomerSeeder::class,
-            ProductSeeder::class,
-            PlatformProductSeeder::class,
-            TiktokMappingSeeder::class,
-            ShopeeMappingSeeder::class,
-            // // BlibliMappingSeeder::class,
-            // // TokopediaMappingSeeder::class,
-            PenerimaanSeeder::class,
+            // ProductSeeder::class,
+            // PlatformProductSeeder::class,
+            // TiktokMappingSeeder::class,
+            // ShopeeMappingSeeder::class,
+            // PenerimaanSeeder::class,
             
         ]);
 

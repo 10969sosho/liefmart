@@ -132,7 +132,7 @@
                                             </div>
                                             <div>
                                                 <p class="mb-0 small text-muted">Produk Belum Terpetakan</p>
-                                                <h5 class="mb-0 fw-bold">{{ count($unmappedProducts) }}</h5>
+                                                <h5 class="mb-0 fw-bold">{{ count($unmappedProducts ?? []) }}</h5>
                                             </div>
                                         </div>
                                         <div class="d-flex align-items-center">
@@ -215,7 +215,12 @@
                         </div>
                     @endif
                    
-                    @if(!empty($unmappedProducts))
+                    @php
+                        // Ensure unmappedProducts is always an array
+                        $unmappedProducts = $unmappedProducts ?? [];
+                        $unmappedProducts = is_array($unmappedProducts) ? $unmappedProducts : [];
+                    @endphp
+                    @if(!empty($unmappedProducts) && count($unmappedProducts) > 0)
                         <div class="alert alert-warning alert-dismissible fade show" role="alert">
                             <h5 class="alert-heading d-flex align-items-center">
                                 <i class="fas fa-exclamation-triangle me-2"></i> Perhatian!
@@ -232,34 +237,50 @@
                                 @foreach($unmappedProducts as $product)
                                     @php
                                         // Handle both array format (new) and string format (backward compatibility)
-                                        if (is_array($product)) {
-                                            $productName = $product['name'];
-                                            $variant = $product['variant'] ?? '';
-                                            $fullProductName = $product['full_name'];
-                                        } else {
-                                            // Fallback to old parsing method for backward compatibility
-                                            $productParts = explode(' - ', $product, 2);
-                                            $productName = $productParts[0];
-                                            $variant = isset($productParts[1]) ? $productParts[1] : '';
-                                            $fullProductName = $product;
+                                        $productName = '';
+                                        $variant = '';
+                                        $fullProductName = '';
+                                        
+                                        try {
+                                            if (is_array($product)) {
+                                                $productName = $product['name'] ?? $product['nama_barang'] ?? '';
+                                                $variant = $product['variant'] ?? $product['variasi'] ?? '';
+                                                $fullProductName = $product['full_name'] ?? ($productName . ($variant ? ' - ' . $variant : ''));
+                                            } else {
+                                                // Fallback to old parsing method for backward compatibility
+                                                $productParts = explode(' - ', $product, 2);
+                                                $productName = $productParts[0] ?? '';
+                                                $variant = isset($productParts[1]) ? $productParts[1] : '';
+                                                $fullProductName = $product;
+                                            }
+                                            
+                                            // Ensure productName is not empty
+                                            if (empty($productName)) {
+                                                continue;
+                                            }
+                                        } catch (\Exception $e) {
+                                            \Log::error('Error parsing unmapped product: ' . $e->getMessage());
+                                            continue;
                                         }
                                     @endphp
-                                    <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                                        <div class="d-flex flex-column">
-                                            <span class="fw-bold">{{ $productName }}</span>
-                                            @if($variant)
-                                                <small class="text-muted">Variant: {{ $variant }}</small>
-                                            @endif
+                                    @if(!empty($productName))
+                                        <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div class="d-flex flex-column">
+                                                <span class="fw-bold">{{ $productName }}</span>
+                                                @if($variant)
+                                                    <small class="text-muted">Variant: {{ $variant }}</small>
+                                                @endif
+                                            </div>
+                                            <a href="{{ route('master.mapping.auto-create', [
+                                                'platform' => $platformId ?? 'shopee2', 
+                                                'productName' => rawurlencode($productName),
+                                                'variant' => $variant ? rawurlencode($variant) : null
+                                            ]) }}" 
+                                                class="btn btn-sm btn-warning">
+                                                <i class="fas fa-link me-1"></i> Mapping
+                                            </a>
                                         </div>
-                                        <a href="{{ route('master.mapping.auto-create', [
-                                            'platform' => $platformId ?? 'shopee2', 
-                                            'productName' => rawurlencode($productName),
-                                            'variant' => $variant ? rawurlencode($variant) : null
-                                        ]) }}" 
-                                            class="btn btn-sm btn-warning">
-                                            <i class="fas fa-link me-1"></i> Mapping
-                                        </a>
-                                    </div>
+                                    @endif
                                 @endforeach
                             </div>
                             
@@ -655,7 +676,7 @@
                                             @if(!empty($insufficientStockProducts))
                                                 <li><strong>❌ Stok tidak mencukupi:</strong> {{ count($insufficientStockProducts) }} produk kekurangan stok (TIDAK BISA DILANJUTKAN)</li>
                                             @endif
-                                            @if(!empty($unmappedProducts))
+                                            @if(!empty($unmappedProducts) && count($unmappedProducts) > 0)
                                                 <li><strong>Mapping produk:</strong> {{ count($unmappedProducts) }} produk belum di-mapping</li>
                                             @endif
                                             @if(!empty($mappingErrors))

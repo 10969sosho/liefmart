@@ -6,7 +6,7 @@
         <div class="col-md-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Input Manual Data Keuangan TikTok</span>
+                    <span>Input Manual Data Keuangan {{ $platformLabel }}</span>
                     <a href="{{ route('finance.tiktok2.index') }}" class="btn btn-sm btn-secondary">
                         <i class="fas fa-arrow-left"></i> Kembali
                     </a>
@@ -36,9 +36,14 @@
                                 <label for="order_id" class="form-label">Nomor Pesanan <span class="text-danger">*</span></label>
                                 <select class="form-select" id="order_id" name="order_id" required>
                                     <option value="">-- Pilih Nomor Pesanan --</option>
-                                    @foreach(App\Models\Order::whereHas('platform', function($query) {
-                                        $query->where('name', 'tiktok2');
-                                    })->whereDoesntHave('tiktok2FinancialTransactions')->orderBy('tanggal', 'desc')->get() as $order)
+                                    @php
+                                        // Get TikTok2 platform ID (ID 7 for TikTok Trubleu)
+                                        $tiktok2PlatformId = 7;
+                                    @endphp
+                                    @foreach(App\Models\Order::where('platform_id', $tiktok2PlatformId)
+                                        ->whereDoesntHave('tiktok2FinancialTransactions')
+                                        ->orderBy('tanggal', 'desc')
+                                        ->get() as $order)
                                         <option value="{{ $order->id }}" {{ (request('order_id') == $order->id || old('order_id') == $order->id) ? 'selected' : '' }}>{{ $order->order_number }} - {{ $order->customer_name }} - {{ $order->tanggal ? $order->tanggal->format('d/m/Y') : 'N/A' }}</option>
                                     @endforeach
                                 </select>

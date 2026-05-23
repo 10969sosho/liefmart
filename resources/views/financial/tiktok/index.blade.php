@@ -7,8 +7,8 @@
     <!-- Page Header -->
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
-            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platform }}</h1>
-            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platform }}</p>
+            <h1 class="h3 mb-0 text-gray-800">Keuangan {{ $platformLabel }}</h1>
+            <p class="text-muted small mb-0">Menampilkan data transaksi keuangan {{ $platformLabel }}</p>
         </div>
         <div class="col-md-6 text-end">
             <div class="btn-group shadow-sm" role="group">
@@ -53,7 +53,7 @@
     </div>
     @endif
 
-    @if(session('skipped_reasons'))
+    @if(session('tiktok_skipped_reasons'))
     <div class="alert alert-warning shadow-sm" role="alert">
         <div class="d-flex align-items-center mb-2">
             <i class="fas fa-exclamation-triangle me-2"></i>
@@ -64,7 +64,7 @@
         </div>
         <div class="collapse" id="skippedReasons">
             <ul class="mb-0 ps-4">
-                @foreach(session('skipped_reasons') as $reason)
+                @foreach(session('tiktok_skipped_reasons') as $reason)
                     <li>{{ $reason }}</li>
                 @endforeach
             </ul>
@@ -146,7 +146,7 @@
                     </div>
                     <div class="d-flex align-items-end">
                         @php
-                            $unpaidOrdersCount = isset($missingOrders) ? $missingOrders->count() : 0;
+                            $unpaidOrdersCount = isset($missingOrders) ? $missingOrders->total() : 0;
                         @endphp
                         <h3 class="fw-bold mb-0 text-warning">{{ number_format($unpaidOrdersCount, 0, ',', '.') }}</h3>
                         <div class="ms-2 small text-muted">order</div>
@@ -165,14 +165,7 @@
                     </div>
                     <div class="d-flex align-items-end">
                         @php
-                            $unpaidNominal = 0;
-                            if (isset($missingOrders)) {
-                                foreach ($missingOrders as $order) {
-                                    foreach ($order->orderItems as $item) {
-                                        $unpaidNominal += $item->price_after_discount * $item->quantity;
-                                    }
-                                }
-                            }
+                            $unpaidNominal = isset($unpaidNominal) ? $unpaidNominal : 0;
                         @endphp
                         <h3 class="fw-bold mb-0 text-dark">Rp {{ number_format($unpaidNominal, 0, ',', '.') }}</h3>
                     </div>
@@ -203,7 +196,7 @@
                 <div class="d-flex align-items-center">
                     <i class="fas fa-exclamation-triangle me-2 fa-lg"></i>
                     <div>
-                        <h6 class="fw-bold mb-1">Ada {{ $missingOrders->count() }} order yang belum memiliki data pembayaran</h6>
+                        <h6 class="fw-bold mb-1">Ada {{ $missingOrders->total() }} order yang belum memiliki data pembayaran</h6>
                         <p class="mb-0">Order-order berikut telah terdaftar tetapi belum memiliki data pembayaran.</p>
                     </div>
                     <button class="btn btn-sm btn-outline-light ms-auto" type="button" disabled>
@@ -227,27 +220,23 @@
                             <tbody>
                                 @foreach($missingOrders as $index => $order)
                                 @php
-                                    // Determine if the order is older than 3 weeks
-                                    $isOlderThan3Weeks = $order->tanggal && $order->tanggal->diffInDays(now()) > 21;
+                                    // Use pre-calculated values from SQL
+                                    $daysSinceOrder = $order->days_since_order ?? ($order->tanggal ? $order->tanggal->diffInDays(now()) : 0);
+                                    $isOlderThan3Weeks = $daysSinceOrder > 21;
+                                    $totalOrderValue = $order->total_value ?? 0;
                                 @endphp
                                 <tr class="bg-danger-soft">
-                                    <td>{{ $index + 1 }}</td>
+                                    <td>{{ ($missingOrders->currentPage() - 1) * $missingOrders->perPage() + $index + 1 }}</td>
                                     <td>{{ $order->order_number }}</td>
                                     <td>
                                         <div class="d-flex flex-column">
                                             <span>{{ $order->tanggal ? $order->tanggal->format('d-m-Y') : '-' }}</span>
                                             @if($isOlderThan3Weeks)
-                                                <span class="badge bg-danger mt-1">Telat {{ $order->tanggal->diffInDays(now()) }} hari</span>
+                                                <span class="badge bg-danger mt-1">Telat {{ $daysSinceOrder }} hari</span>
                                             @endif
                                         </div>
                                     </td>
                                     <td class="text-end">
-                                        @php
-                                            $totalOrderValue = 0;
-                                            foreach ($order->orderItems as $item) {
-                                                $totalOrderValue += $item->price_after_discount * $item->quantity;
-                                            }
-                                        @endphp
                                         <span class="fw-bold text-danger">Rp {{ number_format($totalOrderValue, 0, ',', '.') }}</span>
                                     </td>
                                     <td>
@@ -263,6 +252,13 @@
                             </tbody>
                         </table>
                     </div>
+                    
+                    <!-- Pagination for unpaid orders -->
+                    @if($missingOrders->hasPages())
+                    <div class="d-flex justify-content-center mt-3 pb-3">
+                        {{ $missingOrders->onEachSide(1)->links('pagination::bootstrap-5') }}
+                    </div>
+                    @endif
                 </div>
             </div>
         </div>

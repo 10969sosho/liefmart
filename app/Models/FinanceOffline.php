@@ -83,16 +83,19 @@ class FinanceOffline extends Model
             $orderDate = Carbon::now()->format('Y-m-d');
         }
         
-        // Tentukan kategori, jenis penjualan, dan status pajak berdasarkan tax_id
-        $category = ($taxId == 5 || $taxId == 6) 
-            ? InvoiceSequence::CATEGORY_KOPI 
-            : InvoiceSequence::CATEGORY_SKINCARE;
-            
-        $salesType = InvoiceSequence::SALES_OFFLINE;
+        // Ambil konfigurasi parameter dari config/invoice.php
+        $config = config('invoice.offline_mapping.' . $taxId, []);
         
-        $taxStatus = in_array($taxId, [3, 5]) 
+        // Gunakan konfigurasi jika tersedia, fallback ke logika lama jika tidak
+        $category = $config['category'] ?? (($taxId == 5 || $taxId == 6) 
+            ? InvoiceSequence::CATEGORY_KOPI 
+            : InvoiceSequence::CATEGORY_SKINCARE);
+            
+        $salesType = $config['sales_type'] ?? InvoiceSequence::SALES_OFFLINE;
+        
+        $taxStatus = $config['tax_status'] ?? (in_array($taxId, [3, 5]) 
             ? InvoiceSequence::TAX_PKP 
-            : InvoiceSequence::TAX_NON_PKP;
+            : InvoiceSequence::TAX_NON_PKP);
         
         // Mendapatkan nomor invoice dari InvoiceSequence dengan tanggal ORDER
         $invoiceData = InvoiceSequence::getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate);
@@ -113,29 +116,18 @@ class FinanceOffline extends Model
         // Parse surat jalan number
         // Format SJ: {counter}/{yearMonth}/{suffix}/{taxCode}
         // Format INV: {counter}/{yearMonth}/{suffix}/{taxCode}
-        // Contoh: 0003/2508/HGNSDA-KOS/01
+        // Contoh: 0003/2508/AMP/01
         
         // Split by '/'
         $parts = explode('/', $suratJalanNumber);
         
-        if (count($parts) < 3) {
+        if (count($parts) < 4) {
             // Jika format tidak sesuai, fallback ke generateInvoiceNumber biasa
             \Log::warning("Invalid surat jalan format: {$suratJalanNumber}, falling back to normal generation");
             return self::generateInvoiceNumber($taxId);
         }
-        
-        $counter = $parts[0]; // Contoh: 0003
-        $yearMonth = $parts[1]; // Contoh: 2508
-        $suffix = $parts[2]; // Contoh: HGNSDA-KOS
-        
-        // Tentukan taxCode berdasarkan tax_id
-        $taxCode = in_array($taxId, [3, 5]) ? '01' : '02';
-        
-        // Jika ada part ke-4 (taxCode dari SJ), kita tetap gunakan taxCode berdasarkan tax_id
-        // karena tax_id dari barang keluar mungkin berbeda dengan tax_id dari SJ
-        
-        // Format invoice number: {counter}/{yearMonth}/{suffix}/{taxCode}
-        return "{$counter}/{$yearMonth}/{$suffix}/{$taxCode}";
+
+        return $suratJalanNumber;
     }
 
     /**
@@ -255,6 +247,7 @@ class FinanceOffline extends Model
     /**
      * Recalculate nominal from offline_sales total_amount
      * This ensures nominal matches the offline_sales total_amount
+     * Uses original quantity (before return) for accurate calculation
      * 
      * @return float The recalculated nominal
      */
@@ -266,64 +259,35 @@ class FinanceOffline extends Model
             return 0;
         }
         
-        // Get all unique offline sales from this invoice's barang_keluar items
-        $offlineSales = collect();
-        foreach ($barangKeluarItems as $bk) {
-            if ($bk->offlineSaleItem && $bk->offlineSaleItem->offlineSale) {
-                $offlineSales->push($bk->offlineSaleItem->offlineSale);
-            }
-        }
-        $offlineSales = $offlineSales->unique('id');
-        
-        if ($offlineSales->isEmpty()) {
-            return 0;
-        }
-        
+        // Calculate nominal from unique offline_sale items (not from barang_keluar items)
+        // This ensures each sale item is only counted once, even if split into multiple barang_keluar
         $nominal = 0;
-        foreach ($offlineSales as $sale) {
-            // Load sale items to calculate proportion
-            $sale->load('items');
-            
-            // Calculate total value of all items in the sale (with discounts)
-            $totalSaleItemsValue = 0;
-            foreach ($sale->items as $saleItem) {
-                $itemValue = $this->calculateItemValue($saleItem);
-                $totalSaleItemsValue += $itemValue;
-            }
-            
-            // Calculate value of items from this sale that are in this invoice
-            $invoiceItemsValue = 0;
-            foreach ($barangKeluarItems as $bk) {
-                if ($bk->offlineSaleItem && $bk->offlineSaleItem->offline_sale_id == $sale->id) {
-                    $saleItem = $bk->offlineSaleItem;
-                    $itemValue = $this->calculateItemValue($saleItem);
-                    $invoiceItemsValue += $itemValue;
+        $processedSaleItemIds = [];
+        
+        foreach ($barangKeluarItems as $bk) {
+            if ($bk->offlineSaleItem) {
+                $saleItemId = $bk->offlineSaleItem->id;
+                
+                // Only count each sale item once
+                if (!in_array($saleItemId, $processedSaleItemIds)) {
+                    $subtotal = $bk->offlineSaleItem->subtotal ?? 0;
+                    $nominal += $subtotal;
+                    $processedSaleItemIds[] = $saleItemId;
                 }
             }
-            
-            // Calculate proportion
-            $proportion = $totalSaleItemsValue > 0 ? ($invoiceItemsValue / $totalSaleItemsValue) : 0;
-            
-            // Use total_amount if proportion is close to 1 (all items), otherwise use proportion
-            if ($proportion >= 0.99) {
-                // All items are in invoice, use full total_amount
-                $nominal += $sale->total_amount;
-            } else {
-                // Partial items, use proportion of total_amount
-                $nominal += $sale->total_amount * $proportion;
-            }
         }
         
+        // Format nominal (this is DPP, not grand total)
         return \App\Helpers\NumberFormatter::formatForDatabase($nominal);
     }
     
     /**
-     * Calculate item value with all discounts
+     * Calculate item value with all discounts using specified quantity
      */
-    private function calculateItemValue($item)
+    private function calculateItemValueWithQuantity($item, $qty)
     {
         $basePrice = (float)($item->unit_price ?? 0);
-        $qty = (float)($item->quantity ?? 0);
+        $qty = (float)$qty;
         
         // Start with base total (price × quantity)
         $currentTotal = $basePrice * $qty;
@@ -347,6 +311,17 @@ class FinanceOffline extends Model
         }
         
         return \App\Helpers\NumberFormatter::formatForDatabase($currentTotal);
+    }
+    
+    /**
+     * Calculate item value with all discounts (uses current quantity)
+     */
+    private function calculateItemValue($item)
+    {
+        $basePrice = (float)($item->unit_price ?? 0);
+        $qty = (float)($item->quantity ?? 0);
+        
+        return $this->calculateItemValueWithQuantity($item, $qty);
     }
 
     /**

@@ -25,7 +25,7 @@
 
 <!-- Platform-wise Sales Summary -->
 <div class="row g-3 mb-4">
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-4 col-lg">
         <div class="card border-0 h-100">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center mb-3">
@@ -36,7 +36,7 @@
                         </div>
                     </div>
                     <div class="flex-grow-1 ms-3">
-                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Shopee Sales</h6>
+                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Shopee Lamourad</h6>
                         <h3 class="card-title fw-bold mb-0">Rp {{ number_format($shopeeSales ?? 0, 0, ',', '.') }}</h3>
                     </div>
                 </div>
@@ -44,38 +44,38 @@
                     <span class="badge bg-success-subtle text-success me-2 d-flex align-items-center">
                         <i class="fas fa-arrow-up me-1"></i> {{ $shopeeGrowth ?? 0 }}%
                     </span>
-                    <span class="text-muted small">vs previous month</span>
+                    <span class="text-muted small">vs prev month</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-4 col-lg">
         <div class="card border-0 h-100">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center mb-3">
                     <div class="flex-shrink-0">
                         <div class="stat-icon rounded d-flex align-items-center justify-content-center" 
-                             style="width: 48px; height: 48px; background-color: rgba(135, 153, 255, 0.1);">
-                            <i class="fas fa-store text-primary" style="font-size: 1.2rem;"></i>
+                             style="width: 48px; height: 48px; background-color: rgba(255, 145, 232, 0.1);">
+                            <i class="fas fa-shopping-cart text-primary" style="font-size: 1.2rem;"></i>
                         </div>
                     </div>
                     <div class="flex-grow-1 ms-3">
-                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Tokopedia Sales</h6>
-                        <h3 class="card-title fw-bold mb-0">Rp {{ number_format($tokopediaSales ?? 0, 0, ',', '.') }}</h3>
+                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Shopee Liefmarket</h6>
+                        <h3 class="card-title fw-bold mb-0">Rp {{ number_format($shopee2Sales ?? 0, 0, ',', '.') }}</h3>
                     </div>
                 </div>
                 <div class="d-flex align-items-center">
                     <span class="badge bg-success-subtle text-success me-2 d-flex align-items-center">
-                        <i class="fas fa-arrow-up me-1"></i> {{ $tokopediaGrowth ?? 0 }}%
+                        <i class="fas fa-arrow-up me-1"></i> {{ $shopee2Growth ?? 0 }}%
                     </span>
-                    <span class="text-muted small">vs previous month</span>
+                    <span class="text-muted small">vs prev month</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-4 col-lg">
         <div class="card border-0 h-100">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center mb-3">
@@ -86,7 +86,7 @@
                         </div>
                     </div>
                     <div class="flex-grow-1 ms-3">
-                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">TikTok Sales</h6>
+                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Tiktok Lamourad</h6>
                         <h3 class="card-title fw-bold mb-0">Rp {{ number_format($tiktokSales ?? 0, 0, ',', '.') }}</h3>
                     </div>
                 </div>
@@ -94,38 +94,38 @@
                     <span class="badge bg-success-subtle text-success me-2 d-flex align-items-center">
                         <i class="fas fa-arrow-up me-1"></i> {{ $tiktokGrowth ?? 0 }}%
                     </span>
-                    <span class="text-muted small">vs previous month</span>
+                    <span class="text-muted small">vs prev month</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-4 col-lg">
         <div class="card border-0 h-100">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center mb-3">
                     <div class="flex-shrink-0">
                         <div class="stat-icon rounded d-flex align-items-center justify-content-center" 
-                             style="width: 48px; height: 48px; background-color: rgba(255, 205, 92, 0.1);">
-                            <i class="fas fa-shopping-cart text-warning" style="font-size: 1.2rem;"></i>
+                             style="width: 48px; height: 48px; background-color: rgba(255, 126, 185, 0.1);">
+                            <i class="fab fa-tiktok text-dark" style="font-size: 1.2rem;"></i>
                         </div>
                     </div>
                     <div class="flex-grow-1 ms-3">
-                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Blibli Sales</h6>
-                        <h3 class="card-title fw-bold mb-0">Rp {{ number_format($blibliSales ?? 0, 0, ',', '.') }}</h3>
+                        <h6 class="card-subtitle text-muted text-uppercase fs-xs fw-semibold mb-1">Tiktok Liefmarket</h6>
+                        <h3 class="card-title fw-bold mb-0">Rp {{ number_format($tiktok2Sales ?? 0, 0, ',', '.') }}</h3>
                     </div>
                 </div>
                 <div class="d-flex align-items-center">
                     <span class="badge bg-success-subtle text-success me-2 d-flex align-items-center">
-                        <i class="fas fa-arrow-up me-1"></i> {{ $blibliGrowth ?? 0 }}%
+                        <i class="fas fa-arrow-up me-1"></i> {{ $tiktok2Growth ?? 0 }}%
                     </span>
-                    <span class="text-muted small">vs previous month</span>
+                    <span class="text-muted small">vs prev month</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-4 col-lg">
         <div class="card border-0 h-100">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center mb-3">
@@ -144,7 +144,7 @@
                     <span class="badge bg-success-subtle text-success me-2 d-flex align-items-center">
                         <i class="fas fa-arrow-up me-1"></i> {{ $offlineGrowth ?? 0 }}%
                     </span>
-                    <span class="text-muted small">vs previous month</span>
+                    <span class="text-muted small">vs prev month</span>
                 </div>
             </div>
         </div>
@@ -195,30 +195,30 @@
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <div class="d-flex align-items-center">
                             <span class="badge bg-secondary me-2" style="width: 12px; height: 12px;"></span>
-                            <span class="text-muted small">Shopee</span>
+                            <span class="text-muted small">Shopee Lamourad</span>
                         </div>
                         <span class="fw-semibold">{{ $shopeePercentage ?? 0 }}%</span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <div class="d-flex align-items-center">
                             <span class="badge bg-primary me-2" style="width: 12px; height: 12px;"></span>
-                            <span class="text-muted small">Tokopedia</span>
+                            <span class="text-muted small">Shopee Liefmarket</span>
                         </div>
-                        <span class="fw-semibold">{{ $tokopediaPercentage ?? 0 }}%</span>
+                        <span class="fw-semibold">{{ $shopee2Percentage ?? 0 }}%</span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <div class="d-flex align-items-center">
                             <span class="badge bg-accent me-2" style="width: 12px; height: 12px;"></span>
-                            <span class="text-muted small">TikTok</span>
+                            <span class="text-muted small">Tiktok Lamourad</span>
                         </div>
                         <span class="fw-semibold">{{ $tiktokPercentage ?? 0 }}%</span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <div class="d-flex align-items-center">
-                            <span class="badge bg-warning me-2" style="width: 12px; height: 12px;"></span>
-                            <span class="text-muted small">Blibli</span>
+                            <span class="badge bg-dark me-2" style="width: 12px; height: 12px;"></span>
+                            <span class="text-muted small">Tiktok Liefmarket</span>
                         </div>
-                        <span class="fw-semibold">{{ $blibliPercentage ?? 0 }}%</span>
+                        <span class="fw-semibold">{{ $tiktok2Percentage ?? 0 }}%</span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center">
@@ -322,19 +322,21 @@ document.addEventListener('DOMContentLoaded', function() {
     new Chart(platformCtx, {
         type: 'doughnut',
         data: {
-            labels: ['Shopee', 'Tokopedia', 'TikTok', 'Blibli'],
+            labels: ['Shopee Lamourad', 'Shopee Liefmarket', 'Tiktok Lamourad', 'Tiktok Liefmarket', 'Offline'],
             datasets: [{
                 data: [
                     {{ $shopeePercentage ?? 0 }},
-                    {{ $tokopediaPercentage ?? 0 }},
+                    {{ $shopee2Percentage ?? 0 }},
                     {{ $tiktokPercentage ?? 0 }},
-                    {{ $blibliPercentage ?? 0 }}
+                    {{ $tiktok2Percentage ?? 0 }},
+                    {{ $offlinePercentage ?? 0 }}
                 ],
                 backgroundColor: [
                     '#ff91e8',
-                    '#8799ff',
+                    '#ff00ff',
                     '#ff7eb9',
-                    '#ffcd5c'
+                    '#d1005d',
+                    '#22c55e'
                 ]
             }]
         },

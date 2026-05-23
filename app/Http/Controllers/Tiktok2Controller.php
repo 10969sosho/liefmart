@@ -17,7 +17,7 @@ class Tiktok2Controller extends Controller
      */
     public function __construct()
     {
-        $routeParam = 'tiktok2';
+        $routeParam = 'tiktok liefmarket';
         $this->platform = $this->getPlatformByRouteParam($routeParam);
     }
     
@@ -43,9 +43,9 @@ class Tiktok2Controller extends Controller
             $platform = Platform::whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($routeParam) . '%'])->first();
         }
         
-        // 4. Jika masih tidak ditemukan, gunakan platform ID default untuk Tiktok2 (ID 7)
+        // 4. Jika masih tidak ditemukan, gunakan platform ID default untuk Tiktok Liefmarket (ID 7)
         if (!$platform) {
-            $platform = Platform::find(7); // Tiktok2 = ID 7
+            $platform = Platform::find(7); // Tiktok Liefmarket = ID 7
         }
         
         // 5. Jika benar-benar tidak ada platform di database
@@ -56,11 +56,8 @@ class Tiktok2Controller extends Controller
         return $platform;
     }
     /**
-     * Tampilkan halaman import Excel Tiktok2
+     * Tampilkan halaman import Excel Tiktok Liefmarket
      */
-/**
- * Tampilkan halaman import Excel Tiktok2
- */
 public function importExcel()
 {
     // Tambahkan informasi untuk ditampilkan di halaman import
@@ -90,12 +87,9 @@ public function importExcel()
     /**
      * Preview data Excel sebelum import
      */
-    /**
-     * Preview data Excel sebelum import
-     */
     public function previewImport(Request $request)
     {
-        // Validasi file yang diupload
+        \Log::info('---------- MULAI PROSES IMPORT TIKTOK LIEF MARKET ----------');
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls',
         ]);
@@ -103,6 +97,15 @@ public function importExcel()
         try {
             // Log awal proses import
             \Log::info('Starting Excel import preview process');
+            set_time_limit(300);
+            ini_set('memory_limit', '512M');
+
+            $file = $request->file('excel_file');
+            \Log::info('Excel file uploaded', [
+                'name' => $file->getClientOriginalName(),
+                'size_bytes' => $file->getSize(),
+                'mime' => $file->getMimeType(),
+            ]);
 
             // Pastikan platform sudah di-set
             if (!$this->platform) {
@@ -113,7 +116,7 @@ public function importExcel()
             // Proses file Excel
             $import = new Tiktok2Import($this->platform->id);
             \Log::info('Before Excel import');
-            Excel::import($import, $request->file('excel_file'));
+            Excel::import($import, $file);
             \Log::info('After Excel import');
 
             // Dapatkan data untuk preview
@@ -187,11 +190,47 @@ public function importExcel()
                     $platformProductId = $row['platform_product_id'] ?? null;
                     
                     if (!$platformProductId) {
-                        // Cari platform product berdasarkan nama dan variasi
+                        $productName = $row['nama_barang'] ?? '';
+                        $variation = $row['variasi'] ?? null;
+                        $fullProductName = !empty($variation) ? "$productName - $variation" : $productName;
+
                         $platformProduct = \App\Models\PlatformProduct::where('platform_id', $this->platform->id)
-                            ->where('platform_product_name', $row['nama_barang'] ?? '')
-                            ->where('variant', $row['variasi'] ?? '')
+                            ->where(function ($query) use ($productName, $variation) {
+                                if (!empty($variation)) {
+                                    $query->where('platform_product_name', $productName)
+                                        ->where('variant', $variation);
+                                } else {
+                                    $query->where('platform_product_name', $productName)
+                                        ->where(function($q) {
+                                            $q->whereNull('variant')
+                                              ->orWhere('variant', '');
+                                        });
+                                }
+                            })
                             ->first();
+
+                        if (!$platformProduct && !empty($variation)) {
+                            $baseProductName = preg_replace('/\s*-\s*100ml$/', '', $productName);
+                            $newVariant = '100ml - ' . $variation;
+                            if ($baseProductName !== $productName) {
+                                $platformProduct = \App\Models\PlatformProduct::where('platform_id', $this->platform->id)
+                                    ->where('platform_product_name', $baseProductName)
+                                    ->where('variant', $newVariant)
+                                    ->first();
+                            }
+                        }
+
+                        if (!$platformProduct && empty($variation)) {
+                            $platformProduct = \App\Models\PlatformProduct::where('platform_id', $this->platform->id)
+                                ->where(function ($query) use ($productName, $fullProductName) {
+                                    $query->where('platform_product_name', $fullProductName)
+                                        ->orWhere('platform_product_name', 'LIKE', '%' . $fullProductName . '%')
+                                        ->orWhere('platform_product_name', $productName)
+                                        ->orWhere('platform_product_name', 'LIKE', '%' . $productName . '%')
+                                        ->orWhere(\Illuminate\Support\Facades\DB::raw('LOWER(platform_product_name)'), 'LIKE', '%' . strtolower($productName) . '%');
+                                })
+                                ->first();
+                        }
                         
                         if ($platformProduct) {
                             $platformProductId = $platformProduct->id;
@@ -232,58 +271,63 @@ public function importExcel()
                     }
                 }
                 
-                // Cek stok berdasarkan TOTAL kebutuhan dari seluruh file Excel
-                foreach ($totalProductQuantities as $productId => $totalRequiredQty) {
-                    $availableStock = \App\Models\WarehouseStock::where('product_id', $productId)
+                // CEK STOK PER ORDER (simulasi FIFO seperti reduceStock)
+                $virtualStock = [];
+                foreach (array_keys($totalProductQuantities) as $productId) {
+                    $stockQtys = \App\Models\WarehouseStock::where('product_id', $productId)
                         ->where('qty', '>', 0)
-                        ->sum('qty');
-                    
-                    // Debug logging untuk stok
-                    \Log::info("Preview Stock Check - Product ID: {$productId}, Total Required: {$totalRequiredQty}, Available: {$availableStock}, Main Category: {$mainCategoryId}");
-                    
-                    if ($availableStock < $totalRequiredQty) {
-                        $product = \App\Models\Product::find($productId);
-                        $productName = $product ? $product->name : "Product ID: {$productId}";
-                        
-                        // Cari order mana yang terpengaruh
-                        $affectedOrders = [];
-                        foreach ($orderProductQuantities as $orderNumber => $products) {
-                            if (isset($products[$productId]) && $products[$productId] > 0) {
-                                $affectedOrders[] = $orderNumber;
-                            }
-                        }
-                        
-                        $stockIssuesSummary[$productId] = [
-                            'product_name' => $productName,
-                            'total_required' => $totalRequiredQty,
-                            'available_qty' => $availableStock,
-                            'shortage' => $totalRequiredQty - $availableStock,
-                            'affected_orders' => $affectedOrders
-                        ];
-                        
-                        \Log::warning("Preview Stock Check - Insufficient stock detected: {$productName}, Total Required: {$totalRequiredQty}, Available: {$availableStock}, Affected Orders: " . implode(', ', $affectedOrders));
-                    }
+                        ->orderBy('warehouse_stock.created_at')
+                        ->orderBy('warehouse_stock.tax_id', 'asc')
+                        ->pluck('warehouse_stock.qty')
+                        ->toArray();
+                    $virtualStock[$productId] = $stockQtys;
                 }
-                
-                // Buat detail per order untuk display
+
                 foreach ($orderProductQuantities as $orderNumber => $products) {
-                    $orderStockIssues = [];
+                    $orderIssues = [];
                     foreach ($products as $productId => $requiredQty) {
-                        if (isset($stockIssuesSummary[$productId])) {
+                        if (!isset($virtualStock[$productId])) {
+                            continue;
+                        }
+
+                        $remainingQty = $requiredQty;
+                        foreach ($virtualStock[$productId] as $i => $stockQty) {
+                            if ($remainingQty <= 0) {
+                                break;
+                            }
+                            $qtyToTake = min($remainingQty, $stockQty);
+                            $remainingQty -= $qtyToTake;
+                            $virtualStock[$productId][$i] -= $qtyToTake;
+                        }
+
+                        if ($remainingQty > 0) {
                             $product = \App\Models\Product::find($productId);
                             $productName = $product ? $product->name : "Product ID: {$productId}";
-                            
-                            $orderStockIssues[] = [
+                            $usedQty = $requiredQty - $remainingQty;
+
+                            $orderIssues[] = [
                                 'product_name' => $productName,
+                                'product_id' => $productId,
                                 'required_qty' => $requiredQty,
-                                'available_qty' => $stockIssuesSummary[$productId]['available_qty'],
-                                'shortage' => $requiredQty - $stockIssuesSummary[$productId]['available_qty']
+                                'available_qty' => $usedQty,
+                                'shortage' => $remainingQty,
                             ];
+
+                            if (!isset($stockIssuesSummary[$productId])) {
+                                $stockIssuesSummary[$productId] = [
+                                    'product_name' => $productName,
+                                    'total_required' => $requiredQty,
+                                    'available_qty' => $usedQty,
+                                    'shortage' => $remainingQty,
+                                    'affected_orders' => []
+                                ];
+                            }
+                            $stockIssuesSummary[$productId]['affected_orders'][] = $orderNumber;
                         }
                     }
-                    
-                    if (!empty($orderStockIssues)) {
-                        $ordersWithStockIssues[$orderNumber] = $orderStockIssues;
+
+                    if (!empty($orderIssues)) {
+                        $ordersWithStockIssues[$orderNumber] = $orderIssues;
                     }
                 }
                 
@@ -371,6 +415,10 @@ public function importExcel()
      */
     public function processImport(Request $request)
     {
+        // Increase execution time and memory limit for large imports
+        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+
         // Pastikan platform sudah di-set
         if (!$this->platform) {
             \Log::error('Platform is null in processImport');

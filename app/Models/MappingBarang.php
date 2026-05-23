@@ -219,6 +219,26 @@ class MappingBarang extends Model
             ->get();
     }
 
+    public static function getEffectiveVersionForOrderCreatedAt($platformProductId, $orderCreatedAt)
+    {
+        if (is_string($orderCreatedAt)) {
+            $orderCreatedAt = \Carbon\Carbon::parse($orderCreatedAt);
+        }
+
+        return static::where('platform_product_id', $platformProductId)
+            ->where(function($query) use ($orderCreatedAt) {
+                $query->where(function($q) use ($orderCreatedAt) {
+                    $q->whereNotNull('valid_from')
+                      ->where('valid_from', '<=', $orderCreatedAt);
+                })
+                ->orWhere(function($q) use ($orderCreatedAt) {
+                    $q->whereNull('valid_from')
+                      ->where('created_at', '<=', $orderCreatedAt);
+                });
+            })
+            ->max('version');
+    }
+
     /**
      * Get mappings based on version that was created before or on the order created date
      * This is the correct logic: find the latest version created before/on order created_at
@@ -229,27 +249,7 @@ class MappingBarang extends Model
      */
     public static function getMappingsForOrderCreatedAt($platformProductId, $orderCreatedAt)
     {
-        // Convert to Carbon if string
-        if (is_string($orderCreatedAt)) {
-            $orderCreatedAt = \Carbon\Carbon::parse($orderCreatedAt);
-        }
-        
-        // 1. Find the latest version that was created before or on the order created date
-        // Use valid_from to determine when version was created
-        $latestVersion = static::where('platform_product_id', $platformProductId)
-            ->where(function($query) use ($orderCreatedAt) {
-                $query->where(function($q) use ($orderCreatedAt) {
-                    // If valid_from exists, use valid_from
-                    $q->whereNotNull('valid_from')
-                      ->where('valid_from', '<=', $orderCreatedAt);
-                })
-                ->orWhere(function($q) use ($orderCreatedAt) {
-                    // If valid_from is null, use created_at
-                    $q->whereNull('valid_from')
-                      ->where('created_at', '<=', $orderCreatedAt);
-                });
-            })
-            ->max('version');
+        $latestVersion = static::getEffectiveVersionForOrderCreatedAt($platformProductId, $orderCreatedAt);
         
         // 2. If version found, get all mappings with that version
         if ($latestVersion !== null) {

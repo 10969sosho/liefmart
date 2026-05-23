@@ -24,10 +24,10 @@ class SalesByMasterProductQuery
         $page = $this->request->input('page', 1);
         $offset = ($page - 1) * $this->perPage;
 
-        // Get total count
+        // Get total count using fast count method (no CTE)
         $totalCount = $this->getTotalCount();
 
-        // Get paginated data
+        // Get paginated data using derived table (no temp table)
         $data = $this->getPaginatedData($offset, $this->perPage);
 
         // Create paginator manually
@@ -43,7 +43,7 @@ class SalesByMasterProductQuery
     public function get()
     {
         // Get all data without pagination (for export)
-        $sql = $this->buildQuery(false);
+        $sql = $this->buildFullQuery();
         $results = DB::select($sql);
         
         // Convert objects to arrays for compatibility
@@ -54,22 +54,18 @@ class SalesByMasterProductQuery
 
     public function getSummary()
     {
-        $sql = $this->buildQuery(false);
-        $results = DB::select($sql);
+        // Build summary query using aggregates - separate from table query
+        $filters = $this->getFilters();
+        $sql = $this->buildSummaryQuery($filters);
+        $result = DB::selectOne($sql);
         
-        // Convert to arrays
-        $results = array_map(function($row) {
-            return (array) $row;
-        }, $results);
+        $totalRevenue = (float) ($result->total_revenue ?? 0);
+        $totalCapital = (float) ($result->total_capital ?? 0);
+        $totalQuantity = (float) ($result->total_quantity ?? 0);
+        $totalBarangKeluar = (int) ($result->total_products ?? 0);
         
-        $totalRevenue = array_sum(array_column($results, 'revenue'));
-        $totalCapital = array_sum(array_column($results, 'capital'));
-        $totalQuantity = array_sum(array_column($results, 'quantity'));
         $totalRevenueWithoutPPN = $totalRevenue / 1.11; // Revenue without PPN
         $totalGrossProfit = $totalRevenueWithoutPPN - $totalCapital; // Revenue without PPN - capital
-        
-        // Count total barang keluar (same as total rows since each row is one barang_keluar)
-        $totalBarangKeluar = count($results);
         
         return [
             'total_products' => $totalBarangKeluar,
@@ -80,21 +76,183 @@ class SalesByMasterProductQuery
             'total_gross_profit' => $totalGrossProfit,
             'total_quantity' => $totalQuantity,
             'profit_margin' => $totalRevenueWithoutPPN > 0 ? ($totalGrossProfit / $totalRevenueWithoutPPN) * 100 : 0,
+            // Pre-calculated values for Blade (no calculations in view)
+            'total_revenue_formatted' => number_format($totalRevenue, 0, ',', '.'),
+            'total_revenue_without_ppn_formatted' => number_format($totalRevenueWithoutPPN, 0, ',', '.'),
+            'total_capital_formatted' => number_format($totalCapital, 0, ',', '.'),
+            'total_gross_profit_formatted' => number_format($totalGrossProfit, 0, ',', '.'),
+            'profit_margin_formatted' => number_format($totalRevenueWithoutPPN > 0 ? ($totalGrossProfit / $totalRevenueWithoutPPN) * 100 : 0, 2),
         ];
     }
 
+    /**
+     * Fast count query - uses financial_summary CTE instead of EXISTS
+     * COUNT(DISTINCT order_items.id) with all filters matching final_data
+     */
     protected function getTotalCount()
     {
-        $sql = $this->buildQuery(true);
-        // buildCountQuery already returns "SELECT COUNT(*) as total", so just execute it directly
-        $result = DB::selectOne($sql);
+        $filters = $this->getFilters();
+        $startDate = $filters['start_date'];
+        $endDate = $filters['end_date'];
+        $platformId = $filters['platform_id'];
+        $orderNumber = $filters['order_number'];
+        $search = $filters['search'];
+        $selectedBrands = $filters['brands'];
+        $selectedSubBrands = $filters['sub_brands'];
+        $selectedProductCategories = $filters['product_categories'];
+        $selectedProductTypes = $filters['product_types'];
+        $selectedProductSizes = $filters['product_sizes'];
+        $selectedProductVariants = $filters['product_variants'];
+        $outstandingStatus = $filters['outstanding_status'] ?? null;
+
+        // Build financial_summary CTE (same as main query)
+        $financialCTE = $this->buildFinancialSummaryCTE($filters);
+
+        $whereConditions = [];
+
+        // Date filter
+        $whereConditions[] = "o.tanggal BETWEEN '{$startDate}' AND '{$endDate}'";
+
+        // Platform filter
+        if ($platformId) {
+            $whereConditions[] = "o.platform_id = {$platformId}";
+        }
+
+        // Order number filter - support partial match (remove spaces and search)
+        if ($orderNumber) {
+            $orderNumberClean = trim($orderNumber);
+            if (!empty($orderNumberClean)) {
+                $orderNumberEscaped = DB::getPdo()->quote("%{$orderNumberClean}%");
+                $whereConditions[] = "o.order_number LIKE {$orderNumberEscaped}";
+            }
+        }
+
+        // ✅ FIX: HIERARCHICAL FILTER - Use deepest level only, parent filters are automatically locked
+        // This ensures cascading filter works correctly (no data mismatch)
+        if (!empty($selectedProductVariants)) {
+            // Level 6 (deepest) - Variant
+            $variantIds = implode(',', array_map('intval', $selectedProductVariants));
+            $whereConditions[] = "p.product_variant_id IN ({$variantIds})";
+        } elseif (!empty($selectedProductSizes)) {
+            // Level 5 - Size
+            $sizeIds = implode(',', array_map('intval', $selectedProductSizes));
+            $whereConditions[] = "p.product_size_id IN ({$sizeIds})";
+        } elseif (!empty($selectedProductTypes)) {
+            // Level 4 - Type
+            $typeIds = implode(',', array_map('intval', $selectedProductTypes));
+            $whereConditions[] = "p.product_type_id IN ({$typeIds})";
+        } elseif (!empty($selectedProductCategories)) {
+            // Level 3 - Category
+            $categoryIds = implode(',', array_map('intval', $selectedProductCategories));
+            $whereConditions[] = "p.product_category_id IN ({$categoryIds})";
+        } elseif (!empty($selectedSubBrands)) {
+            // Level 2 - Sub Brand
+            $subBrandIds = implode(',', array_map('intval', $selectedSubBrands));
+            $whereConditions[] = "p.sub_brand_id IN ({$subBrandIds})";
+        } elseif (!empty($selectedBrands)) {
+            // Level 1 (shallowest) - Brand
+            $brandIds = implode(',', array_map('intval', $selectedBrands));
+            $whereConditions[] = "p.brand_id IN ({$brandIds})";
+        }
+
+        // Search filter - search in platform product name, master product name, and SKU
+        if ($search) {
+            $searchClean = trim($search);
+            if (!empty($searchClean)) {
+                $searchEscaped = DB::getPdo()->quote("%{$searchClean}%");
+                $whereConditions[] = "(
+                    pp.platform_product_name LIKE {$searchEscaped}
+                    OR p.name LIKE {$searchEscaped}
+                    OR p.sku LIKE {$searchEscaped}
+                    OR pp.platform_product_variant LIKE {$searchEscaped}
+                )";
+            }
+        }
+
+        // Outstanding filter (same as final_data)
+        if ($outstandingStatus !== null) {
+            if ($outstandingStatus === '0') {
+                $whereConditions[] = "(
+                    COALESCE(fs.outstanding, 0) = 0 
+                    AND NOT (
+                        EXISTS (
+                            SELECT 1 
+                            FROM retur_penjualans rp 
+                            WHERE rp.order_id = o.id 
+                            AND rp.status IN ('draft', 'selesai')
+                        )
+                        AND COALESCE(fs.total_saldo_masuk, 0) = 0
+                    )
+                )";
+            } elseif ($outstandingStatus === '1') {
+                $whereConditions[] = "(
+                    (COALESCE(fs.outstanding, 0) > 0 OR COALESCE(fs.outstanding, 0) < 0)
+                    AND NOT (
+                        EXISTS (
+                            SELECT 1 
+                            FROM retur_penjualans rp 
+                            WHERE rp.order_id = o.id 
+                            AND rp.status IN ('draft', 'selesai')
+                        )
+                        AND COALESCE(fs.total_saldo_masuk, 0) = 0
+                    )
+                )";
+            }
+        }
+
+        $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
+
+        // Fast count query - uses financial_summary CTE instead of EXISTS
+        // This ensures count matches actual data (only orders with payment)
+        // Mapping selection: timestamp-based versioning (select mapping valid at order creation time)
+        // For package products, count each barang_keluar, not order_item
+        $countSQL = "
+            WITH {$financialCTE}
+            SELECT COUNT(DISTINCT bk.id) as total
+            FROM orders o
+                 INNER JOIN order_items oi ON oi.order_id = o.id
+                 INNER JOIN platform_products pp ON pp.id = oi.platform_product_id
+                 INNER JOIN barang_keluar bk ON bk.order_item_id = oi.id
+                 INNER JOIN warehouse_stock ws ON ws.id = bk.warehouse_stock_id
+                 INNER JOIN products p ON p.id = ws.product_id
+                 LEFT JOIN mapping_barangs mb ON mb.id = (
+                     SELECT mb2.id
+                     FROM mapping_barangs mb2
+                     WHERE mb2.platform_product_id = pp.id
+                       AND mb2.product_id = p.id
+                       AND COALESCE(mb2.valid_from, mb2.created_at) <= o.created_at
+                       AND (mb2.valid_until IS NULL OR mb2.valid_until >= o.created_at)
+                     ORDER BY COALESCE(mb2.valid_from, mb2.created_at) DESC
+                     LIMIT 1
+                 )
+            INNER JOIN financial_summary fs ON fs.no_order = o.order_number
+            {$whereClause}
+        ";
+
+        $result = DB::selectOne($countSQL);
         return $result->total ?? 0;
     }
 
+    /**
+     * Get paginated data using derived table (no temp table)
+     */
     protected function getPaginatedData($offset, $limit)
     {
-        $sql = $this->buildQuery(false);
-        $sql .= " LIMIT {$limit} OFFSET {$offset}";
+        $sortBy = $this->request->input('sort', 'revenue_highest');
+        $sortColumn = $this->getSortColumn($sortBy);
+        $sortDirection = strpos($sortBy, 'lowest') !== false ? 'ASC' : 'DESC';
+
+        // Build full query and wrap in derived table for pagination
+        $innerQuery = $this->buildFullQuery();
+        
+        $sql = "
+            SELECT * FROM (
+                {$innerQuery}
+            ) AS paginated_data
+            ORDER BY {$sortColumn} {$sortDirection}
+            LIMIT {$limit} OFFSET {$offset}
+        ";
+
         $results = DB::select($sql);
         
         // Convert objects to arrays for compatibility with Blade views
@@ -103,44 +261,156 @@ class SalesByMasterProductQuery
         }, $results);
     }
 
-    protected function buildQuery($countOnly = false)
+    /**
+     * Build full query with all CTEs (max 3 CTEs)
+     * CTE 1: financial_summary (optimized - group by once per order)
+     * CTE 2: order_value (pre-calculate order value)
+     * CTE 3: final_data (base + all calculations in one place)
+     */
+    protected function buildFullQuery()
     {
         $filters = $this->getFilters();
-
-        if ($countOnly) {
-            return $this->buildCountQuery($filters);
-        }
-
-        return $this->buildFullQuery($filters);
-    }
-
-    protected function buildCountQuery($filters)
-    {
-        $baseCTE = $this->buildBaseCTE($filters);
-        $calcCTE = $this->buildCalcCTE();
-        
-        return "
-            WITH base_data AS ({$baseCTE}),
-            calculated_data AS ({$calcCTE})
-            SELECT COUNT(*) as total
-            FROM calculated_data
-        ";
-    }
-
-    protected function buildFullQuery($filters)
-    {
-        $baseCTE = $this->buildBaseCTE($filters);
-        $calcCTE = $this->buildCalcCTE();
-        $finalSelect = $this->finalSelect();
+        $financialCTE = $this->buildFinancialSummaryCTE($filters);
+        $orderValueCTE = $this->buildOrderValueCTE($filters);
+        $finalDataCTE = $this->buildFinalDataCTE($filters);
+        $finalSelect = $this->buildFinalSelect();
 
         return "
-            WITH base_data AS ({$baseCTE}),
-            calculated_data AS ({$calcCTE})
+            WITH {$financialCTE},
+            {$orderValueCTE},
+            final_data AS ({$finalDataCTE})
             {$finalSelect}
         ";
     }
 
-    protected function buildBaseCTE($filters)
+    /**
+     * Build summary query using aggregates (separate from table query)
+     * IMPORTANT: total_revenue uses total_saldo_masuk directly from financial_summary
+     * to match the actual payment amount, not the proportional revenue allocation
+     */
+    protected function buildSummaryQuery($filters)
+    {
+        $financialCTE = $this->buildFinancialSummaryCTE($filters);
+        $orderValueCTE = $this->buildOrderValueCTE($filters);
+        $finalDataCTE = $this->buildFinalDataCTE($filters);
+
+        return "
+            WITH {$financialCTE},
+            {$orderValueCTE},
+            final_data AS ({$finalDataCTE}),
+            -- Get distinct orders from final_data to calculate total saldo masuk
+            distinct_orders AS (
+                SELECT DISTINCT order_number
+                FROM final_data
+            ),
+            -- Calculate total saldo masuk per order (avoid double counting)
+            order_totals AS (
+                SELECT 
+                    fs.no_order,
+                    fs.total_saldo_masuk
+                FROM financial_summary fs
+                INNER JOIN distinct_orders do ON do.order_number = fs.no_order
+            )
+            SELECT 
+                COUNT(*) as total_rows,
+                COUNT(*) as total_products,
+                -- Use total_saldo_masuk directly from financial_summary (not proportional revenue)
+                -- This ensures summary matches the actual payment amount from financial transactions
+                COALESCE((SELECT SUM(total_saldo_masuk) FROM order_totals), 0) as total_revenue,
+                COALESCE(SUM(fd.capital), 0) as total_capital,
+                COALESCE(SUM(fd.quantity), 0) as total_quantity
+            FROM final_data fd
+        ";
+    }
+
+    /**
+     * Build financial summary CTE - Optimized: filter date and platform BEFORE UNION ALL
+     * Each SELECT joins with orders and filters before UNION, reducing data processed
+     */
+    protected function buildFinancialSummaryCTE($filters)
+    {
+        $startDate = $filters['start_date'];
+        $endDate = $filters['end_date'];
+        $platformId = $filters['platform_id'];
+        
+        $platformCondition = '';
+        if ($platformId) {
+            $platformCondition = "AND o.platform_id = {$platformId}";
+        } else {
+            $platformCondition = "";
+        }
+        
+        return "
+            financial_summary AS (
+                SELECT 
+                    af.no_order,
+                    SUM(af.saldo_masuk) as total_saldo_masuk,
+                    SUM(COALESCE(af.nominal_fix, 0)) as total_nominal_fix,
+                    SUM(COALESCE(af.nominal_fix, 0)) - SUM(af.saldo_masuk) as outstanding,
+                    MIN(af.first_invoice) as invoice_number
+                FROM (
+                    -- Shopee
+                    SELECT 
+                        s.no_order,
+                        s.saldo_masuk,
+                        COALESCE(s.nominal_fix, 0) as nominal_fix,
+                        CASE WHEN s.saldo_masuk > 0 AND s.no_invoice IS NOT NULL AND s.no_invoice != '' THEN s.no_invoice END as first_invoice
+                    FROM shopee_financial_transactions s
+                    INNER JOIN orders o ON o.order_number = s.no_order
+                    WHERE o.tanggal BETWEEN '{$startDate}' AND '{$endDate}'
+                        {$platformCondition}
+                    
+                    UNION ALL
+                    
+                    -- TikTok
+                    SELECT 
+                        t.no_order,
+                        t.saldo_masuk,
+                        COALESCE(t.nominal_fix, 0) as nominal_fix,
+                        CASE WHEN t.saldo_masuk > 0 AND t.no_invoice IS NOT NULL AND t.no_invoice != '' THEN t.no_invoice END as first_invoice
+                    FROM tiktok_financial_transactions t
+                    INNER JOIN orders o ON o.order_number = t.no_order
+                    WHERE o.tanggal BETWEEN '{$startDate}' AND '{$endDate}'
+                        {$platformCondition}
+                ) AS af
+                WHERE af.saldo_masuk > 0
+                GROUP BY af.no_order
+            )
+        ";
+    }
+
+    /**
+     * Build order value CTE - Pre-calculate total order value per order
+     */
+    protected function buildOrderValueCTE($filters)
+    {
+        $startDate = $filters['start_date'];
+        $endDate = $filters['end_date'];
+        
+        return "
+            order_value AS (
+                SELECT 
+                    o.id as order_id,
+                    COALESCE(SUM(COALESCE(pipv.initial_price, 0) * bk.qty), 0) as total_order_value
+                FROM orders o
+                INNER JOIN order_items oi ON oi.order_id = o.id
+                INNER JOIN barang_keluar bk ON bk.order_item_id = oi.id
+                INNER JOIN warehouse_stock ws ON ws.id = bk.warehouse_stock_id
+                INNER JOIN products p ON p.id = ws.product_id
+                LEFT JOIN product_initial_price_versions pipv ON pipv.product_id = p.id
+                    AND pipv.valid_from <= o.created_at
+                    AND (pipv.valid_until IS NULL OR pipv.valid_until > o.created_at)
+                WHERE o.tanggal BETWEEN '{$startDate}' AND '{$endDate}'
+                GROUP BY o.id
+            )
+        ";
+    }
+
+    /**
+     * Build final data CTE - Base data + all calculations in one place
+     * COGS calculated once, then reused for all derived metrics
+     */
+    protected function buildFinalDataCTE($filters)
     {
         $startDate = $filters['start_date'];
         $endDate = $filters['end_date'];
@@ -155,7 +425,6 @@ class SalesByMasterProductQuery
         $selectedProductVariants = $filters['product_variants'];
 
         $whereConditions = [];
-        $joinConditions = [];
 
         // Date filter
         $whereConditions[] = "o.tanggal BETWEEN '{$startDate}' AND '{$endDate}'";
@@ -165,255 +434,277 @@ class SalesByMasterProductQuery
             $whereConditions[] = "o.platform_id = {$platformId}";
         }
 
-        // Order number filter
+        // Order number filter - support partial match (remove spaces and search)
         if ($orderNumber) {
-            $orderNumberEscaped = DB::getPdo()->quote("%{$orderNumber}%");
-            $whereConditions[] = "o.order_number LIKE {$orderNumberEscaped}";
+            $orderNumberClean = trim($orderNumber);
+            if (!empty($orderNumberClean)) {
+                $orderNumberEscaped = DB::getPdo()->quote("%{$orderNumberClean}%");
+                $whereConditions[] = "o.order_number LIKE {$orderNumberEscaped}";
+            }
         }
 
-        // Payment filter - only orders with saldo_masuk > 0
-        $paymentFilter = "
-            (
-                EXISTS (SELECT 1 FROM shopee_financial_transactions sft WHERE sft.no_order = o.order_number AND sft.saldo_masuk > 0)
-                OR EXISTS (SELECT 1 FROM tiktok_financial_transactions tft WHERE tft.no_order = o.order_number AND tft.saldo_masuk > 0)
-                OR EXISTS (SELECT 1 FROM tokopedia_financial_transactions toft WHERE toft.no_order = o.order_number AND toft.saldo_masuk > 0)
-                OR EXISTS (SELECT 1 FROM blibli_financial_transactions bft WHERE bft.no_order = o.order_number AND bft.saldo_masuk > 0)
-            )
-        ";
-        $whereConditions[] = $paymentFilter;
-
-        // Product filters
-        if (!empty($selectedBrands)) {
+        // ✅ FIX: HIERARCHICAL FILTER - Use deepest level only, parent filters are automatically locked
+        // This ensures cascading filter works correctly (no data mismatch)
+        if (!empty($selectedProductVariants)) {
+            // Level 6 (deepest) - Variant
+            $variantIds = implode(',', array_map('intval', $selectedProductVariants));
+            $whereConditions[] = "p.product_variant_id IN ({$variantIds})";
+        } elseif (!empty($selectedProductSizes)) {
+            // Level 5 - Size
+            $sizeIds = implode(',', array_map('intval', $selectedProductSizes));
+            $whereConditions[] = "p.product_size_id IN ({$sizeIds})";
+        } elseif (!empty($selectedProductTypes)) {
+            // Level 4 - Type
+            $typeIds = implode(',', array_map('intval', $selectedProductTypes));
+            $whereConditions[] = "p.product_type_id IN ({$typeIds})";
+        } elseif (!empty($selectedProductCategories)) {
+            // Level 3 - Category
+            $categoryIds = implode(',', array_map('intval', $selectedProductCategories));
+            $whereConditions[] = "p.product_category_id IN ({$categoryIds})";
+        } elseif (!empty($selectedSubBrands)) {
+            // Level 2 - Sub Brand
+            $subBrandIds = implode(',', array_map('intval', $selectedSubBrands));
+            $whereConditions[] = "p.sub_brand_id IN ({$subBrandIds})";
+        } elseif (!empty($selectedBrands)) {
+            // Level 1 (shallowest) - Brand
             $brandIds = implode(',', array_map('intval', $selectedBrands));
             $whereConditions[] = "p.brand_id IN ({$brandIds})";
         }
 
-        if (!empty($selectedSubBrands)) {
-            $subBrandIds = implode(',', array_map('intval', $selectedSubBrands));
-            $whereConditions[] = "p.sub_brand_id IN ({$subBrandIds})";
-        }
-
-        if (!empty($selectedProductCategories)) {
-            $categoryIds = implode(',', array_map('intval', $selectedProductCategories));
-            $whereConditions[] = "p.product_category_id IN ({$categoryIds})";
-        }
-
-        if (!empty($selectedProductTypes)) {
-            $typeIds = implode(',', array_map('intval', $selectedProductTypes));
-            $whereConditions[] = "p.product_type_id IN ({$typeIds})";
-        }
-
-        if (!empty($selectedProductSizes)) {
-            $sizeIds = implode(',', array_map('intval', $selectedProductSizes));
-            $whereConditions[] = "p.product_size_id IN ({$sizeIds})";
-        }
-
-        if (!empty($selectedProductVariants)) {
-            $variantIds = implode(',', array_map('intval', $selectedProductVariants));
-            $whereConditions[] = "p.product_variant_id IN ({$variantIds})";
-        }
-
-        // Search filter
+        // Search filter - search in platform product name, master product name, and SKU
         if ($search) {
-            $searchEscaped = DB::getPdo()->quote("%{$search}%");
-            $whereConditions[] = "(
-                pp.platform_product_name LIKE {$searchEscaped}
-                OR p.name LIKE {$searchEscaped}
-                OR p.sku LIKE {$searchEscaped}
-            )";
+            $searchClean = trim($search);
+            if (!empty($searchClean)) {
+                $searchEscaped = DB::getPdo()->quote("%{$searchClean}%");
+                $whereConditions[] = "(
+                    pp.platform_product_name LIKE {$searchEscaped}
+                    OR p.name LIKE {$searchEscaped}
+                    OR p.sku LIKE {$searchEscaped}
+                    OR pp.platform_product_variant LIKE {$searchEscaped}
+                )";
+            }
+        }
+
+        // Outstanding filter
+        $outstandingStatus = $filters['outstanding_status'] ?? null;
+        if ($outstandingStatus !== null) {
+            if ($outstandingStatus === '0') {
+                $whereConditions[] = "(
+                    COALESCE(fs.outstanding, 0) = 0 
+                    AND NOT (
+                        EXISTS (
+                            SELECT 1 
+                            FROM retur_penjualans rp 
+                            WHERE rp.order_id = o.id 
+                            AND rp.status IN ('draft', 'selesai')
+                        )
+                        AND COALESCE(fs.total_saldo_masuk, 0) = 0
+                    )
+                )";
+            } elseif ($outstandingStatus === '1') {
+                $whereConditions[] = "(
+                    (COALESCE(fs.outstanding, 0) > 0 OR COALESCE(fs.outstanding, 0) < 0)
+                    AND NOT (
+                        EXISTS (
+                            SELECT 1 
+                            FROM retur_penjualans rp 
+                            WHERE rp.order_id = o.id 
+                            AND rp.status IN ('draft', 'selesai')
+                        )
+                        AND COALESCE(fs.total_saldo_masuk, 0) = 0
+                    )
+                )";
+            }
         }
 
         $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
 
+        // COGS formula - calculate once, reuse
+        $cogsFormula = "
+            CASE 
+                WHEN pd.id IS NOT NULL THEN
+                    GREATEST(0,
+                        COALESCE(pd.harga_hpp, 0)
+                        * (1 - COALESCE(pd.diskon_persen_1, 0) / 100.0)
+                        * (1 - COALESCE(pd.diskon_persen_2, 0) / 100.0)
+                        * (1 - COALESCE(pd.diskon_persen_3, 0) / 100.0)
+                        * (1 - COALESCE(pd.diskon_persen_4, 0) / 100.0)
+                        * (1 - COALESCE(pd.diskon_persen_5, 0) / 100.0)
+                        - COALESCE(pd.diskon_nominal_1, 0)
+                        - COALESCE(pd.diskon_nominal_2, 0)
+                        - COALESCE(pd.diskon_nominal_3, 0)
+                        - COALESCE(pd.diskon_nominal_4, 0)
+                        - COALESCE(pd.diskon_nominal_5, 0)
+                    )
+                ELSE 0
+            END
+        ";
+
         return "
             SELECT 
-                o.id as order_id,
                 o.order_number,
+                COALESCE(fs.invoice_number, '-') as invoice_number,
                 o.tanggal as order_date,
-                o.platform_id,
                 pl.name as platform_name,
-                oi.id as order_item_id,
-                oi.quantity as platform_quantity,
-                pp.id as platform_product_id,
                 pp.platform_product_name,
                 COALESCE(pp.variant, 'N/A') as platform_product_variant,
-                bk.id as barang_keluar_id,
-                bk.qty as master_qty,
-                p.id as product_id,
-                p.name as product_name,
+                oi.quantity as platform_quantity,
                 COALESCE(p.sku, 'N/A') as sku,
-                COALESCE(p.initial_price, 0) as price,
-                ws.id as warehouse_stock_id,
-                pd.id as penerimaan_detail_id,
-                pd.harga_hpp,
-                pd.diskon_persen_1,
-                pd.diskon_persen_2,
-                pd.diskon_persen_3,
-                pd.diskon_persen_4,
-                pd.diskon_persen_5,
-                pd.diskon_nominal_1,
-                pd.diskon_nominal_2,
-                pd.diskon_nominal_3,
-                pd.diskon_nominal_4,
-                pd.diskon_nominal_5,
-                -- Calculate total saldo masuk per order
-                COALESCE((
-                    SELECT SUM(saldo_masuk) 
-                    FROM shopee_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0
-                ), 0) + 
-                COALESCE((
-                    SELECT SUM(saldo_masuk) 
-                    FROM tiktok_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0
-                ), 0) + 
-                COALESCE((
-                    SELECT SUM(saldo_masuk) 
-                    FROM tokopedia_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0
-                ), 0) + 
-                COALESCE((
-                    SELECT SUM(saldo_masuk) 
-                    FROM blibli_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0
-                ), 0) as total_saldo_masuk,
-                -- Get invoice number from financial transactions
-                COALESCE((
-                    SELECT no_invoice 
-                    FROM shopee_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0 
-                    ORDER BY tanggal_masuk_pembayaran ASC 
-                    LIMIT 1
-                ), (
-                    SELECT no_invoice 
-                    FROM tiktok_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0 
-                    ORDER BY tanggal_masuk_pembayaran ASC 
-                    LIMIT 1
-                ), (
-                    SELECT no_invoice 
-                    FROM tokopedia_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0 
-                    ORDER BY tanggal_masuk_pembayaran ASC 
-                    LIMIT 1
-                ), (
-                    SELECT no_invoice 
-                    FROM blibli_financial_transactions 
-                    WHERE no_order = o.order_number AND saldo_masuk > 0 
-                    ORDER BY tanggal_masuk_pembayaran ASC 
-                    LIMIT 1
-                ), '-') as invoice_number,
-                -- Calculate total order value from products (constant, not affected by filtering)
-                (
-                    SELECT COALESCE(SUM(COALESCE(p2.initial_price, 0) * bk2.qty), 0)
-                    FROM barang_keluar bk2
-                    INNER JOIN warehouse_stock ws2 ON ws2.id = bk2.warehouse_stock_id
-                    INNER JOIN products p2 ON p2.id = ws2.product_id
-                    INNER JOIN order_items oi2 ON oi2.id = bk2.order_item_id
-                    WHERE oi2.order_id = o.id
-                ) as total_order_value_from_products
+                p.name as product_name,
+                bk.qty as quantity,
+                COALESCE(pipv.initial_price, 0) as price,
+                COALESCE(pipv.initial_price, 0) * bk.qty as pricelist_total,
+                CASE 
+                    WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                        (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                    ELSE 0
+                END as proportion_percent,
+                COALESCE(fs.total_saldo_masuk, 0) as order_total_payment,
+                COALESCE(fs.total_saldo_masuk, 0) / 1.11 as order_total_payment_without_ppn,
+                COALESCE(ov.total_order_value, 0) as total_order_value_from_products,
+                -- COGS calculated once
+                {$cogsFormula} as cogs_per_unit,
+                -- All derived metrics using pre-calculated values
+                (COALESCE(fs.total_saldo_masuk, 0) * 
+                    CASE 
+                        WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                            (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                        ELSE 0
+                    END / 100) as revenue,
+                ({$cogsFormula} * bk.qty) as capital,
+                {$cogsFormula} as modal_per_pcs,
+                ((COALESCE(fs.total_saldo_masuk, 0) * 
+                    CASE 
+                        WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                            (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                        ELSE 0
+                    END / 100) / NULLIF(bk.qty, 0)) as payment_per_product_per_pcs,
+                (((COALESCE(fs.total_saldo_masuk, 0) * 
+                    CASE 
+                        WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                            (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                        ELSE 0
+                    END / 100) / NULLIF(bk.qty, 0)) / 1.11) as payment_per_product_without_ppn,
+                {$cogsFormula} as unit_cost,
+                ((((COALESCE(fs.total_saldo_masuk, 0) * 
+                    CASE 
+                        WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                            (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                        ELSE 0
+                    END / 100) / NULLIF(bk.qty, 0)) / 1.11) - {$cogsFormula}) as profit_per_pcs,
+                (((((COALESCE(fs.total_saldo_masuk, 0) * 
+                    CASE 
+                        WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                            (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                        ELSE 0
+                    END / 100) / NULLIF(bk.qty, 0)) / 1.11) - {$cogsFormula}) * bk.qty) as gross_profit_total,
+                CASE 
+                    WHEN (((COALESCE(fs.total_saldo_masuk, 0) * 
+                        CASE 
+                            WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                                (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                            ELSE 0
+                        END / 100) / NULLIF(bk.qty, 0)) / 1.11) > 0 THEN
+                        (((((COALESCE(fs.total_saldo_masuk, 0) * 
+                            CASE 
+                                WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                                    (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                                ELSE 0
+                            END / 100) / NULLIF(bk.qty, 0)) / 1.11) - {$cogsFormula}) / 
+                        (((COALESCE(fs.total_saldo_masuk, 0) * 
+                            CASE 
+                                WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                                    (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                                ELSE 0
+                            END / 100) / NULLIF(bk.qty, 0)) / 1.11)) * 100
+                    ELSE 0
+                END as margin_per_pcs,
+                CASE 
+                    WHEN ((((COALESCE(fs.total_saldo_masuk, 0) * 
+                        CASE 
+                            WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                                (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                            ELSE 0
+                        END / 100) / NULLIF(bk.qty, 0)) / 1.11) * bk.qty) > 0 THEN
+                        ((((((COALESCE(fs.total_saldo_masuk, 0) * 
+                            CASE 
+                                WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                                    (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                                ELSE 0
+                            END / 100) / NULLIF(bk.qty, 0)) / 1.11) - {$cogsFormula}) * bk.qty) / 
+                        ((((COALESCE(fs.total_saldo_masuk, 0) * 
+                            CASE 
+                                WHEN COALESCE(ov.total_order_value, 0) > 0 THEN
+                                    (COALESCE(pipv.initial_price, 0) * bk.qty / ov.total_order_value) * 100
+                                ELSE 0
+                            END / 100) / NULLIF(bk.qty, 0)) / 1.11) * bk.qty)) * 100
+                    ELSE 0
+                END as margin_per_item
             FROM orders o
             INNER JOIN platforms pl ON pl.id = o.platform_id
             INNER JOIN order_items oi ON oi.order_id = o.id
             INNER JOIN platform_products pp ON pp.id = oi.platform_product_id
-            INNER JOIN mapping_barangs mb ON mb.platform_product_id = pp.id AND mb.is_active = 1
-            INNER JOIN products p ON p.id = mb.product_id
+            -- Mapping selection: timestamp-based versioning (select mapping valid at order creation time)
+            -- For package products, we need to join mapping based on both platform_product_id AND product_id
+            -- This ensures we get the correct mapping for each product in the package
             INNER JOIN barang_keluar bk ON bk.order_item_id = oi.id
-            INNER JOIN warehouse_stock ws ON ws.id = bk.warehouse_stock_id AND ws.product_id = p.id
+            INNER JOIN warehouse_stock ws ON ws.id = bk.warehouse_stock_id
+            INNER JOIN products p ON p.id = ws.product_id
+            LEFT JOIN product_initial_price_versions pipv ON pipv.product_id = p.id
+                AND pipv.valid_from <= o.created_at
+                AND (pipv.valid_until IS NULL OR pipv.valid_until > o.created_at)
+            LEFT JOIN mapping_barangs mb ON mb.id = (
+                SELECT mb2.id
+                FROM mapping_barangs mb2
+                WHERE mb2.platform_product_id = pp.id
+                  AND mb2.product_id = p.id
+                  AND COALESCE(mb2.valid_from, mb2.created_at) <= o.created_at
+                  AND (mb2.valid_until IS NULL OR mb2.valid_until >= o.created_at)
+                ORDER BY COALESCE(mb2.valid_from, mb2.created_at) DESC
+                LIMIT 1
+            )
             LEFT JOIN penerimaan_detail pd ON pd.id = ws.penerimaan_detail_id
+            INNER JOIN financial_summary fs ON fs.no_order = o.order_number
+            LEFT JOIN order_value ov ON ov.order_id = o.id
             {$whereClause}
         ";
     }
 
-    protected function buildCalcCTE()
+    /**
+     * Build final select - just format and select pre-calculated columns
+     */
+    protected function buildFinalSelect()
     {
-        // Calculate COGS: sequential percentage discounts (each applied to previous result) then subtract nominal discounts
-        // Formula: hpp * (1-d1/100) * (1-d2/100) * (1-d3/100) * (1-d4/100) * (1-d5/100) - sum(nominal_discounts)
-        return "
-            SELECT 
-                *,
-                -- Calculate COGS per unit from penerimaan detail
-                CASE 
-                    WHEN penerimaan_detail_id IS NOT NULL THEN
-                        GREATEST(0,
-                            COALESCE(harga_hpp, 0)
-                            * (1 - COALESCE(diskon_persen_1, 0) / 100.0)
-                            * (1 - COALESCE(diskon_persen_2, 0) / 100.0)
-                            * (1 - COALESCE(diskon_persen_3, 0) / 100.0)
-                            * (1 - COALESCE(diskon_persen_4, 0) / 100.0)
-                            * (1 - COALESCE(diskon_persen_5, 0) / 100.0)
-                            - COALESCE(diskon_nominal_1, 0)
-                            - COALESCE(diskon_nominal_2, 0)
-                            - COALESCE(diskon_nominal_3, 0)
-                            - COALESCE(diskon_nominal_4, 0)
-                            - COALESCE(diskon_nominal_5, 0)
-                        )
-                    ELSE 0
-                END as cogs_per_unit,
-                -- Calculate pricelist total (price * qty)
-                COALESCE(price, 0) * COALESCE(master_qty, 0) as pricelist_total,
-                -- Calculate proportion percent
-                CASE 
-                    WHEN total_order_value_from_products > 0 THEN
-                        (COALESCE(price, 0) * COALESCE(master_qty, 0) / total_order_value_from_products) * 100
-                    ELSE 0
-                END as proportion_percent
-            FROM base_data
-        ";
-    }
-
-    protected function finalSelect()
-    {
-        $sortBy = $this->request->input('sort', 'revenue_highest');
-        $sortColumn = $this->getSortColumn($sortBy);
-        $sortDirection = strpos($sortBy, 'lowest') !== false ? 'ASC' : 'DESC';
-
         return "
             SELECT 
                 order_number,
                 invoice_number,
                 order_date,
+                DATE_FORMAT(order_date, '%d/%m/%Y') as order_date_formatted,
                 platform_name as platform,
                 platform_product_name,
                 platform_product_variant as platform_product_variant,
                 platform_quantity,
                 sku,
                 product_name,
-                master_qty as quantity,
+                quantity,
                 price,
                 pricelist_total,
                 proportion_percent,
-                total_saldo_masuk as order_total_payment,
+                order_total_payment,
+                order_total_payment_without_ppn,
                 total_order_value_from_products,
-                -- Calculate revenue allocation (proportional saldo masuk per line)
-                (total_saldo_masuk * proportion_percent / 100) as revenue,
-                -- Calculate capital (cogs_per_unit * qty)
-                (cogs_per_unit * master_qty) as capital,
-                cogs_per_unit as modal_per_pcs,
-                -- Calculate payment per product per pcs (revenue / qty)
-                ((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) as payment_per_product_per_pcs,
-                -- Calculate payment per product per pcs without PPN
-                (((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) as payment_per_product_without_ppn,
-                -- Calculate unit cost (capital / qty)
-                ((cogs_per_unit * master_qty) / NULLIF(master_qty, 0)) as unit_cost,
-                -- Calculate profit per pcs (payment_per_product_without_ppn - unit_cost)
-                ((((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) - ((cogs_per_unit * master_qty) / NULLIF(master_qty, 0))) as profit_per_pcs,
-                -- Calculate gross profit total (profit_per_pcs * qty)
-                (((((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) - ((cogs_per_unit * master_qty) / NULLIF(master_qty, 0))) * master_qty) as gross_profit_total,
-                -- Calculate margin per pcs (%)
-                CASE 
-                    WHEN (((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) > 0 THEN
-                        (((((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) - ((cogs_per_unit * master_qty) / NULLIF(master_qty, 0))) / (((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11)) * 100
-                    ELSE 0
-                END as margin_per_pcs,
-                -- Calculate margin per item (%)
-                CASE 
-                    WHEN ((((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) * master_qty) > 0 THEN
-                        ((((((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) - ((cogs_per_unit * master_qty) / NULLIF(master_qty, 0))) * master_qty) / ((((total_saldo_masuk * proportion_percent / 100) / NULLIF(master_qty, 0)) / 1.11) * master_qty)) * 100
-                    ELSE 0
-                END as margin_per_item
-            FROM calculated_data
-            ORDER BY {$sortColumn} {$sortDirection}
+                revenue,
+                capital,
+                modal_per_pcs,
+                payment_per_product_per_pcs,
+                payment_per_product_without_ppn,
+                unit_cost,
+                profit_per_pcs,
+                gross_profit_total,
+                margin_per_pcs,
+                margin_per_item
+            FROM final_data
         ";
     }
 
@@ -431,7 +722,7 @@ class SalesByMasterProductQuery
         return $sortMap[$sortBy] ?? 'revenue';
     }
 
-    protected function getFilters()
+    public function getFilters()
     {
         $startDate = $this->request->filled('start_date') 
             ? $this->request->input('start_date') 
@@ -464,16 +755,16 @@ class SalesByMasterProductQuery
         return [
             'start_date' => $startDate,
             'end_date' => $endDate,
-            'platform_id' => $this->request->input('platform_id'),
-            'order_number' => $this->request->input('order_number'),
-            'search' => $this->request->input('search'),
-            'brands' => (array) $this->request->input('brands', []),
-            'sub_brands' => (array) $this->request->input('sub_brands', []),
-            'product_categories' => (array) $this->request->input('product_categories', []),
-            'product_types' => (array) $this->request->input('product_types', []),
-            'product_sizes' => (array) $this->request->input('product_sizes', []),
-            'product_variants' => (array) $this->request->input('product_variants', []),
+            'platform_id' => $this->request->filled('platform_id') ? (int) $this->request->input('platform_id') : null,
+            'order_number' => $this->request->filled('order_number') ? trim($this->request->input('order_number')) : null,
+            'search' => $this->request->filled('search') ? trim($this->request->input('search')) : null,
+            'outstanding_status' => $this->request->filled('outstanding_status') ? $this->request->input('outstanding_status') : null,
+            'brands' => array_filter((array) $this->request->input('brands', []), function($id) { return !empty($id); }),
+            'sub_brands' => array_filter((array) $this->request->input('sub_brands', []), function($id) { return !empty($id); }),
+            'product_categories' => array_filter((array) $this->request->input('product_categories', []), function($id) { return !empty($id); }),
+            'product_types' => array_filter((array) $this->request->input('product_types', []), function($id) { return !empty($id); }),
+            'product_sizes' => array_filter((array) $this->request->input('product_sizes', []), function($id) { return !empty($id); }),
+            'product_variants' => array_filter((array) $this->request->input('product_variants', []), function($id) { return !empty($id); }),
         ];
     }
 }
-

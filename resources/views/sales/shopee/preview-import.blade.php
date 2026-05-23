@@ -132,7 +132,7 @@
                                             </div>
                                             <div>
                                                 <p class="mb-0 small text-muted">Produk Belum Terpetakan</p>
-                                                <h5 class="mb-0 fw-bold">{{ count($unmappedProducts) }}</h5>
+                                                <h5 class="mb-0 fw-bold">{{ count($unmappedProducts ?? []) }}</h5>
                                             </div>
                                         </div>
                                         <div class="d-flex align-items-center">
@@ -178,14 +178,26 @@
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                             <p>Beberapa order dengan produk yang sama dalam file akan di-skip:</p>
-                            <div class="row">
-                                @foreach($duplicateOrdersInFile as $duplicate)
-                                    <div class="col-md-6 col-sm-12">
-                                        <span class="badge bg-warning text-dark border mb-2 py-2 px-3 w-100 text-start">
-                                            <i class="fas fa-tag me-2"></i>{{ $duplicate['order_number'] }} - {{ $duplicate['product_name'] }}
-                                        </span>
-                                    </div>
-                                @endforeach
+                            
+                            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered table-hover mb-0 bg-white">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th style="width: 180px;">No. Order</th>
+                                            <th>Nama Produk</th>
+                                            <th style="width: 80px;" class="text-center">Baris</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($duplicateOrdersInFile as $duplicate)
+                                            <tr>
+                                                <td class="fw-bold align-middle">{{ $duplicate['order_number'] }}</td>
+                                                <td class="align-middle">{{ $duplicate['product_name'] }}</td>
+                                                <td class="text-center align-middle">{{ $duplicate['row'] ?? '-' }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     @endif
@@ -198,24 +210,36 @@
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                             <p><strong>Beberapa nomor order sudah ada di database dan akan di-skip:</strong></p>
-                            <div class="row">
-                                @foreach($duplicateOrdersInDatabase as $duplicate)
-                                    <div class="col-md-6 col-sm-12 mb-2">
-                                        <div class="duplicate-order-item">
-                                            <span class="badge bg-warning text-dark border py-2 px-3 w-100 text-start d-block">
-                                                <i class="fas fa-skip-forward me-2"></i>
-                                                <span class="duplicate-order-text">
-                                                    {{ $duplicate['order_number'] }} - {{ $duplicate['product_name'] }}
-                                                </span>
-                                            </span>
-                                        </div>
-                                    </div>
-                                @endforeach
+                            
+                            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered table-hover mb-0 bg-white">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th style="width: 180px;">No. Order</th>
+                                            <th>Nama Produk</th>
+                                            <th style="width: 80px;" class="text-center">Baris</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($duplicateOrdersInDatabase as $duplicate)
+                                            <tr>
+                                                <td class="fw-bold align-middle">{{ $duplicate['order_number'] }}</td>
+                                                <td class="align-middle">{{ $duplicate['product_name'] }}</td>
+                                                <td class="text-center align-middle">{{ $duplicate['row'] ?? '-' }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     @endif
                    
-                    @if(!empty($unmappedProducts))
+                    @php
+                        // Ensure unmappedProducts is always an array
+                        $unmappedProducts = $unmappedProducts ?? [];
+                        $unmappedProducts = is_array($unmappedProducts) ? $unmappedProducts : [];
+                    @endphp
+                    @if(!empty($unmappedProducts) && count($unmappedProducts) > 0)
                         <div class="alert alert-warning alert-dismissible fade show" role="alert">
                             <h5 class="alert-heading d-flex align-items-center">
                                 <i class="fas fa-exclamation-triangle me-2"></i> Perhatian!
@@ -232,30 +256,46 @@
                                 @foreach($unmappedProducts as $product)
                                     @php
                                         // Handle both array format (new) and string format (backward compatibility)
-                                        if (is_array($product)) {
-                                            $productName = $product['name'];
-                                            $variant = $product['variant'] ?? '';
-                                            $fullProductName = $product['full_name'];
-                                        } else {
-                                            // Fallback to old parsing method for backward compatibility
-                                            $productParts = explode(' - ', $product, 2);
-                                            $productName = $productParts[0];
-                                            $variant = isset($productParts[1]) ? $productParts[1] : '';
-                                            $fullProductName = $product;
+                                        $productName = '';
+                                        $variant = '';
+                                        $fullProductName = '';
+                                        
+                                        try {
+                                            if (is_array($product)) {
+                                                $productName = $product['name'] ?? $product['nama_barang'] ?? '';
+                                                $variant = $product['variant'] ?? $product['variasi'] ?? '';
+                                                $fullProductName = $product['full_name'] ?? ($productName . ($variant ? ' - ' . $variant : ''));
+                                            } else {
+                                                // Fallback to old parsing method for backward compatibility
+                                                $productParts = explode(' - ', $product, 2);
+                                                $productName = $productParts[0] ?? '';
+                                                $variant = isset($productParts[1]) ? $productParts[1] : '';
+                                                $fullProductName = $product;
+                                            }
+                                            
+                                            // Ensure productName is not empty
+                                            if (empty($productName)) {
+                                                continue;
+                                            }
+                                        } catch (\Exception $e) {
+                                            \Log::error('Error parsing unmapped product: ' . $e->getMessage());
+                                            continue;
                                         }
                                     @endphp
-                                    <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                                        <div class="d-flex flex-column">
-                                            <span class="fw-bold">{{ $productName }}</span>
-                                            @if($variant)
-                                                <small class="text-muted">Variant: {{ $variant }}</small>
-                                            @endif
+                                    @if(!empty($productName))
+                                        <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div class="d-flex flex-column">
+                                                <span class="fw-bold">{{ $productName }}</span>
+                                                @if($variant)
+                                                    <small class="text-muted">Variant: {{ $variant }}</small>
+                                                @endif
+                                            </div>
+                                            <a href="{{ route('master.mapping.index', ['search' => $productName]) }}" 
+                                                class="btn btn-sm btn-warning" target="_blank">
+                                                <i class="fas fa-link me-1"></i> Mapping
+                                            </a>
                                         </div>
-                                        <a href="{{ route('master.mapping.index', ['search' => $productName]) }}" 
-                                            class="btn btn-sm btn-warning" target="_blank">
-                                            <i class="fas fa-link me-1"></i> Mapping
-                                        </a>
-                                    </div>
+                                    @endif
                                 @endforeach
                             </div>
                             
@@ -651,7 +691,7 @@
                                             @if(!empty($insufficientStockProducts))
                                                 <li><strong>❌ Stok tidak mencukupi:</strong> {{ count($insufficientStockProducts) }} produk kekurangan stok (TIDAK BISA DILANJUTKAN)</li>
                                             @endif
-                                            @if(!empty($unmappedProducts))
+                                            @if(!empty($unmappedProducts) && count($unmappedProducts) > 0)
                                                 <li><strong>Mapping produk:</strong> {{ count($unmappedProducts) }} produk belum di-mapping</li>
                                             @endif
                                             @if(!empty($mappingErrors))
