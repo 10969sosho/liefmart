@@ -1,0 +1,22 @@
+{
+    "name": "liefmart/shared",
+    "description": "Shared code for Liefmart and HGN applications",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Shared\\": "src/"
+        },
+        "files": [
+            "src/Helpers/MainCategoryHelper.php",
+            "src/Helpers/NumberFormatter.php"
+        ]
+    },
+    "require": {
+        "php": "^8.0.2",
+        "illuminate/support": "^9.0",
+        "illuminate/database": "^9.0"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

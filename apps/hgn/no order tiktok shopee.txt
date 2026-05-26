@@ -1,0 +1,20 @@
+LAPORAN TRANSAKSI BERMASALAH (GABUNGAN TIKTOK & SHOPEE)
+Tanggal Generate: 2026-02-28 11:36:59
+==========================================================================================================================
+Platform        | No Order                  | Nominal Fix     | Saldo Masuk     | Selisih         | Status Retur (Sebagian?)      
+==========================================================================================================================
+TikTok          | 582203016941897116        |          67.006 |         -76.594 |         143.600 | Retur Lebih (2.00/0.00)   (ini benar retur full) jadi benar di finance hilang
+TikTok          | 581309431910270527        |          40.798 |         -50.002 |          90.800 | Tidak Ada Retur           (ini seharusnya retur full, tapi ivan blm retur) (SUDAH RETUR)   
+TikTok          | 581394005893941024        |          20.638 |         -44.162 |          64.800 | Tidak Ada Retur           (ini seharusnya retur full, tapi ivan blm retur) (SUDAH RETUR)    
+TikTok          | 582216292359374580        |          18.909 |         -45.090 |          63.999 | Retur Lebih (3.00/0.00)   (ini benar retur full) jadi benar di finance hilang
+TikTok          | 581278432174704264        |          45.910 |         -17.690 |          63.600 | Tidak Ada Retur           (ini seharusnya retur Sebagian, tapi ivan blm retur) (SUDAH RETUR)   
+TikTok          | 581307982673184093        |          18.910 |         -44.090 |          63.000 | Tidak Ada Retur           (ini seharusnya retur full, tapi ivan blm retur)     (SUDAH RETUR)
+TikTok          | 582256764972336386        |          20.637 |         -34.162 |          54.799 | Tidak Ada Retur           (transaksi ini masih aktif)
+TikTok          | 582054945821197530        |          87.595 |          48.715 |          38.880 | Retur Lebih (9.00/0.00)   (ini benar retur full) jadi benar di finance hilang    
+TikTok          | 582202753812366518        |          36.215 |          22.409 |          13.806 | Retur Lebih (6.00/0.00)   (ini benar retur full) jadi benar di finance hilang    
+TikTok          | 580185321229944795        |          77.133 |          81.114 |          -3.981 | Retur Lebih (8.00/0.00)   (ini benar retur full) jadi benar di finance hilang    
+Shopee          | 260110NHN2AF4G            |         200.086 |         143.206 |          56.880 | Retur Lebih (18.00/0.00)  (ini benar retur full) jadi benar di finance hilang    
+Shopee          | 251109A7FT22GC            |          50.021 |          22.421 |          27.600 | Tidak Ada Retur           (ini seharusnya retur Sebagian, tapi ivan blm retur) (SUDAH RETUR)
+Shopee          | 250913CAD8A4A2            |          26.880 |               0 |          26.880 | Retur Lebih (12.00/0.00)  (ini benar retur full) jadi benar di finance hilang     
+Shopee          | 2601046U19Q4G1A           |          20.425 |          35.425 |         -15.000 | Tidak Ada Retur           (ini coba tak tanyakan rigel dulu mas) (SUDAH AMAN)
+==========================================================================================================================

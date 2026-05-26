@@ -1,0 +1,430 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+
+class InvoiceSequence extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'year_month',
+        'counter',
+        'last_updated',
+        'category_type',  // Menambahkan kategori (KOPI, SKINCARE)
+        'sales_type',     // Menambahkan jenis penjualan (ONLINE, OFFLINE)
+        'tax_status'      // Menambahkan status pajak (PKP, NON PKP)
+    ];
+
+    protected $casts = [
+        'last_updated' => 'datetime',
+    ];
+
+    // Konstanta untuk kategori
+    const CATEGORY_KOPI = 'KOPI';
+    const CATEGORY_SKINCARE = 'SKINCARE';
+    
+    // Konstanta untuk jenis penjualan
+    const SALES_ONLINE = 'ONLINE';
+    const SALES_OFFLINE = 'OFFLINE';
+    
+    // Konstanta untuk status pajak
+    const TAX_PKP = 'PKP';
+    const TAX_NON_PKP = 'NON_PKP';
+
+    /**
+     * Mendapatkan nomor invoice berikutnya untuk kombinasi kategori, jenis penjualan, dan status pajak
+     * dengan counter terpisah per kombinasi berdasarkan tanggal ORDER
+     * 
+     * @param string $category Kategori (KOPI/SKINCARE)
+     * @param string $salesType Jenis penjualan (ONLINE/OFFLINE)
+     * @param string $taxStatus Status pajak (PKP/NON_PKP)
+     * @param string $orderDate Tanggal ORDER (format: Y-m-d)
+     * @return array Array berisi nomor invoice dan counter
+     */
+    public static function getNextInvoiceNumber($category, $salesType, $taxStatus, $orderDate = null)
+    {
+        // Tanggal order WAJIB ada - TIDAK BOLEH NULL
+        if (!$orderDate) {
+            throw new \Exception("Tanggal order wajib ada untuk generate invoice number.");
+        }
+        
+        // Format tahun-bulan berdasarkan tanggal ORDER (YYMM) - Contoh: 2601 untuk Januari 2026
+        $yearMonth = Carbon::parse($orderDate)->format('ym');
+        
+        // Menggunakan transaksi database untuk memastikan counter tidak duplikat
+        $counter = DB::transaction(function() use ($yearMonth, $category, $salesType, $taxStatus) {
+            // SMART INVOICE SEQUENCE - Ambil semua nomor invoice dari SEMUA tabel untuk bulan/kategori/tipe/status ini
+            // HARUS dilakukan SEBELUM lock untuk memastikan konsistensi
+            $config = config('invoice.format');
+            
+            // Determine suffix based on sales type
+            if ($salesType === self::SALES_OFFLINE) {
+                $suffix = $config['suffix_offline'] ?? 'AMP-KOS';
+            } else {
+                $suffix = $config['suffix_online'] ?? 'AMP-OL';
+            }
+            
+            $taxCode = ($taxStatus === self::TAX_PKP) ? $config['pkp_tax_code'] : $config['non_pkp_tax_code'];
+            $pattern = "%/$yearMonth/$suffix/$taxCode";
+            
+            // Ambil dari semua tabel yang relevan
+            $existingInvoices = collect();
+            
+            // TikTok
+            $tiktokInvoices = \App\Models\TiktokFinancialTransaction::where('no_invoice', 'like', $pattern)
+                ->pluck('no_invoice');
+            $existingInvoices = $existingInvoices->concat($tiktokInvoices);
+            
+            // Shopee
+            $shopeeInvoices = \App\Models\ShopeeFinancialTransaction::where('no_invoice', 'like', $pattern)
+                ->pluck('no_invoice');
+            $existingInvoices = $existingInvoices->concat($shopeeInvoices);
+            
+            // Shopee2 (Trubleu)
+            try {
+                $shopee2Invoices = \App\Models\Shopee2FinancialTransaction::where('no_invoice', 'like', $pattern)
+                    ->pluck('no_invoice');
+                $existingInvoices = $existingInvoices->concat($shopee2Invoices);
+            } catch (\Exception $e) {
+                // Table might not exist
+            }
+            
+            // Finance Offline (OFFLINE sales) - PENTING: Cek invoice offline untuk mencegah duplikat
+            if ($salesType === self::SALES_OFFLINE) {
+                try {
+                    $offlineInvoices = \App\Models\FinanceOffline::withoutGlobalScopes()
+                        ->where('invoice_number', 'like', $pattern)
+                        ->pluck('invoice_number');
+                    $existingInvoices = $existingInvoices->concat($offlineInvoices);
+                } catch (\Exception $e) {
+                    // Table might not exist
+                    \Log::warning("Error querying finance_offline table: " . $e->getMessage());
+                }
+            }
+            
+            // Extract nomor urut dari invoice number
+            // Format adalah 0001 (4 digit) untuk semua jenis
+            $counterLength = 4;
+            $existing = $existingInvoices
+                ->map(function($v) use ($counterLength) {
+                    // Ambil bagian counter dari invoice number (sebelum slash pertama)
+                    // Format invoice sekarang: {counter}/{yearMonth}/AMP/{taxCode}
+                    $parts = explode('/', $v);
+                    if (isset($parts[0])) {
+                        return intval($parts[0]);
+                    }
+                    // Fallback: ambil dari substring jika format tidak sesuai
+                    return intval(substr($v, 0, $counterLength));
+                })
+                ->unique()
+                ->sort()
+                ->values();
+            
+            // Sekarang LOCK tabel sequence untuk mencegah race condition
+            $sequenceCounter = self::lockForUpdate()
+                ->where('year_month', $yearMonth)
+                ->where('category_type', $category)
+                ->where('sales_type', $salesType)
+                ->where('tax_status', $taxStatus)
+                ->first();
+            
+            if (!$sequenceCounter) {
+                $sequenceCounter = new self([
+                    'year_month' => $yearMonth,
+                    'category_type' => $category,
+                    'sales_type' => $salesType,
+                    'tax_status' => $taxStatus,
+                    'counter' => 0,
+                    'last_updated' => now()
+                ]);
+                $sequenceCounter->save();
+            }
+            
+            // Ambil counter saat ini dari database (setelah lock untuk mencegah race condition)
+            $currentCounter = $sequenceCounter->counter ?? 0;
+            
+            // Hitung counter berikutnya
+            if ($existing->isEmpty()) {
+                // Jika tidak ada invoice yang ada → mulai dari 1 atau currentCounter + 1
+                $nextCounter = max(1, $currentCounter + 1);
+            } else {
+                // Ambil nilai maksimum dari existing invoices
+                $maxFromExisting = $existing->max();
+                
+                // Gunakan nilai terbesar antara counter di DB atau max existing, lalu increment
+                // Ini memastikan tidak ada duplikat meskipun ada gap
+                $nextCounter = max($currentCounter, $maxFromExisting) + 1;
+                
+                // Optional: Cek gap untuk isi nomor yang hilang (tapi skip untuk sekarang karena bisa kompleks)
+                // Jika ingin mengisi gap, bisa diaktifkan kode di bawah:
+                /*
+                $expected = 1;
+                foreach ($existing as $num) {
+                    if ($num != $expected) {
+                        // Ada gap, gunakan nomor gap
+                        $nextCounter = $expected;
+                        break;
+                    }
+                    $expected++;
+                }
+                if ($expected > $existing->max()) {
+                    // Tidak ada gap, increment dari max
+                    $nextCounter = $maxFromExisting + 1;
+                }
+                */
+            }
+            
+            // Update counter di tabel sequence agar sinkron
+            $sequenceCounter->counter = $nextCounter;
+            $sequenceCounter->last_updated = now();
+            $sequenceCounter->save();
+            
+            return $nextCounter;
+        });
+        
+        // Format nomor invoice berdasarkan kombinasi kategori, jenis penjualan dan status pajak
+        $invoiceNumber = self::formatInvoiceNumber($category, $salesType, $taxStatus, $yearMonth, $counter);
+        
+        return [
+            'invoice_number' => $invoiceNumber,
+            'counter' => $counter
+        ];
+    }
+    
+    /**
+     * Mendapatkan nomor invoice yang sudah ada untuk kombinasi tertentu
+     * 
+     * @param string $yearMonth Tahun dan bulan format YYMM
+     * @param string $category Kategori (KOPI/SKINCARE)
+     * @param string $salesType Jenis penjualan (ONLINE/OFFLINE)
+     * @param string $taxStatus Status pajak (PKP/NON_PKP)
+     * @return array Array nomor invoice yang sudah ada
+     */
+    private static function getExistingInvoiceNumbers($yearMonth, $category, $salesType, $taxStatus)
+    {
+        try {
+            // Cari semua invoice yang sudah ada untuk kombinasi ini
+            $existingInvoices = collect();
+            
+            // Cek di semua tabel financial transaction
+            $tables = [
+                'tiktok_financial_transactions',
+                'shopee_financial_transactions', 
+            ];
+            
+            // Buat pattern untuk mencari invoice berdasarkan kombinasi
+            // Format invoice: {counter}/{yearMonth}/{suffix}/{taxCode}
+            // Contoh: 0001/2503/AMP/01
+            
+            // Determine suffix based on sales type
+            $config = config('invoice.format');
+            if ($salesType === self::SALES_OFFLINE) {
+                $suffix = $config['suffix_offline'] ?? 'AMP-KOS';
+            } else {
+                $suffix = $config['suffix_online'] ?? 'AMP-OL';
+            }
+            
+            $pattern = '%/' . $yearMonth . '/' . $suffix . '/%';
+            
+            foreach ($tables as $table) {
+                try {
+                    $invoices = DB::table($table)
+                        ->where('no_invoice', 'like', $pattern)
+                        ->pluck('no_invoice');
+                        
+                    $existingInvoices = $existingInvoices->concat($invoices);
+                } catch (\Exception $e) {
+                    // Skip table if it doesn't exist or has issues
+                    \Log::warning("Error querying table {$table}: " . $e->getMessage());
+                    continue;
+                }
+            }
+            
+            // Extract nomor urut dari invoice number
+            $numbers = $existingInvoices->map(function($invoice) {
+                // Format: 0001/2503/AMP/01
+                // Ambil bagian pertama sebagai nomor urut
+                $parts = explode('/', $invoice);
+                if (count($parts) >= 1) {
+                    $counter = $parts[0];
+                    return intval($counter);
+                }
+                return null;
+            })->filter()->sort()->values();
+            
+            return $numbers->toArray();
+        } catch (\Exception $e) {
+            \Log::error("Error in getExistingInvoiceNumbers: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Format nomor invoice berdasarkan kombinasi kategori, jenis penjualan, dan status pajak
+     * 
+     * @param string $category Kategori (KOPI/SKINCARE)
+     * @param string $salesType Jenis penjualan (ONLINE/OFFLINE)
+     * @param string $taxStatus Status pajak (PKP/NON_PKP)
+     * @param string $yearMonth Tahun dan bulan format YYMM
+     * @param int $counter Nomor urut
+     * @return string Nomor invoice terformat
+     */
+    private static function formatInvoiceNumber($category, $salesType, $taxStatus, $yearMonth, $counter)
+    {
+        // Ambil konfigurasi dari config
+        $config = config('invoice.format');
+        
+        // Format counter (4 digit untuk semua jenis)
+        $formattedCounter = sprintf('%0' . $config['counter_length'] . 'd', $counter);
+        
+        // Format suffix dari konfigurasi
+        if ($salesType === self::SALES_OFFLINE) {
+            $suffix = $config['suffix_offline'] ?? 'AMP-KOS';
+        } else {
+            $suffix = $config['suffix_online'] ?? 'AMP-OL';
+        }
+        
+        // Tambahkan kode pajak dari konfigurasi
+        $taxCode = ($taxStatus === self::TAX_PKP) ? $config['pkp_tax_code'] : $config['non_pkp_tax_code'];
+        
+        // Format: {counter}/{yearMonth}/{suffix}/{taxCode}
+        // Contoh: 0001/2601/AMP/01 untuk PKP, 0001/2601/AMP/02 untuk NON PKP
+        return $formattedCounter . '/' . $yearMonth . '/' . $suffix . '/' . $taxCode;
+    }
+
+    /**
+     * Mendapatkan batch invoice numbers untuk banyak transaksi
+     * Method ini digunakan untuk menghasilkan banyak nomor invoice dalam satu transaksi database
+     * 
+     * @param string $category Kategori (KOPI/SKINCARE)
+     * @param string $salesType Jenis penjualan (ONLINE/OFFLINE)
+     * @param string $taxStatus Status pajak (PKP/NON_PKP)
+     * @param int $count Jumlah nomor invoice yang diperlukan
+     * @param string $orderDate Tanggal ORDER (format: Y-m-d)
+     * @return array Array berisi nomor-nomor invoice
+     */
+    public static function getBatchInvoiceNumbers($category, $salesType, $taxStatus, $count, $orderDate = null)
+    {
+        if ($count <= 0) {
+            return [];
+        }
+
+        // Jika tidak ada tanggal ORDER, gunakan tanggal saat ini
+        if (!$orderDate) {
+            $orderDate = Carbon::now()->format('Y-m-d');
+        }
+        
+        // Format tahun-bulan berdasarkan tanggal ORDER (YYMM)
+        $yearMonth = Carbon::parse($orderDate)->format('ym');
+        
+        // Menggunakan transaksi database untuk memastikan counter tidak duplikat
+        return DB::transaction(function() use ($yearMonth, $category, $salesType, $taxStatus, $count) {
+            // Dapatkan atau buat record counter untuk kombinasi spesifik
+            $sequenceCounter = self::firstOrCreate(
+                [
+                    'year_month' => $yearMonth,
+                    'category_type' => $category,
+                    'sales_type' => $salesType,
+                    'tax_status' => $taxStatus
+                ],
+                [
+                    'counter' => 0,
+                    'last_updated' => now()
+                ]
+            );
+            
+            $startCounter = $sequenceCounter->counter + 1;
+            $endCounter = $startCounter + $count - 1;
+            
+            // Update counter
+            $sequenceCounter->counter = $endCounter;
+            $sequenceCounter->last_updated = now();
+            $sequenceCounter->save();
+            
+            // Generate invoice numbers
+            $invoiceNumbers = [];
+            for ($i = $startCounter; $i <= $endCounter; $i++) {
+                $invoiceNumbers[] = [
+                    'invoice_number' => self::formatInvoiceNumber($category, $salesType, $taxStatus, $yearMonth, $i),
+                    'counter' => $i
+                ];
+            }
+            
+            return $invoiceNumbers;
+        });
+    }
+
+    /**
+     * Get the next invoice number based on tax ID (backward compatibility)
+     * 
+     * @param int $taxId The tax ID for determining the suffix format
+     * @param bool $isOnline Whether this is an online or offline transaction
+     * @param string $orderDate Tanggal ORDER (format: Y-m-d)
+     * @return array Returns [invoice_number, counter]
+     */
+    public static function getNextInvoiceNumberByTaxId($taxId, $isOnline = true, $orderDate = null)
+    {
+        $categoryType = '';
+        $salesType = '';
+        $taxStatus = '';
+        
+        switch($taxId) {
+            // KOPI category
+            case 1: 
+                $categoryType = self::CATEGORY_KOPI;
+                $salesType = self::SALES_ONLINE;
+                $taxStatus = self::TAX_PKP;
+                break;
+            case 2: 
+                $categoryType = self::CATEGORY_KOPI;
+                $salesType = self::SALES_ONLINE;
+                $taxStatus = self::TAX_NON_PKP;
+                break;
+            case 5: 
+                $categoryType = self::CATEGORY_KOPI;
+                $salesType = self::SALES_OFFLINE;
+                $taxStatus = self::TAX_PKP;
+                break;
+            case 6: 
+                $categoryType = self::CATEGORY_KOPI;
+                $salesType = self::SALES_OFFLINE;
+                $taxStatus = self::TAX_NON_PKP;
+                break;
+            
+            // SKINCARE category
+            case 3: 
+                $categoryType = self::CATEGORY_SKINCARE;
+                $salesType = self::SALES_ONLINE;
+                $taxStatus = self::TAX_PKP;
+                break;
+            case 4: 
+                $categoryType = self::CATEGORY_SKINCARE;
+                $salesType = self::SALES_ONLINE;
+                $taxStatus = self::TAX_NON_PKP;
+                break;
+            case 7: 
+                $categoryType = self::CATEGORY_SKINCARE;
+                $salesType = self::SALES_OFFLINE;
+                $taxStatus = self::TAX_PKP;
+                break;
+            case 8: 
+                $categoryType = self::CATEGORY_SKINCARE;
+                $salesType = self::SALES_OFFLINE;
+                $taxStatus = self::TAX_NON_PKP;
+                break;
+            
+            default: 
+                $categoryType = self::CATEGORY_SKINCARE;
+                $salesType = self::SALES_ONLINE;
+                $taxStatus = self::TAX_PKP;
+                break;
+        }
+        
+        return self::getNextInvoiceNumber($categoryType, $salesType, $taxStatus, $orderDate);
+    }
+} 

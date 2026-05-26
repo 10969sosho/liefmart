@@ -1,65 +1,35 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Environment
+.env
+.env.*
 
-# testing
-/coverage
-
-# production
-/build
-/dist
-
-# misc
+# IDE / OS
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# IDE
-.idea/
+Thumbs.db
 .vscode/
+.idea/
 *.swp
 *.swo
 
-/public/build
-/public/hot
-/public/storage
-/storage/*.key
-/vendor
-.env
-.env.backup
-.env.production
-.phpunit.result.cache
-Homestead.json
-Homestead.yaml
-auth.json
+# Dependencies
+vendor/
+node_modules/
 
-/.fleet
+# Laravel app specific
+apps/*/storage/framework/cache/data/*
+apps/*/storage/framework/cache/laravel-excel/*
+apps/*/storage/framework/sessions/*
+apps/*/storage/framework/views/*
+apps/*/storage/framework/testing/*
+apps/*/storage/logs/*
+apps/*/storage/debugbar/*
+*.pid
+*.seed
+*~
 
-# Archive files
-*.zip
-*.rar
-*.tar
-*.tar.gz
-*.7z
-
-# Backup files
-*.bak
-*.backup
-
-# Log files
+# Logs
 *.log
 
-# OS generated files
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Compiled files
+*.class
+*.o
+*.pyc
