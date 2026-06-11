@@ -1023,12 +1023,6 @@ class ShopeeImport implements ToCollection, WithMultipleSheets
                         
                         \Log::info("Found platform product ID: {$platformProduct->id}");
 
-                        // Verifikasi stok terlebih dahulu
-                        $checkStockResult = $this->checkStock($platformProduct, $item['qty']);
-                        if (! $checkStockResult['success']) {
-                            throw new \Exception("Stok tidak cukup untuk produk {$checkStockResult['product_name']}. Dibutuhkan: {$checkStockResult['required']}, Tersedia: {$checkStockResult['available']}");
-                        }
-
                         // Buat order item
                         $orderItem = new OrderItem([
                             'order_id' => $order->id,

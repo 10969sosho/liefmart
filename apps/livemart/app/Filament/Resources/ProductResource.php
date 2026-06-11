@@ -26,6 +26,8 @@ class ProductResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 10;
+
     protected static ?string $navigationLabel = 'Produk';
 
     protected static ?string $modelLabel = 'Produk';
@@ -187,6 +189,11 @@ class ProductResource extends Resource
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()->withoutGlobalScope('mainCategory');
     }
 
     public static function getRelations(): array

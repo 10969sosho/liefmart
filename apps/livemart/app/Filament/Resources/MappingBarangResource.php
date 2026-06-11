@@ -20,6 +20,8 @@ class MappingBarangResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 31;
+
     protected static ?string $navigationLabel = 'Mapping Barang';
 
     protected static ?string $modelLabel = 'Mapping Barang';

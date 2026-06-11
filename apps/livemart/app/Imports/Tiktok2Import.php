@@ -1053,12 +1053,6 @@ class Tiktok2Import implements ToCollection, WithMultipleSheets
                             throw new \Exception("Produk '$fullProductName' tidak ditemukan di database.");
                         }
 
-                        // Verifikasi stok terlebih dahulu
-                        $checkStockResult = $this->checkStock($platformProduct, $item['qty']);
-                        if (!$checkStockResult['success']) {
-                            throw new \Exception("Stok tidak cukup untuk produk {$checkStockResult['product_name']}");
-                        }
-
                         // Ensure price is a proper numeric value
                         $priceValue = $item['harga_setelah_diskon'];
                         if (is_string($priceValue)) {

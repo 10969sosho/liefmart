@@ -21,6 +21,13 @@ class BrandResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 11;
+
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()->withoutGlobalScope('mainCategory');
+    }
+
     protected static ?string $navigationLabel = 'Merek';
 
     protected static ?string $modelLabel = 'Merek';

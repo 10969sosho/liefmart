@@ -21,6 +21,8 @@ class BankAccountResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 41;
+
     protected static ?string $navigationLabel = 'Rekening Bank';
 
     protected static ?string $modelLabel = 'Rekening Bank';

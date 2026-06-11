@@ -20,6 +20,8 @@ class PlatformProductResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 30;
+
     protected static ?string $navigationLabel = 'Barang Platform';
 
     protected static ?string $modelLabel = 'Barang Platform';

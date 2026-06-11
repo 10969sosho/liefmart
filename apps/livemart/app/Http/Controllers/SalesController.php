@@ -198,17 +198,26 @@ class SalesController extends Controller
             $query->where('order_number', 'like', '%' . $request->order_number . '%');
         }
         
-        // Filter by main category from session - modified to be more inclusive
+        // Filter by main category from session - pre-compute IDs for performance
         if (session()->has('main_category_id')) {
             $mainCategoryId = session('main_category_id');
-            // Apply a more lenient filter that will include orders without complete relationship chain
-            $query->where(function($query) use ($mainCategoryId) {
-                $query->whereHas('orderItems.warehouseStock.product', function($q) use ($mainCategoryId) {
-                    $q->where('main_category_id', $mainCategoryId);
-                })
-                // Add an OR condition to include orders where the relationship chain might not be complete
-                ->orWhereDoesntHave('orderItems.warehouseStock');
-            });
+            
+            // Get order IDs matching the category via a single non-correlated query
+            $matchingOrderIds = \App\Models\OrderItem::whereHas('warehouseStock.product', function($q) use ($mainCategoryId) {
+                $q->where('main_category_id', $mainCategoryId);
+            })->pluck('order_id');
+            
+            // Get order IDs with incomplete relationship chain (no warehouse stock)
+            $noStockOrderIds = \App\Models\OrderItem::whereDoesntHave('warehouseStock')->pluck('order_id');
+            
+            $allOrderIds = $matchingOrderIds->merge($noStockOrderIds)->unique()->values();
+            
+            if ($allOrderIds->isNotEmpty()) {
+                $query->whereIn('id', $allOrderIds);
+            } else {
+                // No matching orders at all, return empty result
+                $query->whereRaw('1 = 0');
+            }
         }
             
         // Fetch paginated orders

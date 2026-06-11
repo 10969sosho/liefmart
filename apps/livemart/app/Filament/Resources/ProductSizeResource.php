@@ -21,6 +21,8 @@ class ProductSizeResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 22;
+
     protected static ?string $navigationLabel = 'Ukuran Produk';
 
     protected static ?string $modelLabel = 'Ukuran Produk';

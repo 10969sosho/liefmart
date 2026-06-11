@@ -21,6 +21,13 @@ class TaxCategoryResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 42;
+
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()->withoutGlobalScope('mainCategory');
+    }
+
     protected static ?string $navigationLabel = 'Kategori Pajak';
 
     protected static ?string $modelLabel = 'Kategori Pajak';

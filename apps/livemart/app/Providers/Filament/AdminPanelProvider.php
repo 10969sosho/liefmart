@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use Filament\Enums\ThemeMode;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -10,6 +11,7 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Facades\FilamentAsset;
 use Filament\Widgets;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -27,12 +29,39 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('Liefmart')
+            ->brandName('🟣 Liefmart')
             ->favicon(asset('favicon.ico'))
             ->sidebarCollapsibleOnDesktop()
+            ->darkMode(true)
+            ->defaultThemeMode(ThemeMode::System)
             ->colors([
                 'primary' => Color::Indigo,
             ])
+            ->renderHook(
+                'panels::body.start',
+                fn (): string => '<style>
+                    :root {
+                        --sidebar-bg: #fafaff;
+                        --main-bg: #ffffff;
+                        --topbar-border: rgba(99, 102, 241, 0.12);
+                    }
+                    .dark {
+                        --sidebar-bg: #1e1e2a;
+                        --main-bg: #181825;
+                        --topbar-border: rgba(99, 102, 241, 0.2);
+                    }
+                    .fi-sidebar {
+                        border-right: 1px solid var(--topbar-border);
+                        background-color: var(--sidebar-bg);
+                    }
+                    .fi-main {
+                        background-color: var(--main-bg);
+                    }
+                    .fi-topbar {
+                        border-bottom: 1px solid var(--topbar-border);
+                    }
+                </style>'
+            )
             ->navigationGroups(['Transaksi', 'Master Data', 'Keuangan', 'Laporan'])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
@@ -54,6 +83,8 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+                \App\Http\Middleware\EnsureDynamicPaths::class,
+                \App\Http\Middleware\SetFilamentSession::class,
             ])
             ->authMiddleware([
                 Authenticate::class,

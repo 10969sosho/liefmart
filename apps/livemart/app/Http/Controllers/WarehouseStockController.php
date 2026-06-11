@@ -1283,7 +1283,7 @@ class WarehouseStockController extends Controller
 
         $totalPenyesuaianQty = 0;
         foreach ($penyesuaianStocks as $wsId) {
-            $wsQty = (float) WarehouseStock::where('id', $wsId)->value('qty');
+            $wsQty = (float) WarehouseStock::where('warehouse_stock.id', $wsId)->value('qty');
             $bkQty = (float) \App\Models\BarangKeluar::where('warehouse_stock_id', $wsId)->sum('qty');
             $totalPenyesuaianQty += $wsQty + $bkQty;
         }

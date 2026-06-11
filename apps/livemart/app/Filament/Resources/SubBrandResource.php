@@ -21,6 +21,8 @@ class SubBrandResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 12;
+
     protected static ?string $navigationLabel = 'Sub Merek';
 
     protected static ?string $modelLabel = 'Sub Merek';

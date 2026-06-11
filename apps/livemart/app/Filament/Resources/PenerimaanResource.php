@@ -9,8 +9,9 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Forms\Components\DatePicker;
 use Illuminate\Database\Eloquent\Builder;
 
 class PenerimaanResource extends Resource
@@ -40,17 +41,22 @@ class PenerimaanResource extends Resource
                             ->disabled()
                             ->dehydrated(false),
 
+                        Forms\Components\Select::make('main_category_id')
+                            ->label('Kategori Barang')
+                            ->relationship('mainCategory', 'name')
+                            ->searchable()
+                            ->preload()
+                            ->required(),
+
                         Forms\Components\TextInput::make('nomor_po')
                             ->label('Nomor PO')
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->required(),
 
                         Forms\Components\DatePicker::make('tanggal_penerimaan')
                             ->label('Tanggal Penerimaan')
                             ->required()
                             ->default(now()),
-
-                        Forms\Components\DatePicker::make('tanggal_jatuh_tempo')
-                            ->label('Tanggal Jatuh Tempo'),
 
                         Forms\Components\Select::make('lokasi_id')
                             ->label('Lokasi')
@@ -61,30 +67,33 @@ class PenerimaanResource extends Resource
                         Forms\Components\Select::make('metode_pembayaran')
                             ->label('Metode Pembayaran')
                             ->options([
-                                'tunai' => 'Tunai',
-                                'transfer' => 'Transfer',
-                                'tempo_7' => 'Tempo 7 Hari',
-                                'tempo_14' => 'Tempo 14 Hari',
-                                'tempo_30' => 'Tempo 30 Hari',
-                                'tempo_60' => 'Tempo 60 Hari',
-                                'tempo_90' => 'Tempo 90 Hari',
-                            ]),
+                                'Cash' => 'Cash',
+                                'Jatuh Tempo' => 'Jatuh Tempo',
+                            ])
+                            ->required()
+                            ->default('Cash'),
+
+                        Forms\Components\DatePicker::make('tanggal_jatuh_tempo')
+                            ->label('Tanggal Jatuh Tempo')
+                            ->visible(fn (Forms\Get $get): bool => $get('metode_pembayaran') === 'Jatuh Tempo'),
 
                         Forms\Components\Select::make('tax_category_id')
                             ->label('Kategori Pajak')
                             ->relationship('taxCategory', 'name')
                             ->searchable()
-                            ->preload(),
+                            ->preload()
+                            ->required(),
 
                         Forms\Components\Select::make('status')
                             ->label('Status')
                             ->options([
-                                'draft' => 'Draft',
-                                'selesai' => 'Selesai',
-                                'dibatalkan' => 'Dibatalkan',
+                                'Unlocated' => 'Unlocated',
+                                'Located' => 'Located',
                             ])
-                            ->default('draft')
-                            ->required(),
+                            ->default('Unlocated')
+                            ->required()
+                            ->disabled()
+                            ->dehydrated(),
 
                         Forms\Components\Textarea::make('catatan')
                             ->label('Catatan')
@@ -107,81 +116,145 @@ class PenerimaanResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->defaultSort('tanggal_penerimaan', 'desc')
+            ->recordUrl(null)
             ->columns([
+                Tables\Columns\TextColumn::make('no')
+                    ->label('#')
+                    ->rowIndex(),
+
                 Tables\Columns\TextColumn::make('kode_penerimaan')
-                    ->label('Kode')
+                    ->label('Kode Penerimaan')
                     ->searchable()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('nomor_po')
-                    ->label('No. PO')
+                    ->label('Nomor PO')
                     ->searchable()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('tanggal_penerimaan')
-                    ->label('Tanggal')
-                    ->date('d M Y')
+                    ->label('Tanggal Penerimaan')
+                    ->date('d/m/Y')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('lokasi.nama')
-                    ->label('Lokasi')
+                Tables\Columns\TextColumn::make('taxCategory.name')
+                    ->label('Status Tax')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'PKP' => 'info',
+                        'NON PKP' => 'warning',
+                        default => 'secondary',
+                    })
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('total_harga')
-                    ->label('Total')
+                    ->label('DPP')
                     ->money('IDR')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('metode_pembayaran')
-                    ->label('Metode Bayar')
-                    ->badge(),
+                Tables\Columns\TextColumn::make('ppn')
+                    ->label('PPN')
+                    ->getStateUsing(function (Penerimaan $record): float {
+                        if ($record->taxCategory && $record->taxCategory->name === 'PKP') {
+                            return round($record->total_harga * 0.11);
+                        }
+                        return 0;
+                    })
+                    ->money('IDR'),
+
+                Tables\Columns\TextColumn::make('total_all')
+                    ->label('Total')
+                    ->getStateUsing(function (Penerimaan $record): float {
+                        $dpp = round($record->total_harga);
+                        $ppn = 0;
+                        if ($record->taxCategory && $record->taxCategory->name === 'PKP') {
+                            $ppn = round($dpp * 0.11);
+                        }
+                        return $dpp + $ppn;
+                    })
+                    ->money('IDR'),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'selesai' => 'success',
-                        'draft' => 'warning',
-                        'dibatalkan' => 'danger',
+                        'Located' => 'success',
+                        'Unlocated' => 'warning',
                         default => 'secondary',
                     }),
+
+                Tables\Columns\TextColumn::make('metode_pembayaran')
+                    ->label('Metode Bayar')
+                    ->badge()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('lokasi.nama')
+                    ->label('Lokasi')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('status')
                     ->label('Status')
                     ->options([
-                        'draft' => 'Draft',
-                        'selesai' => 'Selesai',
-                        'dibatalkan' => 'Dibatalkan',
+                        'Unlocated' => 'Unlocated',
+                        'Located' => 'Located',
                     ]),
-                SelectFilter::make('lokasi')
-                    ->relationship('lokasi', 'nama')
-                    ->label('Lokasi'),
-                SelectFilter::make('metode_pembayaran')
-                    ->label('Metode Bayar')
-                    ->options([
-                        'tunai' => 'Tunai',
-                        'transfer' => 'Transfer',
-                        'tempo_7' => 'Tempo 7 Hari',
-                        'tempo_14' => 'Tempo 14 Hari',
-                        'tempo_30' => 'Tempo 30 Hari',
-                    ]),
+                SelectFilter::make('taxCategory')
+                    ->label('Status Tax')
+                    ->relationship('taxCategory', 'name'),
+                Filter::make('tanggal_penerimaan')
+                    ->form([
+                        DatePicker::make('start_date')
+                            ->label('Tanggal Mulai'),
+                        DatePicker::make('end_date')
+                            ->label('Tanggal Akhir'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['start_date'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('tanggal_penerimaan', '>=', $date),
+                            )
+                            ->when(
+                                $data['end_date'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('tanggal_penerimaan', '<=', $date),
+                            );
+                    }),
             ])
             ->actions([
                 Tables\Actions\Action::make('view')
-                    ->label('Lihat')
+                    ->label('Detail')
                     ->icon('heroicon-o-eye')
-                    ->url(fn (Penerimaan $record): string => route('filament.admin.resources.penerimaans.edit', $record)),
+                    ->url(fn (Penerimaan $record): string => PenerimaanResource::getUrl('view', ['record' => $record])),
+                Tables\Actions\Action::make('print')
+                    ->label('Print')
+                    ->icon('heroicon-o-printer')
+                    ->url(fn (Penerimaan $record): string => route('penerimaan.print', $record->id))
+                    ->openUrlInNewTab(),
                 Tables\Actions\EditAction::make()
-                    ->label('Edit'),
+                    ->label('Edit')
+                    ->visible(fn (Penerimaan $record): bool => $record->status === 'Unlocated'),
                 Tables\Actions\DeleteAction::make()
-                    ->label('Hapus'),
+                    ->label('Hapus')
+                    ->visible(fn (Penerimaan $record): bool => $record->status === 'Unlocated')
+                    ->modalHeading(fn (Penerimaan $record): string => 'Hapus Penerimaan: ' . $record->kode_penerimaan)
+                    ->modalDescription('Data penerimaan dengan status Located tidak bisa dihapus. Hapus hanya diperbolehkan jika status masih Unlocated.')
+                    ->modalSubmitActionLabel('Ya, Hapus'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->withoutGlobalScope('mainCategory')
+            ->with(['taxCategory', 'lokasi', 'mainCategory']);
     }
 
     public static function getRelations(): array
@@ -194,6 +267,7 @@ class PenerimaanResource extends Resource
         return [
             'index' => Pages\ListPenerimaans::route('/'),
             'create' => Pages\CreatePenerimaan::route('/create'),
+            'view' => Pages\ViewPenerimaan::route('/{record}'),
             'edit' => Pages\EditPenerimaan::route('/{record}/edit'),
         ];
     }

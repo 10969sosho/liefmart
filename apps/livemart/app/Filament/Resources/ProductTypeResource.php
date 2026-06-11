@@ -21,6 +21,8 @@ class ProductTypeResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    protected static ?int $navigationSort = 21;
+
     protected static ?string $navigationLabel = 'Tipe Produk';
 
     protected static ?string $modelLabel = 'Tipe Produk';
