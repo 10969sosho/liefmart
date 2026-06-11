@@ -165,4 +165,14 @@ class NumberFormatter
     {
         return self::roundToTwoDecimals((float)$value);
     }
+
+    public static function multiplyDecimal($a, $b)
+    {
+        return self::roundToTwoDecimals((float)$a * (float)$b);
+    }
+
+    public static function subtractDecimal($a, $b)
+    {
+        return self::roundToTwoDecimals((float)$a - (float)$b);
+    }
 }
