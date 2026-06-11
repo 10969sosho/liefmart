@@ -3,28 +3,16 @@
 @push('styles')
 <style>
     .form-label {
-        font-weight: 600;
-        color: #495057;
-        margin-bottom: 0.5rem;
-    }
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
 
-    .form-control[readonly] {
-        background-color: #f8f9fa;
-        border-color: #e9ecef;
-    }
-
-    .text-danger {
-        color: #dc3545 !important;
-    }
-
-    .text-info {
-        color: #17a2b8 !important;
-    }
-
-    .text-muted {
-        color: #6c757d !important;
-    }
-</style>
+        .form-control[readonly] {
+            background-color: #f8f9fa;
+            border-color: #e9ecef;
+        }
+    </style>
 @endpush
 
 @section('content')

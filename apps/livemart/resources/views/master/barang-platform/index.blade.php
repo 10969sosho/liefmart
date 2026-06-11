@@ -71,11 +71,11 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     <!-- Filter Form -->
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <form method="GET" class="row g-3">
+                    <div class="card mb-4 border">
+                        <div class="card-body bg-light p-3">
+                            <form method="GET" class="row g-3 align-items-end">
                                 <div class="col-md-3">
                                     <label class="form-label">Platform</label>
                                     <select name="platform" class="form-select">
@@ -105,7 +105,6 @@
                                     </select>
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label">&nbsp;</label>
                                     <div class="d-flex gap-2">
                                         <button type="submit" class="btn btn-primary">
                                             <i class="fas fa-search"></i> Filter
@@ -122,26 +121,26 @@
                     <!-- Table -->
                     <div class="table-responsive">
                         <table class="table table-bordered table-striped table-hover">
-                            <thead class="thead-dark">
+                            <thead class="bg-dark text-white">
                                 <tr>
-                                    <th width="5%">No</th>
+                                    <th class="text-center" width="5%">No</th>
                                     <th width="12%">Platform</th>
                                     <th width="40%">Nama Barang</th>
                                     <th width="18%">Variant</th>
-                                    <th width="8%">Mapping</th>
-                                    <th width="10%">Digunakan di Sales</th>
-                                    <th width="7%">Aksi</th>
+                                    <th class="text-center" width="8%">Mapping</th>
+                                    <th class="text-center" width="10%">Digunakan di Sales</th>
+                                    <th class="text-center" width="7%">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($platformProducts as $index => $product)
                                     <tr>
-                                        <td>{{ $platformProducts->firstItem() + $index }}</td>
+                                        <td class="text-center">{{ $platformProducts->firstItem() + $index }}</td>
                                         <td>
                                             @if($product->platform)
-                                                <span class="badge badge-info text-white">{{ $product->platform->name }}</span>
+                                                <span class="badge bg-info text-white">{{ $product->platform->name }}</span>
                                             @else
-                                                <span class="badge badge-danger text-white">Platform tidak ditemukan</span>
+                                                <span class="badge bg-danger text-white">Platform tidak ditemukan</span>
                                             @endif
                                         </td>
                                         <td class="product-name-cell">
@@ -151,18 +150,18 @@
                                         </td>
                                         <td class="variant-cell">
                                             @if($product->variant)
-                                                <span class="badge badge-secondary text-white" style="white-space: normal; word-wrap: break-word; display: inline-block; max-width: 100%;">{{ $product->variant }}</span>
+                                                <span class="badge bg-secondary text-white" style="white-space: normal; word-wrap: break-word; display: inline-block; max-width: 100%;">{{ $product->variant }}</span>
                                             @else
                                                 <span class="text-muted">-</span>
                                             @endif
                                         </td>
                                         <td class="text-center">
                                             @if($product->mappingBarang->count() > 0)
-                                                <span class="badge badge-success text-white">
+                                                <span class="badge bg-success text-white">
                                                     <i class="fas fa-link"></i> {{ $product->mappingBarang->count() }}
                                                 </span>
                                             @else
-                                                <span class="badge badge-warning text-dark">
+                                                <span class="badge bg-warning text-dark">
                                                     <i class="fas fa-unlink"></i> 0
                                                 </span>
                                             @endif
@@ -174,19 +173,19 @@
                                                     ->exists();
                                             @endphp
                                             @if($usedInSales)
-                                                <span class="badge badge-success text-white">
+                                                <span class="badge bg-success text-white">
                                                     <i class="fas fa-check"></i> Ya
                                                 </span>
                                             @else
-                                                <span class="badge badge-secondary text-white">
+                                                <span class="badge bg-secondary text-white">
                                                     <i class="fas fa-times"></i> Belum
                                                 </span>
                                             @endif
                                         </td>
                                         <td>
-                                            <div class="btn-group">
+                                            <div class="btn-group btn-group-sm">
                                                 <a href="{{ route('barang-platform.edit', $product->id) }}" 
-                                                   class="btn btn-sm btn-warning">
+                                                   class="btn btn-warning">
                                                     <i class="fas fa-edit"></i>
                                                 </a>
                                                 <form action="{{ route('barang-platform.destroy', $product->id) }}" 
@@ -194,7 +193,7 @@
                                                       onsubmit="return confirm('Yakin ingin menghapus?')">
                                                     @csrf
                                                     @method('DELETE')
-                                                    <button type="submit" class="btn btn-sm btn-danger">
+                                                    <button type="submit" class="btn btn-danger">
                                                         <i class="fas fa-trash"></i>
                                                     </button>
                                                 </form>
@@ -203,7 +202,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="7" class="text-center">Tidak ada data</td>
+                                        <td colspan="7" class="text-center py-4">Tidak ada data barang platform</td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -212,13 +211,11 @@
 
                     <!-- Pagination -->
                     <div class="d-flex justify-content-between align-items-center mt-4">
-                        <div class="pagination-info">
-                            <span class="text-muted">
-                                Menampilkan {{ $platformProducts->firstItem() ?? 0 }} sampai {{ $platformProducts->lastItem() ?? 0 }} 
-                                dari {{ $platformProducts->total() }} hasil
-                            </span>
+                        <div class="text-muted small">
+                            Menampilkan {{ $platformProducts->firstItem() ?? 0 }} sampai {{ $platformProducts->lastItem() ?? 0 }} 
+                            dari {{ $platformProducts->total() }} hasil
                         </div>
-                        <div class="pagination-wrapper">
+                        <div>
                             {{ $platformProducts->appends(request()->query())->links('pagination.custom') }}
                         </div>
                     </div>

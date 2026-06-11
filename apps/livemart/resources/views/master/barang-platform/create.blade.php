@@ -12,14 +12,6 @@
         background-color: #f8f9fa;
         border-color: #e9ecef;
     }
-
-    .text-danger {
-        color: #dc3545 !important;
-    }
-
-    .text-muted {
-        color: #6c757d !important;
-    }
 </style>
 @endpush
 
@@ -53,7 +45,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     @if(session('error'))
                         <div class="alert alert-danger alert-dismissible fade show" role="alert">
                             <i class="fas fa-exclamation-triangle me-2"></i>
@@ -64,10 +56,10 @@
                     
                     <form action="{{ route('barang-platform.store') }}" method="POST">
                         @csrf
-                        <div class="row">
+                        <div class="row mb-3">
                             <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="platform_id">Platform <span class="text-danger">*</span></label>
+                                <div class="mb-3">
+                                    <label for="platform_id" class="form-label">Platform <span class="text-danger">*</span></label>
                                     <select name="platform_id" id="platform_id" class="form-control @error('platform_id') is-invalid @enderror" required>
                                         <option value="">Pilih Platform</option>
                                         @foreach($platforms as $platform)
@@ -82,8 +74,8 @@
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="platform_product_name">Nama Barang Platform <span class="text-danger">*</span></label>
+                                <div class="mb-3">
+                                    <label for="platform_product_name" class="form-label">Nama Barang Platform <span class="text-danger">*</span></label>
                                     <input type="text" name="platform_product_name" id="platform_product_name" 
                                            class="form-control @error('platform_product_name') is-invalid @enderror"
                                            value="{{ old('platform_product_name') }}" required>
@@ -93,10 +85,10 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="row">
+                        <div class="row mb-4">
                             <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="variant">Variant</label>
+                                <div class="mb-3">
+                                    <label for="variant" class="form-label">Variant</label>
                                     <input type="text" name="variant" id="variant" 
                                            class="form-control @error('variant') is-invalid @enderror"
                                            value="{{ old('variant') }}"
@@ -111,13 +103,13 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save"></i> Simpan
-                            </button>
+                        <div class="d-flex justify-content-end gap-3 pt-3 border-top">
                             <a href="{{ route('barang-platform.index') }}" class="btn btn-secondary">
-                                <i class="fas fa-times"></i> Batal
+                                <i class="fas fa-times me-2"></i> Batal
                             </a>
+                            <button type="submit" class="btn btn-primary px-4">
+                                <i class="fas fa-save me-2"></i> Simpan
+                            </button>
                         </div>
                     </form>
                 </div>
