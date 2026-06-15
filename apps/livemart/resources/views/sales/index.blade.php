@@ -7,7 +7,7 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Daftar Pesanan</span>
-                    <a href="{{ route('sales.create') }}" class="btn btn-primary btn-sm">Tambah Pesanan</a>
+                    <a href="{{ route('sales.choose-type') }}" class="btn btn-primary btn-sm">Tambah Pesanan</a>
                 </div>
 
                 <div class="card-body">
@@ -49,13 +49,13 @@
                                     </td>
                                     <td>
                                         <div class="btn-group" role="group">
-                                            <a href="{{ route('sales.show', $order->id) }}" class="btn btn-info btn-sm">
+                                            <a href="{{ route('sales.order.detail', $order->id) }}" class="btn btn-info btn-sm">
                                                 <i class="fa fa-eye"></i>
                                             </a>
-                                            <a href="{{ route('sales.edit', $order->id) }}" class="btn btn-warning btn-sm">
+                                            <a href="{{ route('sales.list', ['order_number' => $order->order_number]) }}" class="btn btn-warning btn-sm">
                                                 <i class="fa fa-edit"></i>
                                             </a>
-                                            <a href="{{ route('sales.print', $order->id) }}" class="btn btn-secondary btn-sm" target="_blank">
+                                            <a href="{{ route('sales.order.print', $order->id) }}" class="btn btn-secondary btn-sm" target="_blank">
                                                 <i class="fa fa-print"></i>
                                             </a>
                                             <button type="button" class="btn btn-danger btn-sm" 

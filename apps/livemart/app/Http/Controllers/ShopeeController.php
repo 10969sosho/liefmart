@@ -17,8 +17,13 @@ class ShopeeController extends Controller
      */
     public function __construct()
     {
-        $routeParam = 'shopee lamourad';
-        $this->platform = $this->getPlatformByRouteParam($routeParam);
+        try {
+            $routeParam = 'shopee lamourad';
+            $this->platform = $this->getPlatformByRouteParam($routeParam);
+        } catch (\Exception $e) {
+            \Log::error('Exception in ShopeeController constructor: ' . $e->getMessage());
+            $this->platform = null;
+        }
     }
     
     /**

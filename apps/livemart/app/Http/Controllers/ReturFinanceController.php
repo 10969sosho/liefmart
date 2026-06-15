@@ -21,7 +21,7 @@ class ReturFinanceController extends Controller
     /**
      * Show form for processing return with financial adjustments
      */
-    public function showFinanceForm($type, $id)
+    public function showFinanceForm($id, $type = 'online')
     {
         if ($type === 'online') {
             $retur = ReturPenjualan::with(['order.platform', 'details.orderItem'])->findOrFail($id);
@@ -42,7 +42,7 @@ class ReturFinanceController extends Controller
     /**
      * Process return with financial adjustments
      */
-    public function processFinance(Request $request, $type, $id)
+    public function processFinance(Request $request, $id, $type = 'online')
     {
         $request->validate([
             'refund_amount' => 'required|numeric|min:0',
@@ -107,7 +107,7 @@ class ReturFinanceController extends Controller
     /**
      * Reprocess return finance (for corrections)
      */
-    public function reprocessFinance($type, $id)
+    public function reprocessFinance($id, $type = 'online')
     {
         try {
             DB::beginTransaction();

@@ -17,8 +17,13 @@ class Tiktok2Controller extends Controller
      */
     public function __construct()
     {
-        $routeParam = 'tiktok liefmarket';
-        $this->platform = $this->getPlatformByRouteParam($routeParam);
+        try {
+            $routeParam = 'tiktok liefmarket';
+            $this->platform = $this->getPlatformByRouteParam($routeParam);
+        } catch (\Exception $e) {
+            \Log::error('Exception in Tiktok2Controller constructor: ' . $e->getMessage());
+            $this->platform = null;
+        }
     }
     
     /**

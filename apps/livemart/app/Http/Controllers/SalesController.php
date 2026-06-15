@@ -29,8 +29,7 @@ class SalesController extends Controller
      */
     public function index()
     {
-        $orders = Order::latest()->paginate(10);
-        return view('sales.index', compact('orders'));
+        return view('sales.choose-type');
     }
 
     /**
@@ -40,7 +39,7 @@ class SalesController extends Controller
      */
     public function create()
     {
-        return view('sales.create');
+        return redirect()->route('sales.choose-type');
     }
 
     /**
@@ -74,7 +73,7 @@ class SalesController extends Controller
      */
     public function show(Order $order)
     {
-        return view('sales.show', compact('order'));
+        return redirect()->route('sales.order.detail', $order);
     }
 
     /**
@@ -85,7 +84,7 @@ class SalesController extends Controller
      */
     public function edit(Order $order)
     {
-        return view('sales.edit', compact('order'));
+        return redirect()->route('sales.list', ['order_number' => $order->order_number]);
     }
 
     /**
@@ -134,7 +133,7 @@ class SalesController extends Controller
      */
     public function print(Order $order)
     {
-        return view('sales.print', compact('order'));
+        return redirect()->route('sales.order.print', $order);
     }
 
     /**
@@ -262,10 +261,7 @@ class SalesController extends Controller
             return view('sales.tiktok2.platform');
         }
 
-        // Untuk platform lainnya, gunakan view umum
-        return view('sales.platform', [
-            'platform' => $platform,
-        ]);
+        return redirect()->route('sales.online');
     }
 
     /**
