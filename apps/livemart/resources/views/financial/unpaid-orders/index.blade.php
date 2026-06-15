@@ -337,7 +337,7 @@
                 <!-- Pagination -->
                 <div class="d-flex justify-content-center mt-4">
                     <nav aria-label="Page navigation">
-                        {{ $unpaidOrders->appends(request()->query())->onEachSide(1)->links('vendor.pagination.bootstrap-5') }}
+                        {{ $unpaidOrders->appends(request()->query())->onEachSide(1)->links('pagination::bootstrap-5') }}
                     </nav>
                 </div>
             @else
