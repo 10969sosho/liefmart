@@ -108,7 +108,7 @@
                     </div>
                     
                     <div class="px-4 pt-4">
-                        {{ $customers->links('vendor.pagination.bootstrap-5') }}
+                        {{ $customers->links('pagination::bootstrap-5') }}
                     </div>
                 </div>
             </div>
