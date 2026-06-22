@@ -262,6 +262,21 @@ class ReturPenjualanController extends Controller
             DB::beginTransaction();
             \Log::info('Starting transaction for retur penjualan');
 
+            // Deduplicate details by order_item_id + product_id + kondisi
+            $uniqueDetails = [];
+            foreach ($request->details as $detail) {
+                if (empty($detail['qty']) || floatval($detail['qty']) <= 0) {
+                    continue;
+                }
+                $key = $detail['order_item_id'] . '_' . ($detail['product_id'] ?? '') . '_' . $detail['kondisi'];
+                if (isset($uniqueDetails[$key])) {
+                    $uniqueDetails[$key]['qty'] = (float) $uniqueDetails[$key]['qty'] + (float) $detail['qty'];
+                } else {
+                    $uniqueDetails[$key] = $detail;
+                }
+            }
+            $request->merge(['details' => array_values($uniqueDetails)]);
+
             // Create the retur penjualan header
             $returPenjualan = ReturPenjualan::create([
                 'kode_retur' => ReturPenjualan::generateKodeRetur(),
@@ -1075,6 +1090,13 @@ class ReturPenjualanController extends Controller
                     $taxId = $penerimaanDetailForTax->penerimaan->tax_category_id;
                     \Log::info("Using tax_id from penerimaan: {$taxId} for penerimaan_detail_id: {$penerimaanDetailId}");
                 }
+            }
+            
+            // FINAL FALLBACK: Jika masih null, ambil dari product.tax_category_id atau default 4
+            if (!$taxId) {
+                $productTaxCategory = \App\Models\Product::where('id', $productId)->value('tax_category_id');
+                $taxId = $productTaxCategory ?? 4;
+                \Log::warning("tax_id still NULL after all fallbacks for product #{$productId}, using: {$taxId}");
             }
             
             // Get the retur warehouse location (same as offline)

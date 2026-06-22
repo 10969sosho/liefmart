@@ -1579,8 +1579,11 @@ class PembayaranShopeeController extends Controller
         $taxGroups = [];
         
         foreach ($barangKeluarItems as $bk) {
-            if ($bk->warehouseStock && $bk->warehouseStock->tax_id) {
-                $taxId = $bk->warehouseStock->tax_id;
+            if ($bk->warehouseStock) {
+                $taxId = $bk->warehouseStock->tax_id ?? 4;
+                if (!$bk->warehouseStock->tax_id) {
+                    Log::warning("WarehouseStock #{$bk->warehouseStock->id} has NULL tax_id, using default 4 (Non-PKP) for order grouping");
+                }
                 
                 if (!isset($taxGroups[$taxId])) {
                     $taxGroups[$taxId] = [
@@ -1611,8 +1614,11 @@ class PembayaranShopeeController extends Controller
             $orderItems = $order->orderItems()->with('warehouseStock')->get();
             
             foreach ($orderItems as $item) {
-                if ($item->warehouseStock && $item->warehouseStock->tax_id) {
-                    $taxId = $item->warehouseStock->tax_id;
+                if ($item->warehouseStock) {
+                    $taxId = $item->warehouseStock->tax_id ?? 4;
+                    if (!$item->warehouseStock->tax_id) {
+                        Log::warning("WarehouseStock #{$item->warehouseStock->id} has NULL tax_id, using default 4 (Non-PKP) for order grouping");
+                    }
                     
                     if (!isset($taxGroups[$taxId])) {
                         $taxGroups[$taxId] = [
