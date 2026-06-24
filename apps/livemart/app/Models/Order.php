@@ -143,11 +143,7 @@ public function shopeeFinancialTransactions()
         $totalReturnedQuantity = 0;
         
         foreach ($this->orderItems as $item) {
-            // Calculate original quantity for this item
-            $originalQuantity = $item->quantity;
-            $totalOriginalQuantity += $originalQuantity;
-            
-            // Calculate returned quantity for this item
+            // Calculate returned quantity for this item first
             $returnedQuantityIndividual = \App\Models\ReturPenjualanDetail::where('order_item_id', $item->id)
                 ->whereHas('returPenjualan', function($q) { 
                     $q->whereIn('status', ['draft', 'selesai']); 
@@ -165,6 +161,10 @@ public function shopeeFinancialTransactions()
             
             $returnedQuantity = $packageQuantity > 0 ? $returnedQuantityIndividual / $packageQuantity : $returnedQuantityIndividual;
             $totalReturnedQuantity += $returnedQuantity;
+            
+            // Calculate original quantity: current qty (after returns) + returned qty
+            $originalQuantity = $item->quantity + $returnedQuantity;
+            $totalOriginalQuantity += $originalQuantity;
         }
         
         // If total returned quantity equals or exceeds original quantity, this is fully returned
