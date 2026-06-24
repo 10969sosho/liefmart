@@ -67,7 +67,42 @@
                             </div>
                         </div>
 
+                        {{-- Hitung total nominal_harga dan qty dari order yang dipilih --}}
+                        @php
+                            $totalHarga = 0;
+                            $totalQty = 0;
+                            if (isset($order) && $order) {
+                                $order->loadMissing('orderItems');
+                                foreach ($order->orderItems as $item) {
+                                    $totalHarga += $item->price_after_discount * $item->quantity;
+                                    $totalQty += $item->quantity;
+                                }
+                            } elseif (request('order_id')) {
+                                $selectedOrder = \App\Models\Order::with('orderItems')->find(request('order_id'));
+                                if ($selectedOrder) {
+                                    foreach ($selectedOrder->orderItems as $item) {
+                                        $totalHarga += $item->price_after_discount * $item->quantity;
+                                        $totalQty += $item->quantity;
+                                    }
+                                }
+                            }
+                        @endphp
                         <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Total Harga (Dari Penjualan)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">Rp</span>
+                                    <input type="text" class="form-control" id="nominal_harga_display" value="{{ number_format($totalHarga, 0, ',', '.') }}" readonly style="background-color: #e9ecef; font-weight: 600;">
+                                </div>
+                                <div class="form-text">
+                                    <i class="fas fa-info-circle me-1"></i>Total harga otomatis dari data penjualan
+                                </div>
+                                <input type="hidden" name="nominal_harga" value="{{ $totalHarga }}">
+                            </div>
+                            <div class="col-md-1 mb-3">
+                                <label class="form-label">Qty</label>
+                                <input type="text" class="form-control" id="qty_display" value="{{ $totalQty }}" readonly style="background-color: #e9ecef; font-weight: 600;">
+                            </div>
                             <div class="col-md-4 mb-3">
                                 <label for="saldo_masuk" class="form-label">Jumlah Masuk Pembayaran <span class="text-danger">*</span></label>
                                 <div class="input-group">
@@ -82,6 +117,9 @@
                                     <input type="number" class="form-control" id="nominal_diskon1" name="nominal_diskon1" value="{{ old('nominal_diskon1', 0) }}">
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="row">
                             <div class="col-md-4 mb-3">
                                 <label for="nominal_diskon2" class="form-label">Komisi AMS/Affiliate</label>
                                 <div class="input-group">
@@ -89,9 +127,6 @@
                                     <input type="number" class="form-control" id="nominal_diskon2" name="nominal_diskon2" value="{{ old('nominal_diskon2', 0) }}">
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="row">
                             <div class="col-md-4 mb-3">
                                 <label for="nominal_diskon3" class="form-label">Biaya Admin</label>
                                 <div class="input-group">
