@@ -22,15 +22,10 @@ class PembayaranTiktok2Controller extends Controller
 {
     public function index(Request $request)
     {
-        // Get platform by ID (Tiktok Liefmarket = ID 7)
-        $platformModel = Platform::find(7);
+        // Get platform by name (Tiktok Liefmarket)
+        $platformModel = Platform::whereRaw('LOWER(name) = ?', ['tiktok liefmarket'])->first();
         
-        // Jika tidak ditemukan berdasarkan ID, cari berdasarkan nama dengan case-insensitive
-        if (!$platformModel) {
-            $platformModel = Platform::whereRaw('LOWER(name) = ?', ['tiktok liefmarket'])->first();
-        }
-        
-        // Jika masih tidak ditemukan, cari dengan LIKE
+        // Jika tidak ditemukan berdasarkan nama, cari dengan LIKE
         if (!$platformModel) {
             $platformModel = Platform::whereRaw('LOWER(name) LIKE ?', ['%tiktok liefmarket%'])->first();
         }

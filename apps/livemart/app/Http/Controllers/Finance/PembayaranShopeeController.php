@@ -20,15 +20,10 @@ class PembayaranShopeeController extends Controller
 {
     public function index(Request $request)
     {
-        // Get platform by ID (Shopee Lamourad = ID 1)
-        $platformModel = Platform::find(1);
+        // Get platform by name (Shopee Lamourad)
+        $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee lamourad'])->first();
         
-        // Jika tidak ditemukan berdasarkan ID, cari berdasarkan nama dengan case-insensitive
-        if (!$platformModel) {
-            $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee lamourad'])->first();
-        }
-        
-        // Jika masih tidak ditemukan, cari dengan LIKE
+        // Jika tidak ditemukan berdasarkan nama, cari dengan LIKE
         if (!$platformModel) {
             $platformModel = Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee lamourad%'])
                 ->whereRaw('LOWER(name) NOT LIKE ?', ['%shopee liefmarket%'])
