@@ -1119,7 +1119,9 @@ class PembayaranShopee2Controller extends Controller
     {
         $request->validate([
             'order_id' => 'required|exists:orders,id',
-            'nominal_harga' => 'required|numeric',
+            'saldo_masuk' => 'required|numeric',
+            'tanggal_masuk_pembayaran' => 'required|date',
+            'hari_masuk_pembayaran' => 'required|string',
             'nominal_diskon1' => 'nullable|numeric',
             'nominal_diskon2' => 'nullable|numeric',
             'nominal_diskon3' => 'nullable|numeric',
@@ -1159,19 +1161,19 @@ class PembayaranShopee2Controller extends Controller
             }
             
             $invoiceMessages = [];
-            $totalNominal = $request->nominal_harga;
+            $totalSaldoMasuk = $request->saldo_masuk ?? 0;
             $totalNominalFix = 0;
             
             // Calculate total nominal_fix for all tax groups first
             foreach ($taxGroups as $taxId => $group) {
                 $groupNominalHarga = $group['total_nominal'];
                 $groupNominalFix = $groupNominalHarga + 
-                    ($request->nominal_diskon1 ?? 0) +
-                    ($request->nominal_diskon2 ?? 0) +
-                    ($request->nominal_diskon3 ?? 0) +
-                    ($request->nominal_diskon4 ?? 0) +
-                    ($request->nominal_diskon5 ?? 0) +
-                    ($request->nominal_diskon6 ?? 0) +
+                    ($request->nominal_diskon1 ? -abs((float)$request->nominal_diskon1) : 0) +
+                    ($request->nominal_diskon2 ? -abs((float)$request->nominal_diskon2) : 0) +
+                    ($request->nominal_diskon3 ? -abs((float)$request->nominal_diskon3) : 0) +
+                    ($request->nominal_diskon4 ? -abs((float)$request->nominal_diskon4) : 0) +
+                    ($request->nominal_diskon5 ? -abs((float)$request->nominal_diskon5) : 0) +
+                    ($request->nominal_diskon6 ? -abs((float)$request->nominal_diskon6) : 0) +
                     ($request->adjustment ?? 0);
                 $totalNominalFix += $groupNominalFix;
             }
@@ -1192,13 +1194,17 @@ class PembayaranShopee2Controller extends Controller
                 });
                 $proportion = $totalOrderNominal > 0 ? ($group['total_nominal'] / $totalOrderNominal) : (1 / count($taxGroups));
                 
-                $transaction->nominal_diskon1 = ($request->nominal_diskon1 ?? 0) * $proportion;
-                $transaction->nominal_diskon2 = ($request->nominal_diskon2 ?? 0) * $proportion;
-                $transaction->nominal_diskon3 = ($request->nominal_diskon3 ?? 0) * $proportion;
-                $transaction->nominal_diskon4 = ($request->nominal_diskon4 ?? 0) * $proportion;
-                $transaction->nominal_diskon5 = ($request->nominal_diskon5 ?? 0) * $proportion;
-                $transaction->nominal_diskon6 = ($request->nominal_diskon6 ?? 0) * $proportion;
+                // Store discounts as negative values (consistent with import logic)
+                $transaction->nominal_diskon1 = $request->nominal_diskon1 ? -abs((float)$request->nominal_diskon1 * $proportion) : 0;
+                $transaction->nominal_diskon2 = $request->nominal_diskon2 ? -abs((float)$request->nominal_diskon2 * $proportion) : 0;
+                $transaction->nominal_diskon3 = $request->nominal_diskon3 ? -abs((float)$request->nominal_diskon3 * $proportion) : 0;
+                $transaction->nominal_diskon4 = $request->nominal_diskon4 ? -abs((float)$request->nominal_diskon4 * $proportion) : 0;
+                $transaction->nominal_diskon5 = $request->nominal_diskon5 ? -abs((float)$request->nominal_diskon5 * $proportion) : 0;
+                $transaction->nominal_diskon6 = $request->nominal_diskon6 ? -abs((float)$request->nominal_diskon6 * $proportion) : 0;
                 $transaction->adjustment = ($request->adjustment ?? 0) * $proportion;
+                $transaction->saldo_masuk = $totalSaldoMasuk * $proportion;
+                $transaction->tanggal_masuk_pembayaran = $request->tanggal_masuk_pembayaran;
+                $transaction->hari_masuk_pembayaran = $request->hari_masuk_pembayaran;
                 
                 // Generate invoice number for this tax_id
                 $transaction->no_invoice = $this->generateInvoiceForOrder($order, $taxId);
