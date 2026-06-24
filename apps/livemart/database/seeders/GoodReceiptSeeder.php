@@ -136,7 +136,7 @@ class GoodReceiptSeeder extends Seeder
 
         // Group by PO
         $poGroups = collect($data)->groupBy('po');
-        $mainCategoryId = 2; // Kosmetik
+        $mainCategoryId = 2; // SKINCARE
         $taxCategoryId = 3; // PKP (atau sesuaikan kebutuhan)
         $satuanId = 1; // Default satuan
         $lokasiId = 2; // Gudang A (atau sesuaikan kebutuhan)

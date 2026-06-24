@@ -1202,8 +1202,9 @@ class PembayaranTiktok2Controller extends Controller
 
     public function manual()
     {
-        // Get TikTok2 platform ID (ID 7 for TikTok Liefmarket)
-        $tiktok2PlatformId = 7;
+        // Get TikTok2 platform ID dynamically
+        $platformModel = \App\Models\Platform::whereRaw('LOWER(name) = ?', ['tiktok liefmarket'])->first();
+        $tiktok2PlatformId = $platformModel ? $platformModel->id : 4; // fallback ke ID 4
         $platformLabel = 'Tiktok Liefmarket';
         
         // Get order_id from request if available
@@ -1249,8 +1250,9 @@ class PembayaranTiktok2Controller extends Controller
         try {
             DB::beginTransaction();
             
-            // Get TikTok2 platform ID (ID 7 for TikTok Trubleu)
-            $tiktok2PlatformId = 7;
+            // Get TikTok2 platform ID dynamically
+            $platformModel = \App\Models\Platform::whereRaw('LOWER(name) = ?', ['tiktok liefmarket'])->first();
+            $tiktok2PlatformId = $platformModel ? $platformModel->id : 4; // fallback ke ID 4
             
             $order = Order::with(['orderItems.warehouseStock.tax', 'mainCategory', 'platform'])->findOrFail($request->order_id);
             

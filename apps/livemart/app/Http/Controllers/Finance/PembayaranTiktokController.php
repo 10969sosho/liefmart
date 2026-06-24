@@ -1438,8 +1438,7 @@ class PembayaranTiktokController extends Controller
 
     public function manual()
     {
-        // Get TikTok platform ID (ID 3 for TikTok Lamourad)
-        $tiktokPlatformId = 3;
+        $tiktokPlatformId = \App\Models\Platform::whereRaw('LOWER(name) LIKE ?', ['%tiktok%lamourad%'])->value('id') ?? 99;
         $platformLabel = 'Tiktok Lamourad';
         
         // Get order_id from request if available
@@ -1485,8 +1484,7 @@ class PembayaranTiktokController extends Controller
         try {
             DB::beginTransaction();
             
-            // Get TikTok platform ID (ID 3 for TikTok)
-            $tiktokPlatformId = 3;
+            $tiktokPlatformId = \App\Models\Platform::whereRaw('LOWER(name) LIKE ?', ['%tiktok%lamourad%'])->value('id') ?? 99;
             
             $order = Order::with(['orderItems.warehouseStock.tax', 'mainCategory', 'platform'])->findOrFail($request->order_id);
             

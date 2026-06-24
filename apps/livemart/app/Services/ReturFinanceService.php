@@ -27,34 +27,37 @@ class ReturFinanceService
     public function handleOnlineReturFinance(ReturPenjualan $returPenjualan, float $refundAmount = null, float $additionalDeduction = 0)
     {
         $order = $returPenjualan->order;
-        
+
         // Calculate refund amount if not provided
         if ($refundAmount === null) {
             $refundAmount = $this->calculateReturRefundAmount($returPenjualan);
         }
-        
-        // Determine platform
-        $platform = strtolower($order->platform->name ?? '');
-        
+
+        // Determine platform and normalize
+        $platform = $this->normalizePlatform(strtolower($order->platform->name ?? ''));
+
+        // Check if finance transaction exists before processing
+        $exists = $this->financeTransactionExists($order, $platform);
+        if (!$exists) {
+            Log::info("No finance transaction exists for order {$order->order_number}, skipping finance processing");
+            return;
+        }
+
         // Get original order total (Current Total in Finance)
-        // We prioritize getting this from the existing Financial Transaction to ensure consistency
-        // especially since OrderItem quantities might have been reduced by the return process
         $originalOrderTotal = $this->getCurrentFinanceTotal($order, $platform);
-        
-        // Fallback if no transaction found (e.g. not yet generated)
+
+        // Fallback if no transaction found
         if ($originalOrderTotal <= 0) {
-             // If we can't find it in finance, we reconstruct it from current items + refund amount
-             // This assumes order items have already been reduced by the return
-             $currentItemsTotal = $this->getOriginalOrderTotal($order); 
+             $currentItemsTotal = $this->getOriginalOrderTotal($order);
              $originalOrderTotal = $currentItemsTotal + $refundAmount;
         }
-        
+
         Log::info("Processing retur finance for order {$order->order_number}", [
             'refund_amount' => $refundAmount,
             'original_total_from_finance' => $originalOrderTotal,
             'additional_deduction' => $additionalDeduction
         ]);
-        
+
         if ($refundAmount >= $originalOrderTotal && $additionalDeduction == 0) {
             // SCENARIO 1: Full refund - remove payment and move to unpaid
             $this->handleFullRefund($order, $platform);
@@ -119,12 +122,31 @@ class ReturFinanceService
                 $transaction = Tiktok2FinancialTransaction::where('order_id', $order->id)->first();
                 break;
         }
-        
+
         if ($transaction) {
             return (float) $transaction->nominal_harga;
         }
-        
+
         return 0.0;
+    }
+
+    /**
+     * Check if a finance transaction exists for the given order and platform
+     */
+    private function financeTransactionExists(Order $order, string $platform): bool
+    {
+        switch ($platform) {
+            case 'shopee':
+                return ShopeeFinancialTransaction::where('order_id', $order->id)->exists();
+            case 'shopee2':
+                return Shopee2FinancialTransaction::where('order_id', $order->id)->exists();
+            case 'tiktok':
+                return TiktokFinancialTransaction::where('order_id', $order->id)->exists();
+            case 'tiktok2':
+                return Tiktok2FinancialTransaction::where('order_id', $order->id)->exists();
+            default:
+                return false;
+        }
     }
 
     /**
@@ -643,5 +665,52 @@ class ReturFinanceService
         ]);
         
         return $returAmount;
+    }
+
+    /**
+     * Normalize platform name to standard key
+     */
+    private function normalizePlatform(string $platform): string
+    {
+        $platform = strtolower(trim($platform));
+
+        if (str_contains($platform, 'shopee') && (str_contains($platform, 'trueblu') || str_contains($platform, 'trubleu'))) {
+            return 'shopee2';
+        }
+        if (str_contains($platform, 'tiktok') && (str_contains($platform, 'trueblu') || str_contains($platform, 'trubleu'))) {
+            return 'tiktok2';
+        }
+        if (str_contains($platform, 'shopee') && str_contains($platform, 'lamourad')) {
+            return 'shopee';
+        }
+        if (str_contains($platform, 'tiktok') && str_contains($platform, 'lamourad')) {
+            return 'tiktok';
+        }
+        if (str_contains($platform, 'shopee') && str_contains($platform, 'liefmarket')) {
+            return 'shopee2';
+        }
+        if (str_contains($platform, 'tiktok') && str_contains($platform, 'liefmarket')) {
+            return 'tiktok2';
+        }
+        if (str_contains($platform, 'shopee2')) {
+            return 'shopee2';
+        }
+        if (str_contains($platform, 'shopee')) {
+            return 'shopee';
+        }
+        if (str_contains($platform, 'tokopedia')) {
+            return 'tokopedia';
+        }
+        if (str_contains($platform, 'tiktok2')) {
+            return 'tiktok2';
+        }
+        if (str_contains($platform, 'tiktok')) {
+            return 'tiktok';
+        }
+        if (str_contains($platform, 'blibli')) {
+            return 'blibli';
+        }
+
+        return $platform;
     }
 }

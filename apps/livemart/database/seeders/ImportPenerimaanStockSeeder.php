@@ -71,10 +71,10 @@ class ImportPenerimaanStockSeeder extends Seeder
                 return;
             }
 
-            // Get Main Category Kosmetik
+            // Get Main Category SKINCARE
             $mainCategory = MainCategory::firstOrCreate(
-                ['name' => 'Kosmetik'],
-                ['description' => 'Kategori Utama Kosmetik', 'is_active' => true]
+                ['name' => 'SKINCARE'],
+                ['description' => 'Kategori Utama SKINCARE', 'is_active' => true]
             );
 
             // Get Lokasi Gudang A
@@ -109,10 +109,10 @@ class ImportPenerimaanStockSeeder extends Seeder
             'MASTER - NON PKP - ED.csv' => 'LM',
         ];
 
-        // Get Main Category Kosmetik
+        // Get Main Category SKINCARE
         $mainCategory = MainCategory::firstOrCreate(
-            ['name' => 'Kosmetik'],
-            ['description' => 'Kategori Utama Kosmetik', 'is_active' => true]
+            ['name' => 'SKINCARE'],
+            ['description' => 'Kategori Utama SKINCARE', 'is_active' => true]
         );
 
         // Get Lokasi Gudang A

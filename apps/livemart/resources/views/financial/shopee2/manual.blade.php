@@ -37,8 +37,9 @@
                                 <select class="form-select" id="order_id" name="order_id" required>
                                     <option value="">-- Pilih Nomor Pesanan --</option>
                                     @php
-                                        // Get Shopee2 platform ID (ID 6 for Shopee Liefmarket)
-                                        $shopee2PlatformId = 6;
+                                        // Get Shopee2 platform ID dynamically
+                                        $platformModel = App\Models\Platform::whereRaw('LOWER(name) = ?', ['shopee liefmarket'])->first();
+                                        $shopee2PlatformId = $platformModel ? $platformModel->id : 2;
                                     @endphp
                                     @foreach(App\Models\Order::where('platform_id', $shopee2PlatformId)
                                         ->whereDoesntHave('shopee2FinancialTransactions')

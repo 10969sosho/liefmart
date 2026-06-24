@@ -43,8 +43,8 @@
                                 <select class="form-select" id="order_id" name="order_id" required>
                                     <option value="">-- Pilih Nomor Pesanan --</option>
                                     @php
-                                        // Get TikTok platform ID (ID 3 for TikTok)
-                                        $tiktokPlatformId = 3;
+                                        $platformModel = App\Models\Platform::whereRaw('LOWER(name) LIKE ?', ['%tiktok%lamourad%'])->first();
+                                        $tiktokPlatformId = $platformModel ? $platformModel->id : 99;
                                         
                                         // Get orders without financial transactions
                                         $availableOrders = App\Models\Order::where('platform_id', $tiktokPlatformId)

@@ -1102,8 +1102,9 @@ class PembayaranShopee2Controller extends Controller
 
     public function manual()
     {
-        // Get Shopee2 platform ID (ID 6 for Shopee Liefmarket)
-        $shopee2PlatformId = 6;
+        // Get Shopee2 platform ID dynamically
+        $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee liefmarket'])->first();
+        $shopee2PlatformId = $platformModel ? $platformModel->id : 2; // fallback ke ID 2
         $platformLabel = 'Shopee Liefmarket';
         
         // Get order_id from request if available
@@ -1135,8 +1136,9 @@ class PembayaranShopee2Controller extends Controller
         try {
             DB::beginTransaction();
             
-            // Get Shopee2 platform ID (ID 6 for Shopee Trubleu)
-            $shopee2PlatformId = 6;
+            // Get Shopee2 platform ID dynamically
+            $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee liefmarket'])->first();
+            $shopee2PlatformId = $platformModel ? $platformModel->id : 2; // fallback ke ID 2
             
             $order = Order::findOrFail($request->order_id);
             

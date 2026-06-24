@@ -20,10 +20,10 @@ return new class extends Migration
         });
         
         Schema::table('invoice_sequences', function (Blueprint $table) {
-            // Tambahkan kolom baru
-            $table->string('category_type')->nullable()->after('last_updated');
-            $table->string('sales_type')->nullable()->after('category_type');
-            $table->string('tax_status')->nullable()->after('sales_type');
+            // Tambahkan kolom baru dengan length terbatas
+            $table->string('category_type', 20)->nullable()->after('last_updated');
+            $table->string('sales_type', 20)->nullable()->after('category_type');
+            $table->string('tax_status', 20)->nullable()->after('sales_type');
         });
         
         // Buat indeks unik yang mencakup semua kolom yang dibutuhkan

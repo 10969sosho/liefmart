@@ -1127,7 +1127,7 @@ class SalesController extends Controller
                     $totalQuantity = array_sum(array_column($stocks, 'quantity'));
                     
                     // Calculate price proportion for this tax group
-                    $proportion = $totalQuantity / $requestedQuantity;
+                    $proportion = $requestedQuantity > 0 ? $totalQuantity / $requestedQuantity : 0;
                     $unitPrice = NumberFormatter::formatForDatabase($request->unit_price[$i]);
                     $itemSubtotal = isset($request->item_subtotal[$i]) ? 
                         NumberFormatter::formatForDatabase($request->item_subtotal[$i] * $proportion) : 
