@@ -468,6 +468,14 @@ class ProductController extends Controller
      */
     private function validateHierarchy($validated)
     {
+        // Validasi Main Category -> Brand (cross-category inconsistency)
+        $brand = Brand::find($validated['brand_id']);
+        if (!$brand || $brand->main_category_id != $validated['main_category_id']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'brand_id' => 'Brand tidak sesuai dengan Kategori Utama yang dipilih.'
+            ]);
+        }
+
         // Validasi Brand -> Sub Brand
         $subBrand = SubBrand::find($validated['sub_brand_id']);
         if (!$subBrand || $subBrand->brand_id != $validated['brand_id']) {

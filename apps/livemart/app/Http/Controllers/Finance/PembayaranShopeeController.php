@@ -1676,8 +1676,7 @@ class PembayaranShopeeController extends Controller
     
     public function manual()
     {
-        // Get Shopee platform ID (ID 1 for Shopee Lamourad)
-        $shopeePlatformId = 1;
+        $shopeePlatformId = \App\Models\Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee%lamourad%'])->value('id') ?? 99;
         $platformLabel = 'Shopee Lamourad';
         
         // Get order_id from request if available
@@ -1717,8 +1716,7 @@ class PembayaranShopeeController extends Controller
         try {
             DB::beginTransaction();
             
-            // Get Shopee platform ID (ID 1 for Shopee Lamourad)
-            $shopeePlatformId = 1;
+            $shopeePlatformId = \App\Models\Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee%lamourad%'])->value('id') ?? 99;
             
             $order = Order::findOrFail($request->order_id);
             

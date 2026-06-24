@@ -37,8 +37,9 @@
                                 <select class="form-select" id="order_id" name="order_id" required>
                                     <option value="">-- Pilih Nomor Pesanan --</option>
                                     @php
-                                        // Get TikTok2 platform ID (ID 7 for TikTok Trubleu)
-                                        $tiktok2PlatformId = 7;
+                                        // Get TikTok2 platform ID dynamically
+                                        $platformModel = App\Models\Platform::whereRaw('LOWER(name) = ?', ['tiktok liefmarket'])->first();
+                                        $tiktok2PlatformId = $platformModel ? $platformModel->id : 4;
                                     @endphp
                                     @foreach(App\Models\Order::where('platform_id', $tiktok2PlatformId)
                                         ->whereDoesntHave('tiktok2FinancialTransactions')

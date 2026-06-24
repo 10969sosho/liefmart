@@ -60,11 +60,11 @@ class ImportPenerimaanNonPKPSeeder extends Seeder
             return;
         }
 
-        // Get Main Category Kosmetik
-        $mainCategory = MainCategory::where('name', 'Kosmetik')->first();
+        // Get Main Category SKINCARE
+        $mainCategory = MainCategory::where('name', 'SKINCARE')->first();
         if (!$mainCategory) {
             if ($this->command) {
-                $this->command->error('Main Category Kosmetik not found!');
+                $this->command->error('Main Category SKINCARE not found!');
             }
             return;
         }

@@ -26,7 +26,7 @@ class TaxCategorySeeder extends Seeder
         
         // Dapatkan ID kategori utama
         $kopiId = MainCategory::where('name', 'KOPI')->first()->id;
-        $kosmetikId = MainCategory::where('name', 'KOSMETIK')->first()->id;
+        $skincareId = MainCategory::where('name', 'SKINCARE')->first()->id;
 
         // Kategori pajak untuk KOPI
         TaxCategory::create([
@@ -48,7 +48,7 @@ class TaxCategorySeeder extends Seeder
         // Kategori pajak untuk KOSMETIK
         TaxCategory::create([
             'name' => 'PKP',
-            'main_category_id' => $kosmetikId,
+            'main_category_id' => $skincareId,
             'tax_percentage' => 11.00, // 11% PPN
             'description' => 'Pengusaha Kena Pajak',
             'is_active' => true,
@@ -56,7 +56,7 @@ class TaxCategorySeeder extends Seeder
 
         TaxCategory::create([
             'name' => 'NON PKP',
-            'main_category_id' => $kosmetikId,
+            'main_category_id' => $skincareId,
             'tax_percentage' => 0.00, // Tanpa PPN
             'description' => 'Bukan Pengusaha Kena Pajak',
             'is_active' => true,

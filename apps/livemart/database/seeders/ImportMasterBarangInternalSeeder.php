@@ -60,10 +60,10 @@ class ImportMasterBarangInternalSeeder extends Seeder
         
         $records = $csv->getRecords();
         
-        // Ensure Main Category 'Kosmetik' exists
+        // Ensure Main Category 'SKINCARE' exists
         $mainCategory = MainCategory::firstOrCreate(
-            ['name' => 'Kosmetik'],
-            ['description' => 'Kategori Utama Kosmetik', 'is_active' => true]
+            ['name' => 'SKINCARE'],
+            ['description' => 'Kategori Utama SKINCARE', 'is_active' => true]
         );
 
         $skuCounter = 1;

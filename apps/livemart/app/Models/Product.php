@@ -90,7 +90,9 @@ class Product extends Model
                         'valid_until' => $effectiveFrom,
                     ]);
 
-                $latestVersion = (int) $product->initialPriceVersions()->max('version');
+                $latestVersion = (int) $product->initialPriceVersions()
+                    ->lockForUpdate()
+                    ->max('version');
 
                 $product->initialPriceVersions()->create([
                     'version' => $latestVersion + 1,

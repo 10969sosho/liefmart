@@ -66,13 +66,13 @@ class ProductSeeder extends Seeder
         $count = 0;
         $skuCounter = 1; // Counter for auto-generated SKUs
 
-        // Get Kosmetik category ID
-        $kosmetikCategory = MainCategory::where('name', 'Kosmetik')->first();
-        if (!$kosmetikCategory) {
+        // Get SKINCARE category ID
+        $skincareCategory = MainCategory::where('name', 'SKINCARE')->first();
+        if (!$skincareCategory) {
             $this->command->error('Main Category "Kosmetik" not found. Using default ID 2.');
-            $kosmetikCategoryId = 2;
+            $skincareCategoryId = 2;
         } else {
-            $kosmetikCategoryId = $kosmetikCategory->id;
+            $skincareCategoryId = $skincareCategory->id;
         }
 
         foreach ($records as $record) {
@@ -121,13 +121,13 @@ class ProductSeeder extends Seeder
                 $initialPrice = $initialPrice === '#N/A' ? 0 : (float)str_replace(',', '', $initialPrice);
                 $discountPercentage = $discountPercentage === '#N/A' ? 0 : (float)str_replace(',', '', $discountPercentage);
 
-                // Find or create Brand with Kosmetik main category
+                // Find or create Brand with SKINCARE main category
                 $brand = Brand::firstOrCreate(
-                    ['name' => $brandName, 'main_category_id' => $kosmetikCategoryId],
+                    ['name' => $brandName, 'main_category_id' => $skincareCategoryId],
                     [
-                        'description' => "Brand {$brandName} untuk kategori Kosmetik",
+                        'description' => "Brand {$brandName} untuk kategori SKINCARE",
                         'is_active' => true,
-                        'main_category_id' => $kosmetikCategoryId
+                        'main_category_id' => $skincareCategoryId
                     ]
                 );
 
@@ -188,7 +188,7 @@ class ProductSeeder extends Seeder
                         'product_variant_id' => $productVariant->id,
                     ],
                     [
-                        'main_category_id' => $kosmetikCategoryId,
+                        'main_category_id' => $skincareCategoryId,
                         'description' => $description,
                         'sku' => $sku, // Always auto-generated SKU
                         'barcode' => $barcode, // Use CSV SKU as barcode if available

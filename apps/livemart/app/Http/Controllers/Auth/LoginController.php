@@ -146,7 +146,7 @@ class LoginController extends Controller
         $request->validate([
             'login' => 'required|string',
             'password' => 'required|string',
-            'main_category_id' => 'required|exists:main_categories,id',
+            'main_category_id' => 'required|exists:main_categories,id,is_active,1',
         ], [
             'login.required' => 'Username atau Email harus diisi.',
             'password.required' => 'Password harus diisi.',

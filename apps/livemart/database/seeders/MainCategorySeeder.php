@@ -21,16 +21,15 @@ class MainCategorySeeder extends Seeder
 
         $categories = [
             [
-                'name' => 'Kopi',
+                'name' => 'KOPI',
                 'description' => 'Kategori untuk produk kopi',
                 'is_active' => true,
             ],
             [
-                'name' => 'Kosmetik',
-                'description' => 'Kategori untuk produk kosmetik',
+                'name' => 'SKINCARE',
+                'description' => 'Kategori untuk produk skincare / kosmetik',
                 'is_active' => true,
             ],
-           
         ];
 
         foreach ($categories as $category) {

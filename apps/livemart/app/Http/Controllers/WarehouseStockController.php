@@ -889,8 +889,9 @@ class WarehouseStockController extends Controller
                     return $item->penerimaan_detail_id ? 'penerimaan_'.$item->penerimaan_detail_id : 'single_'.$item->id;
                 }
 
-                // For returns, keep each item separate (they have different source_ids)
-                return 'return_'.$item->id;
+                // For returns, group by source_id (retur_penjualan_id) so multiple
+                // warehouse_stock entries from the same return are consolidated into one
+                return 'return_'.$item->source_id;
             });
 
             // Create a list - one entry per penerimaan_detail_id

@@ -22,11 +22,11 @@ class CosmeticProductStructureSeeder extends Seeder
         // Disable foreign key checks
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 
-        // Get Kosmetik main category ID
-        $kosmetikCategoryId = MainCategory::where('name', 'Kosmetik')->first()?->id ?? 2;
+        // Get SKINCARE main category ID
+        $skincareCategoryId = MainCategory::where('name', 'SKINCARE')->first()?->id ?? 2;
 
-        // Get or create brands for Kosmetik
-        $brands = $this->getOrCreateBrands($kosmetikCategoryId);
+        // Get or create brands for SKINCARE
+        $brands = $this->getOrCreateBrands($skincareCategoryId);
 
         // Create sub-brands for each brand
         foreach ($brands as $brand) {
@@ -40,16 +40,16 @@ class CosmeticProductStructureSeeder extends Seeder
     }
 
     /**
-     * Get existing or create new brands for Kosmetik
+     * Get existing or create new brands for SKINCARE
      */
-    private function getOrCreateBrands(int $kosmetikCategoryId): array
+    private function getOrCreateBrands(int $skincareCategoryId): array
     {
-        $brandNames = ['Shopee Kosmetik', 'TikTok Kosmetik', 'Offline Kosmetik'];
+        $brandNames = ['Shopee SKINCARE', 'TikTok SKINCARE', 'Offline SKINCARE'];
         $brands = [];
 
         foreach ($brandNames as $brandName) {
             $brand = Brand::firstOrCreate(
-                ['name' => $brandName, 'main_category_id' => $kosmetikCategoryId],
+                ['name' => $brandName, 'main_category_id' => $skincareCategoryId],
                 [
                     'description' => "Brand untuk {$brandName}",
                     'is_active' => true,

@@ -24,9 +24,11 @@ return new class extends Migration
         });
 
         // Add adjustment_description to tiktok2_financial_transactions
-        Schema::table('tiktok2_financial_transactions', function (Blueprint $table) {
-            $table->text('adjustment_description')->nullable()->after('adjustment');
-        });
+        if (Schema::hasTable('tiktok2_financial_transactions')) {
+            Schema::table('tiktok2_financial_transactions', function (Blueprint $table) {
+                $table->text('adjustment_description')->nullable()->after('adjustment');
+            });
+        }
     }
 
     /**
@@ -47,8 +49,10 @@ return new class extends Migration
         });
 
         // Remove adjustment_description from tiktok2_financial_transactions
-        Schema::table('tiktok2_financial_transactions', function (Blueprint $table) {
-            $table->dropColumn('adjustment_description');
-        });
+        if (Schema::hasTable('tiktok2_financial_transactions')) {
+            Schema::table('tiktok2_financial_transactions', function (Blueprint $table) {
+                $table->dropColumn('adjustment_description');
+            });
+        }
     }
 };
