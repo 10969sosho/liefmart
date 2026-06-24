@@ -22,15 +22,10 @@ class PembayaranShopee2Controller extends Controller
 {
     public function index(Request $request)
     {
-        // Get platform by ID (Shopee Liefmarket = ID 6)
-        $platformModel = Platform::find(6);
+        // Get platform by name (Shopee Liefmarket)
+        $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee liefmarket'])->first();
         
-        // Jika tidak ditemukan berdasarkan ID, cari berdasarkan nama dengan case-insensitive
-        if (!$platformModel) {
-            $platformModel = Platform::whereRaw('LOWER(name) = ?', ['shopee liefmarket'])->first();
-        }
-        
-        // Jika masih tidak ditemukan, cari dengan LIKE
+        // Jika tidak ditemukan berdasarkan nama, cari dengan LIKE
         if (!$platformModel) {
             $platformModel = Platform::whereRaw('LOWER(name) LIKE ?', ['%shopee liefmarket%'])->first();
         }
@@ -124,13 +119,14 @@ class PembayaranShopee2Controller extends Controller
             ->paginate(50);
         
         // Filter out fully returned orders from the results
-        $transactions->getCollection()->transform(function($transaction) {
+        $filteredCollection = $transactions->getCollection()->filter(function($transaction) {
             // Skip transactions whose orders are fully returned
             if ($transaction->order && $transaction->order->isFullyReturned()) {
-                return null;
+                return false;
             }
-            return $transaction;
-        })->filter(); // Remove null values
+            return true;
+        });
+        $transactions->setCollection($filteredCollection);
         
         // Get all orders that don't have financial transactions
         $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
