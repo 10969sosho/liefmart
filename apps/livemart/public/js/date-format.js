@@ -21,16 +21,8 @@ function initializeDateInputs() {
     const dateInputs = document.querySelectorAll('input[type="date"]');
     
     dateInputs.forEach(input => {
-        // Convert existing values to DD/MM/YYYY format for display
-        if (input.value) {
-            input.value = convertToDDMMYYYY(input.value);
-        }
-        
         // Add placeholder text
         input.setAttribute('placeholder', 'DD/MM/YYYY');
-        
-        // Add data attribute to track original format
-        input.setAttribute('data-original-format', 'DD/MM/YYYY');
     });
 }
 
@@ -41,20 +33,6 @@ function addDateInputListeners() {
     const dateInputs = document.querySelectorAll('input[type="date"]');
     
     dateInputs.forEach(input => {
-        // Handle focus - show DD/MM/YYYY format
-        input.addEventListener('focus', function() {
-            if (this.value) {
-                this.value = convertToDDMMYYYY(this.value);
-            }
-        });
-        
-        // Handle blur - convert back to YYYY-MM-DD for form submission
-        input.addEventListener('blur', function() {
-            if (this.value) {
-                this.value = convertToYYYYMMDD(this.value);
-            }
-        });
-        
         // Handle change - ensure proper format
         input.addEventListener('change', function() {
             if (this.value) {
