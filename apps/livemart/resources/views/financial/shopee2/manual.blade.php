@@ -71,14 +71,9 @@
                         @php
                             $totalHarga = 0;
                             $totalQty = 0;
-                            if (isset($order) && $order) {
-                                $order->loadMissing('orderItems');
-                                foreach ($order->orderItems as $item) {
-                                    $totalHarga += $item->price_after_discount * $item->quantity;
-                                    $totalQty += $item->quantity;
-                                }
-                            } elseif (request('order_id')) {
-                                $selectedOrder = \App\Models\Order::with('orderItems')->find(request('order_id'));
+                            $selectedOrderId = request('order_id');
+                            if ($selectedOrderId) {
+                                $selectedOrder = \App\Models\Order::with('orderItems')->find($selectedOrderId);
                                 if ($selectedOrder) {
                                     foreach ($selectedOrder->orderItems as $item) {
                                         $totalHarga += $item->price_after_discount * $item->quantity;
@@ -275,7 +270,18 @@
                             field: "text",
                             direction: "asc"
                         },
-                        placeholder: "Pilih Nomor Pesanan"
+                        placeholder: "Pilih Nomor Pesanan",
+                        onChange: function(value) {
+                            if (value) {
+                                var urlParams = new URLSearchParams(window.location.search);
+                                var currentOrderId = urlParams.get('order_id');
+                                if (value !== currentOrderId) {
+                                    var currentUrl = new URL(window.location.href);
+                                    currentUrl.searchParams.set('order_id', value);
+                                    window.location.href = currentUrl.toString();
+                                }
+                            }
+                        }
                     });
                     console.log('TomSelect initialized successfully');
                 } else {
@@ -291,7 +297,18 @@
                                 field: "text",
                                 direction: "asc"
                             },
-                            placeholder: "Pilih Nomor Pesanan"
+                            placeholder: "Pilih Nomor Pesanan",
+                            onChange: function(value) {
+                                if (value) {
+                                    var urlParams = new URLSearchParams(window.location.search);
+                                    var currentOrderId = urlParams.get('order_id');
+                                    if (value !== currentOrderId) {
+                                        var currentUrl = new URL(window.location.href);
+                                        currentUrl.searchParams.set('order_id', value);
+                                        window.location.href = currentUrl.toString();
+                                    }
+                                }
+                            }
                         });
                     };
                     document.head.appendChild(script);

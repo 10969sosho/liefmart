@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add event listeners for date format conversion
     addDateInputListeners();
+    
+    // Ensure all date inputs are in YYYY-MM-DD format before form submission
+    addFormSubmitHandler();
 });
 
 /**
@@ -198,6 +201,21 @@ function isValidDDMMYYYY(dateString) {
     return date.getDate() === day && 
            date.getMonth() === month - 1 && 
            date.getFullYear() === year;
+}
+
+/**
+ * Add form submit handler to convert all date inputs to YYYY-MM-DD before submission
+ */
+function addFormSubmitHandler() {
+    document.addEventListener('submit', function(e) {
+        const form = e.target;
+        const dateInputs = form.querySelectorAll('input[type="date"]');
+        dateInputs.forEach(function(input) {
+            if (input.value) {
+                input.value = convertToYYYYMMDD(input.value);
+            }
+        });
+    }, true); // Use capture phase to run before other handlers
 }
 
 // Make functions globally available

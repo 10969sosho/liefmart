@@ -96,7 +96,37 @@
                             </div>
                         </div>
 
+                        {{-- Hitung total nominal_harga dan qty dari order yang dipilih --}}
+                        @php
+                            $totalHarga = 0;
+                            $totalQty = 0;
+                            $selectedOrderId = request('order_id');
+                            if ($selectedOrderId) {
+                                $selectedOrder = \App\Models\Order::with('orderItems')->find($selectedOrderId);
+                                if ($selectedOrder) {
+                                    foreach ($selectedOrder->orderItems as $item) {
+                                        $totalHarga += $item->price_after_discount * $item->quantity;
+                                        $totalQty += $item->quantity;
+                                    }
+                                }
+                            }
+                        @endphp
                         <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Total Harga (Dari Penjualan)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">Rp</span>
+                                    <input type="text" class="form-control" id="nominal_harga_display" value="{{ number_format($totalHarga, 0, ',', '.') }}" readonly style="background-color: #e9ecef; font-weight: 600;">
+                                </div>
+                                <div class="form-text">
+                                    <i class="fas fa-info-circle me-1"></i>Total harga otomatis dari data penjualan
+                                </div>
+                                <input type="hidden" name="nominal_harga" value="{{ $totalHarga }}">
+                            </div>
+                            <div class="col-md-1 mb-3">
+                                <label class="form-label">Qty</label>
+                                <input type="text" class="form-control" id="qty_display" value="{{ $totalQty }}" readonly style="background-color: #e9ecef; font-weight: 600;">
+                            </div>
                             <div class="col-md-4 mb-3">
                                 <label for="saldo_masuk" class="form-label">Jumlah Masuk Pembayaran <span class="text-danger">*</span></label>
                                 <div class="input-group">
@@ -307,6 +337,18 @@
                             }
                         },
                         onChange: function(value) {
+                            // Redirect to reload with order_id (only if different from current)
+                            if (value) {
+                                var urlParams = new URLSearchParams(window.location.search);
+                                var currentOrderId = urlParams.get('order_id');
+                                if (value !== currentOrderId) {
+                                    var currentUrl = new URL(window.location.href);
+                                    currentUrl.searchParams.set('order_id', value);
+                                    window.location.href = currentUrl.toString();
+                                    return;
+                                }
+                            }
+                            
                             // Update help text when order is selected
                             const helpText = document.getElementById('order_id_help');
                             if (value && helpText) {
@@ -374,6 +416,18 @@
                                 }
                             },
                             onChange: function(value) {
+                                // Redirect to reload with order_id (only if different from current)
+                                if (value) {
+                                    var urlParams = new URLSearchParams(window.location.search);
+                                    var currentOrderId = urlParams.get('order_id');
+                                    if (value !== currentOrderId) {
+                                        var currentUrl = new URL(window.location.href);
+                                        currentUrl.searchParams.set('order_id', value);
+                                        window.location.href = currentUrl.toString();
+                                        return;
+                                    }
+                                }
+                            
                                 const helpText = document.getElementById('order_id_help');
                                 if (value && helpText) {
                                     const selectedOption = selectElement.querySelector(`option[value="${value}"]`);
