@@ -71,7 +71,7 @@
                         @php
                             $totalHarga = 0;
                             $totalQty = 0;
-                            $selectedOrderId = request('order_id');
+                            $selectedOrderId = request('order_id') ?: old('order_id');
                             if ($selectedOrderId) {
                                 $selectedOrder = \App\Models\Order::with('orderItems')->find($selectedOrderId);
                                 if ($selectedOrder) {
@@ -352,6 +352,26 @@
             // Trigger the change event initially to set the day
             dateInput.dispatchEvent(new Event('change'));
         }
+        
+        // Debug: log form submit to help diagnose issues
+        const debugForm = document.querySelector('form[action*="manual-store"]');
+        if (debugForm) {
+            debugForm.addEventListener('submit', function(e) {
+                const formData = new FormData(this);
+                var debugInfo = {};
+                for (var pair of formData.entries()) {
+                    debugInfo[pair[0]] = pair[1];
+                }
+                console.log('[DEBUG] Form submitted with data:', debugInfo);
+                
+                // Also log the current URL
+                console.log('[DEBUG] Current URL:', window.location.href);
+            });
+        }
+        
+        // Log when TomSelect redirect happens
+        console.log('[DEBUG] Page loaded. URL has order_id:', new URLSearchParams(window.location.search).get('order_id'));
+        console.log('[DEBUG] Total Harga display:', document.getElementById('nominal_harga_display')?.value);
     });
 </script>
 @endpush 

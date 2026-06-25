@@ -100,7 +100,7 @@
                         @php
                             $totalHarga = 0;
                             $totalQty = 0;
-                            $selectedOrderId = request('order_id');
+                            $selectedOrderId = request('order_id') ?: old('order_id');
                             if ($selectedOrderId) {
                                 $selectedOrder = \App\Models\Order::with('orderItems')->find($selectedOrderId);
                                 if ($selectedOrder) {
