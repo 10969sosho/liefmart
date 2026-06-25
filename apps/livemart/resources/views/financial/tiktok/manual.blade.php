@@ -310,6 +310,9 @@
                 
                 // Check if TomSelect is loaded
                 if (typeof TomSelect !== 'undefined') {
+                    let tsReady = false;
+                    setTimeout(function() { tsReady = true; }, 600);
+                    
                     tomSelectInstance = new TomSelect('#order_id', {
                         create: false,
                         sortField: {
@@ -337,6 +340,8 @@
                             }
                         },
                         onChange: function(value) {
+                            if (!tsReady) return;
+                            
                             // Redirect to reload with order_id (only if different from current)
                             if (value) {
                                 var urlParams = new URLSearchParams(window.location.search);
@@ -390,6 +395,9 @@
                     script.src = 'https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js';
                     script.onload = function() {
                         console.log('TomSelect loaded dynamically');
+                        let tsReady = false;
+                        setTimeout(function() { tsReady = true; }, 600);
+                        
                         tomSelectInstance = new TomSelect('#order_id', {
                             create: false,
                             sortField: {
@@ -416,6 +424,8 @@
                                 }
                             },
                             onChange: function(value) {
+                                if (!tsReady) return;
+                                
                                 // Redirect to reload with order_id (only if different from current)
                                 if (value) {
                                     var urlParams = new URLSearchParams(window.location.search);

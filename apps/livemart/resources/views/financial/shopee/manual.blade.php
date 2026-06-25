@@ -263,6 +263,9 @@
             if (selectElement) {
                 // Check if TomSelect is loaded
                 if (typeof TomSelect !== 'undefined') {
+                    let tsReady = false;
+                    setTimeout(function() { tsReady = true; }, 600);
+                    
                     new TomSelect('#order_id', {
                         create: false,
                         sortField: {
@@ -271,6 +274,7 @@
                         },
                         placeholder: "Pilih Nomor Pesanan",
                         onChange: function(value) {
+                            if (!tsReady) return;
                             if (value) {
                                 var urlParams = new URLSearchParams(window.location.search);
                                 var currentOrderId = urlParams.get('order_id');
@@ -290,6 +294,9 @@
                     script.src = 'https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js';
                     script.onload = function() {
                         console.log('TomSelect loaded dynamically');
+                        let tsReady = false;
+                        setTimeout(function() { tsReady = true; }, 600);
+                        
                         new TomSelect('#order_id', {
                             create: false,
                             sortField: {
@@ -298,6 +305,7 @@
                             },
                             placeholder: "Pilih Nomor Pesanan",
                             onChange: function(value) {
+                                if (!tsReady) return;
                                 if (value) {
                                     var urlParams = new URLSearchParams(window.location.search);
                                     var currentOrderId = urlParams.get('order_id');
