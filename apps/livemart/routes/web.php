@@ -373,6 +373,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::post('/import/process', [PembayaranShopeeController::class, 'importProcess'])
             ->name('import-process');
         Route::get('/manual', [PembayaranShopeeController::class, 'manual'])->name('manual');
+        Route::get('/order-total/{orderId}', [PembayaranShopeeController::class, 'getOrderTotal'])->name('order-total');
         Route::post('/manual-store', [PembayaranShopeeController::class, 'storeManual'])->name('manual-store');
         Route::delete('/{id}', [PembayaranShopeeController::class, 'delete'])->name('delete');
         Route::post('/adjust/{id}', [PembayaranShopeeController::class, 'adjust'])->name('adjust');
@@ -414,6 +415,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::post('/import/process', [PembayaranTiktokController::class, 'importProcess'])
             ->name('import-process');
         Route::get('/manual', [PembayaranTiktokController::class, 'manual'])->name('manual');
+        Route::get('/order-total/{orderId}', [PembayaranTiktokController::class, 'getOrderTotal'])->name('order-total');
         Route::post('/manual-store', [PembayaranTiktokController::class, 'storeManual'])->name('manual-store');
         Route::delete('/{id}', [PembayaranTiktokController::class, 'delete'])->name('delete');
         Route::post('/adjust/{id}', [PembayaranTiktokController::class, 'adjust'])->name('adjust');
@@ -436,6 +438,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::post('/import/process', [PembayaranTiktok2Controller::class, 'importProcess'])
             ->name('import-process');
         Route::get('/manual', [PembayaranTiktok2Controller::class, 'manual'])->name('manual');
+        Route::get('/order-total/{orderId}', [PembayaranTiktok2Controller::class, 'getOrderTotal'])->name('order-total');
         Route::post('/manual-store', [PembayaranTiktok2Controller::class, 'storeManual'])->name('manual-store');
         Route::delete('/{id}', [PembayaranTiktok2Controller::class, 'delete'])->name('delete');
         Route::post('/adjust/{id}', [PembayaranTiktok2Controller::class, 'adjust'])->name('adjust');

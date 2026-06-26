@@ -19,6 +19,13 @@
                         </div>
                     @endif
 
+                    @if(session('error'))
+                        <div class="alert alert-danger">
+                            <strong><i class="fas fa-exclamation-triangle me-2"></i>Error:</strong>
+                            {!! session('error') !!}
+                        </div>
+                    @endif
+
                     @if($errors->any())
                         <div class="alert alert-danger">
                             <strong><i class="fas fa-exclamation-triangle me-2"></i>Terjadi kesalahan:</strong>
@@ -342,18 +349,12 @@
                             }
                         },
                         onChange: function(value) {
-                            if (!tsReady) return;
-                            
-                            // Redirect to reload with order_id (only if different from current)
                             if (value) {
-                                var urlParams = new URLSearchParams(window.location.search);
-                                var currentOrderId = urlParams.get('order_id');
-                                if (value !== currentOrderId) {
-                                    var currentUrl = new URL(window.location.href);
-                                    currentUrl.searchParams.set('order_id', value);
-                                    window.location.href = currentUrl.toString();
-                                    return;
-                                }
+                                fetchOrderSummary(value);
+                            } else {
+                                document.getElementById('nominal_harga_display').value = '0';
+                                document.getElementById('nominal_harga').value = '0';
+                                document.getElementById('qty_display').value = '0';
                             }
                             
                             // Update help text when order is selected
@@ -364,7 +365,6 @@
                                     const orderNumber = selectedOption.textContent.split(' - ')[0];
                                     helpText.innerHTML = '<i class="fas fa-check-circle me-1 text-success"></i>Nomor pesanan terpilih: <strong>' + orderNumber + '</strong>';
                                 } else {
-                                    // If option not found in DOM, try to get from TomSelect
                                     const option = this.options[value];
                                     if (option) {
                                         const orderNumber = option.text.split(' - ')[0];
@@ -397,8 +397,6 @@
                     script.src = 'https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js';
                     script.onload = function() {
                         console.log('TomSelect loaded dynamically');
-                        let tsReady = false;
-                        setTimeout(function() { tsReady = true; }, 600);
                         
                         tomSelectInstance = new TomSelect('#order_id', {
                             create: false,
@@ -410,15 +408,11 @@
                             render: {
                                 no_results: function(data, escape) {
                                     try {
-                                        const currentValue = this.inputValue;
-                                        // Ensure currentValue is a string
-                                        const searchValue = (currentValue != null) ? String(currentValue).trim() : '';
+                                        const searchValue = String(this.inputValue || '').trim();
                                         if (searchValue !== '') {
-                                            return '<div class="no-results">Nomor pesanan "' + escape(searchValue) + '" tidak ditemukan. Pastikan nomor pesanan sudah terdaftar dan belum memiliki transaksi finansial.</div>';
+                                            return '<div class="no-results">Nomor pesanan "' + escape(searchValue) + '" tidak ditemukan.</div>';
                                         }
-                                    } catch (e) {
-                                        console.error('Error in no_results render:', e);
-                                    }
+                                    } catch (e) {}
                                     return '<div class="no-results">Tidak ada hasil ditemukan</div>';
                                 },
                                 option: function(data, escape) {
@@ -426,18 +420,12 @@
                                 }
                             },
                             onChange: function(value) {
-                                if (!tsReady) return;
-                                
-                                // Redirect to reload with order_id (only if different from current)
                                 if (value) {
-                                    var urlParams = new URLSearchParams(window.location.search);
-                                    var currentOrderId = urlParams.get('order_id');
-                                    if (value !== currentOrderId) {
-                                        var currentUrl = new URL(window.location.href);
-                                        currentUrl.searchParams.set('order_id', value);
-                                        window.location.href = currentUrl.toString();
-                                        return;
-                                    }
+                                    fetchOrderSummary(value);
+                                } else {
+                                    document.getElementById('nominal_harga_display').value = '0';
+                                    document.getElementById('nominal_harga').value = '0';
+                                    document.getElementById('qty_display').value = '0';
                                 }
                             
                                 const helpText = document.getElementById('order_id_help');
@@ -503,6 +491,30 @@
         // Set day of week automatically when date changes
         const dateInput = document.getElementById('tanggal_masuk_pembayaran');
         const daySelect = document.getElementById('hari_masuk_pembayaran');
+        
+        // AJAX: Fetch order total when user selects an order
+        function fetchOrderSummary(orderId) {
+            const priceDisplay = document.getElementById('nominal_harga_display');
+            const priceHidden = document.getElementById('nominal_harga');
+            const qtyDisplay = document.getElementById('qty_display');
+            
+            if (priceDisplay) priceDisplay.value = 'Loading...';
+            
+            fetch('{{ route("finance.tiktok.order-total", "__ID__") }}'.replace('__ID__', orderId))
+                .then(response => {
+                    if (!response.ok) throw new Error('Order not found');
+                    return response.json();
+                })
+                .then(data => {
+                    if (priceDisplay) priceDisplay.value = data.formatted;
+                    if (priceHidden) priceHidden.value = data.total_harga;
+                    if (qtyDisplay) qtyDisplay.value = data.total_qty;
+                })
+                .catch(error => {
+                    console.error('[Tiktok Manual] Fetch order total failed:', error);
+                    if (priceDisplay) priceDisplay.value = 'Error';
+                });
+        }
         
         if (dateInput && daySelect) {
             dateInput.addEventListener('change', function() {

@@ -19,6 +19,13 @@
                         </div>
                     @endif
 
+                    @if(session('error'))
+                        <div class="alert alert-danger">
+                            <strong><i class="fas fa-exclamation-triangle me-2"></i>Error:</strong>
+                            {!! session('error') !!}
+                        </div>
+                    @endif
+
                     @if($errors->any())
                         <div class="alert alert-danger">
                             <ul class="mb-0">
@@ -264,11 +271,7 @@
         try {
             const selectElement = document.getElementById('order_id');
             if (selectElement) {
-                // Check if TomSelect is loaded
                 if (typeof TomSelect !== 'undefined') {
-                    let tsReady = false;
-                    setTimeout(function() { tsReady = true; }, 600);
-                    
                     new TomSelect('#order_id', {
                         create: false,
                         sortField: {
@@ -277,57 +280,43 @@
                         },
                         placeholder: "Pilih Nomor Pesanan",
                         onChange: function(value) {
-                            if (!tsReady) return;
                             if (value) {
-                                var urlParams = new URLSearchParams(window.location.search);
-                                var currentOrderId = urlParams.get('order_id');
-                                if (value !== currentOrderId) {
-                                    var currentUrl = new URL(window.location.href);
-                                    currentUrl.searchParams.set('order_id', value);
-                                    window.location.href = currentUrl.toString();
-                                }
+                                fetchOrderSummary(value);
+                            } else {
+                                document.getElementById('nominal_harga_display').value = '0';
+                                document.getElementById('nominal_harga').value = '0';
+                                document.getElementById('qty_display').value = '0';
                             }
                         }
                     });
-                    console.log('TomSelect initialized successfully');
-                } else {
-                    console.error('TomSelect library not loaded. Loading it dynamically...');
-                    // Try to load it dynamically
-                    const script = document.createElement('script');
-                    script.src = 'https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js';
-                    script.onload = function() {
-                        console.log('TomSelect loaded dynamically');
-                        let tsReady = false;
-                        setTimeout(function() { tsReady = true; }, 600);
-                        
-                        new TomSelect('#order_id', {
-                            create: false,
-                            sortField: {
-                                field: "text",
-                                direction: "asc"
-                            },
-                            placeholder: "Pilih Nomor Pesanan",
-                            onChange: function(value) {
-                                if (!tsReady) return;
-                                if (value) {
-                                    var urlParams = new URLSearchParams(window.location.search);
-                                    var currentOrderId = urlParams.get('order_id');
-                                    if (value !== currentOrderId) {
-                                        var currentUrl = new URL(window.location.href);
-                                        currentUrl.searchParams.set('order_id', value);
-                                        window.location.href = currentUrl.toString();
-                                    }
-                                }
-                            }
-                        });
-                    };
-                    document.head.appendChild(script);
                 }
-            } else {
-                console.error('Element #order_id not found');
             }
         } catch (error) {
             console.error('Error initializing TomSelect:', error);
+        }
+        
+        // AJAX: Fetch order total when user selects an order
+        function fetchOrderSummary(orderId) {
+            const priceDisplay = document.getElementById('nominal_harga_display');
+            const priceHidden = document.getElementById('nominal_harga');
+            const qtyDisplay = document.getElementById('qty_display');
+            
+            if (priceDisplay) priceDisplay.value = 'Loading...';
+            
+            fetch('{{ route("finance.tiktok2.order-total", "__ID__") }}'.replace('__ID__', orderId))
+                .then(response => {
+                    if (!response.ok) throw new Error('Order not found');
+                    return response.json();
+                })
+                .then(data => {
+                    if (priceDisplay) priceDisplay.value = data.formatted;
+                    if (priceHidden) priceHidden.value = data.total_harga;
+                    if (qtyDisplay) qtyDisplay.value = data.total_qty;
+                })
+                .catch(error => {
+                    console.error('[Tiktok2 Manual] Fetch order total failed:', error);
+                    if (priceDisplay) priceDisplay.value = 'Error';
+                });
         }
         
         // Set day of week automatically when date changes
@@ -340,8 +329,6 @@
                 if (!isNaN(date.getTime())) {
                     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
                     const dayName = days[date.getDay()];
-                    
-                    // Select the correct option
                     for (let i = 0; i < daySelect.options.length; i++) {
                         if (daySelect.options[i].value === dayName) {
                             daySelect.selectedIndex = i;
@@ -350,9 +337,13 @@
                     }
                 }
             });
-            
-            // Trigger the change event initially to set the day
             dateInput.dispatchEvent(new Event('change'));
+        }
+        
+        // On page load, if order already selected, fetch totals
+        var initialOrderId = document.getElementById('order_id').value;
+        if (initialOrderId) {
+            fetchOrderSummary(initialOrderId);
         }
     });
 </script>

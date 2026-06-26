@@ -1214,6 +1214,31 @@ class PembayaranTiktok2Controller extends Controller
         return view('financial.tiktok2.manual', compact('order', 'platformLabel'));
     }
 
+    /**
+     * AJAX endpoint: Get total harga & qty for a given order
+     */
+    public function getOrderTotal($orderId)
+    {
+        $order = Order::find($orderId);
+        if (!$order) {
+            return response()->json(['error' => 'Order tidak ditemukan'], 404);
+        }
+
+        $order->loadMissing('orderItems');
+        $totalHarga = 0;
+        $totalQty = 0;
+        foreach ($order->orderItems as $item) {
+            $totalHarga += $item->price_after_discount * $item->quantity;
+            $totalQty += $item->quantity;
+        }
+
+        return response()->json([
+            'total_harga' => $totalHarga,
+            'total_qty' => $totalQty,
+            'formatted' => number_format($totalHarga, 0, ',', '.'),
+        ]);
+    }
+
     public function storeManual(Request $request)
     {
         $request->validate([
