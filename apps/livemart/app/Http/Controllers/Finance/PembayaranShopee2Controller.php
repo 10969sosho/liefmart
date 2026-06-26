@@ -1209,8 +1209,6 @@ class PembayaranShopee2Controller extends Controller
                 $transaction->setDataFromOrder($order);
                 $transaction->order_id = $order->id;
                 
-                // Calculate quantity and nominal for this tax group
-                $transaction->qty = $group['total_qty'];
                 $transaction->nominal_harga = $group['total_nominal'];
                 
                 // Distribute discounts proportionally based on nominal_harga
