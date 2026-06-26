@@ -72,14 +72,22 @@
                             $totalHarga = 0;
                             $totalQty = 0;
                             $selectedOrderId = request('order_id') ?: old('order_id');
+                            $debugMessage = '';
                             if ($selectedOrderId) {
                                 $selectedOrder = \App\Models\Order::with('orderItems')->find($selectedOrderId);
                                 if ($selectedOrder) {
+                                    $itemCount = $selectedOrder->orderItems->count();
+                                    $debugMessage = "Order #{$selectedOrder->order_number} ditemukan, {$itemCount} order items.";
                                     foreach ($selectedOrder->orderItems as $item) {
+                                        $debugMessage .= " [item#{$item->id}: price_after_discount={$item->price_after_discount}, qty={$item->quantity}]";
                                         $totalHarga += $item->price_after_discount * $item->quantity;
                                         $totalQty += $item->quantity;
                                     }
+                                } else {
+                                    $debugMessage = "ERROR: Order ID {$selectedOrderId} tidak ditemukan di database!";
                                 }
+                            } else {
+                                $debugMessage = 'No order_id in request or old input.';
                             }
                         @endphp
                         <div class="row">
@@ -93,6 +101,7 @@
                                     <i class="fas fa-info-circle me-1"></i>Total harga otomatis dari data penjualan
                                 </div>
                                 <input type="hidden" name="nominal_harga" value="{{ $totalHarga }}">
+                                <!-- DEBUG: selectedOrderId={{ $selectedOrderId }}, totalHarga={{ $totalHarga }}, totalQty={{ $totalQty }}, msg={{ $debugMessage }} -->
                             </div>
                             <div class="col-md-1 mb-3">
                                 <label class="form-label">Qty</label>
