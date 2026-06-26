@@ -49,8 +49,10 @@
                                         // Get orders without financial transactions
                                         $availableOrders = App\Models\Order::where('platform_id', $tiktokPlatformId)
                                             ->whereDoesntHave('tiktokFinancialTransactions')
+                                            ->whereHas('orderItems')
                                             ->orderBy('tanggal', 'desc')
-                                            ->get();
+                                            ->get()
+                                            ->filter(fn($o) => !$o->isFullyReturned());
                                         
                                         // Get selected order ID from request or old input
                                         $selectedOrderId = request('order_id') ?? old('order_id');

@@ -43,8 +43,10 @@
                                     @endphp
                                     @foreach(App\Models\Order::where('platform_id', $tiktok2PlatformId)
                                         ->whereDoesntHave('tiktok2FinancialTransactions')
+                                        ->whereHas('orderItems')
                                         ->orderBy('tanggal', 'desc')
-                                        ->get() as $order)
+                                        ->get()
+                                        ->filter(fn($o) => !$o->isFullyReturned()) as $order)
                                         <option value="{{ $order->id }}" {{ (request('order_id') == $order->id || old('order_id') == $order->id) ? 'selected' : '' }}>{{ $order->order_number }} - {{ $order->customer_name }} - {{ $order->tanggal ? $order->tanggal->format('d/m/Y') : 'N/A' }}</option>
                                     @endforeach
                                 </select>
