@@ -51,6 +51,7 @@
                                     @foreach(App\Models\Order::where('platform_id', $shopee2PlatformId)
                                         ->whereDoesntHave('shopee2FinancialTransactions')
                                         ->whereHas('orderItems')
+                                        ->with(['orderItems.platformProduct.mappingBarang', 'orderItems.returPenjualanDetails.returPenjualan'])
                                         ->orderBy('tanggal', 'desc')
                                         ->get()
                                         ->filter(fn($o) => !$o->isFullyReturned()) as $order)

@@ -136,24 +136,35 @@ public function shopeeFinancialTransactions()
     public function isFullyReturned()
     {
         if (!$this->relationLoaded('orderItems')) {
-            $this->load('orderItems.platformProduct.mappingBarang');
+            $this->load('orderItems.platformProduct.mappingBarang', 'orderItems.returPenjualanDetails.returPenjualan');
         }
         
         $totalOriginalQuantity = 0;
         $totalReturnedQuantity = 0;
         
         foreach ($this->orderItems as $item) {
-            // Calculate returned quantity for this item first
-            $returnedQuantityIndividual = \App\Models\ReturPenjualanDetail::where('order_item_id', $item->id)
-                ->whereHas('returPenjualan', function($q) { 
-                    $q->whereIn('status', ['draft', 'selesai']); 
-                })
-                ->sum('qty');
+            // Calculate returned quantity for this item — use eager-loaded relation if available
+            $returnedQuantityIndividual = 0;
+            if ($item->relationLoaded('returPenjualanDetails')) {
+                foreach ($item->returPenjualanDetails as $detail) {
+                    $returStatus = $detail->returPenjualan->status ?? '';
+                    if (in_array($returStatus, ['draft', 'selesai'])) {
+                        $returnedQuantityIndividual += (float)($detail->qty ?? 0);
+                    }
+                }
+            } else {
+                $returnedQuantityIndividual = \App\Models\ReturPenjualanDetail::where('order_item_id', $item->id)
+                    ->whereHas('returPenjualan', function($q) { 
+                        $q->whereIn('status', ['draft', 'selesai']); 
+                    })
+                    ->sum('qty');
+            }
             
             // Convert individual retur quantity back to package quantity
-            $packageQuantity = 1; // Default for non-package products
-            if ($item->platformProduct && $item->platformProduct->mappingBarang && $item->platformProduct->mappingBarang->count() > 0) {
-                // Use only active mappings when determining package quantity
+            $packageQuantity = 1;
+            if ($item->relationLoaded('platformProduct') && $item->platformProduct && 
+                $item->platformProduct->relationLoaded('mappingBarang') &&
+                $item->platformProduct->mappingBarang->count() > 0) {
                 $packageQuantity = $item->platformProduct->mappingBarang
                     ->where('is_active', true)
                     ->sum('quantity');
@@ -167,7 +178,6 @@ public function shopeeFinancialTransactions()
             $totalOriginalQuantity += $originalQuantity;
         }
         
-        // If total returned quantity equals or exceeds original quantity, this is fully returned
         return $totalReturnedQuantity >= $totalOriginalQuantity && $totalReturnedQuantity > 0;
     }
     

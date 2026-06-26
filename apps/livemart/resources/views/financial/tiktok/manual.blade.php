@@ -57,6 +57,7 @@
                                         $availableOrders = App\Models\Order::where('platform_id', $tiktokPlatformId)
                                             ->whereDoesntHave('tiktokFinancialTransactions')
                                             ->whereHas('orderItems')
+                                            ->with(['orderItems.platformProduct.mappingBarang', 'orderItems.returPenjualanDetails.returPenjualan'])
                                             ->orderBy('tanggal', 'desc')
                                             ->get()
                                             ->filter(fn($o) => !$o->isFullyReturned());
