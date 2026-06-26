@@ -393,6 +393,7 @@ Route::prefix('finance')->name('finance.')->middleware(['auth', 'main.category',
         Route::post('/import/process', [PembayaranShopee2Controller::class, 'importProcess'])
             ->name('import-process');
         Route::get('/manual', [PembayaranShopee2Controller::class, 'manual'])->name('manual');
+        Route::get('/order-total/{orderId}', [PembayaranShopee2Controller::class, 'getOrderTotal'])->name('order-total');
         Route::post('/manual-store', [PembayaranShopee2Controller::class, 'storeManual'])->name('manual-store');
         Route::delete('/{id}', [PembayaranShopee2Controller::class, 'delete'])->name('delete');
         Route::post('/adjust/{id}', [PembayaranShopee2Controller::class, 'adjust'])->name('adjust');
