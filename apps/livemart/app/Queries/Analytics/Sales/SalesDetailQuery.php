@@ -74,6 +74,12 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        $search = $filters['search'] ?? null;
+        $searchFilter = '';
+        if ($search !== null && $search !== '') {
+            $searchFilter = " AND o.order_number LIKE '%" . str_replace("'", "''", $search) . "%'";
+        }
+        
         // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
             " . self::buildOrderItemsWithReturCTE() . ",
@@ -87,7 +93,7 @@ class SalesDetailQuery
                     SUM(oiwr.remaining_value) as order_total_value
                 FROM orders o
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
-                WHERE 1=1{$dateFilter}{$platformFilter}
+                WHERE 1=1{$dateFilter}{$platformFilter}{$searchFilter}
                 GROUP BY o.id, o.order_number, o.tanggal, o.platform_id
                 HAVING 1=1{$priceFilter}{$qtyFilter}
             )";
@@ -146,6 +152,12 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        $search = $filters['search'] ?? null;
+        $searchFilter = '';
+        if ($search !== null && $search !== '') {
+            $searchFilter = " AND o.order_number LIKE '%" . str_replace("'", "''", $search) . "%'";
+        }
+        
         // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
             " . self::buildOrderItemsWithReturCTE() . ",
@@ -156,7 +168,7 @@ class SalesDetailQuery
                     SUM(oiwr.remaining_value) as order_total_value
                 FROM orders o
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
-                WHERE 1=1{$dateFilter}{$platformFilter}
+                WHERE 1=1{$dateFilter}{$platformFilter}{$searchFilter}
                 GROUP BY o.id
                 HAVING 1=1{$priceFilter}{$qtyFilter}
             )";
@@ -199,6 +211,12 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        $search = $filters['search'] ?? null;
+        $searchFilter = '';
+        if ($search !== null && $search !== '') {
+            $searchFilter = " AND o.order_number LIKE '%" . str_replace("'", "''", $search) . "%'";
+        }
+        
         // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
             " . self::buildOrderItemsWithReturCTE() . ",
@@ -209,21 +227,21 @@ class SalesDetailQuery
                     SUM(oiwr.remaining_value) as order_total_value
                 FROM orders o
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
-                WHERE 1=1{$dateFilter}{$platformFilter}
+                WHERE 1=1{$dateFilter}{$platformFilter}{$searchFilter}
                 GROUP BY o.id
                 HAVING 1=1{$priceFilter}{$qtyFilter}
             ),
             all_orders_count AS (
                 SELECT COUNT(*) as total
                 FROM orders o
-                WHERE 1=1{$dateFilter}{$platformFilter}
+                WHERE 1=1{$dateFilter}{$platformFilter}{$searchFilter}
             ),
             orders_with_retur_count AS (
                 SELECT COUNT(DISTINCT rp.order_id) as total
                 FROM retur_penjualans rp
                 INNER JOIN orders o ON rp.order_id = o.id
                 WHERE rp.status IN ('draft', 'selesai')
-                {$dateFilter}{$platformFilter}
+                {$dateFilter}{$platformFilter}{$searchFilter}
             )";
         
         return "

@@ -616,6 +616,7 @@ class SalesAnalyticsController extends Controller
         $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
         $endDate = $request->input('end_date') ?? now()->format('Y-m-d');
         $sortBy = $request->input('sort', 'date_newest');
+        $search = $request->input('search');
         
         // Build filters array for SQL query
         $filters = [
@@ -626,6 +627,7 @@ class SalesAnalyticsController extends Controller
             'max_price' => $request->input('max_price'),
             'min_qty' => $request->input('min_qty'),
             'max_qty' => $request->input('max_qty'),
+            'search' => $search,
             'sort' => $sortBy,
         ];
         
@@ -728,6 +730,7 @@ class SalesAnalyticsController extends Controller
             'endDate' => $endDate,
             'selectedPlatform' => $request->platform_id,
             'sortBy' => $sortBy,
+            'search' => $search,
             'summary' => $summary
         ]);
     }
@@ -738,6 +741,7 @@ class SalesAnalyticsController extends Controller
         $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
         $endDate = $request->input('end_date') ?? now()->format('Y-m-d');
         $sortBy = $request->input('sort', 'date_newest');
+        $search = $request->input('search');
         
         // Build filters array for SQL query
         $filters = [
@@ -748,6 +752,7 @@ class SalesAnalyticsController extends Controller
             'max_price' => $request->input('max_price'),
             'min_qty' => $request->input('min_qty'),
             'max_qty' => $request->input('max_qty'),
+            'search' => $search,
             'sort' => $sortBy,
         ];
         

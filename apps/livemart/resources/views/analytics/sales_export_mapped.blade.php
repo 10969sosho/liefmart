@@ -86,7 +86,8 @@
 
         .table-responsive {
             border-radius: 8px;
-            overflow: hidden;
+            overflow-x: auto;
+            overflow-y: auto;
         }
 
         /* Sticky Header Fix */
@@ -165,6 +166,13 @@
                                 Value Terendah
                             </option>
                         </select>
+                    </div>
+
+                    <!-- Search Box -->
+                    <div class="col-md-3">
+                        <label for="search" class="form-label">Cari No Order</label>
+                        <input type="text" class="form-control" id="search" name="search"
+                            value="{{ $search ?? '' }}" placeholder="Cari no order...">
                     </div>
 
                     <!-- Submit and Reset Button -->
