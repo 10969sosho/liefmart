@@ -58,6 +58,7 @@ class SalesExportMappedExport implements FromIterator, WithHeadings, ShouldAutoS
                         'orderItems.platformProduct' => function($query) {
                             $query->select('id', 'platform_product_name', 'variant');
                         },
+                        'orderItems.returPenjualanDetails',
                         'platform' => function($query) {
                             $query->select('id', 'name');
                         }
@@ -111,6 +112,7 @@ class SalesExportMappedExport implements FromIterator, WithHeadings, ShouldAutoS
                                     'Nama Barang (Platform)' => $item->platformProduct ? $item->platformProduct->platform_product_name : '-',
                                     'Varian' => $item->platformProduct ? $item->platformProduct->variant : '-',
                                     'Qty (Platform)' => $item->quantity,
+                                    'Qty Retur' => $item->returPenjualanDetails->sum('qty'),
                                     'Harga' => $item->price_after_discount,
                                     'Total Item' => $item->price_after_discount * $item->quantity,
                                     'Nama Barang (Internal)' => $mapping->product ? $mapping->product->name : 'Product Not Found',
@@ -131,6 +133,7 @@ class SalesExportMappedExport implements FromIterator, WithHeadings, ShouldAutoS
                                 'Nama Barang (Platform)' => $item->platformProduct ? $item->platformProduct->platform_product_name : '-',
                                 'Varian' => $item->platformProduct ? $item->platformProduct->variant : '-',
                                 'Qty (Platform)' => $item->quantity,
+                                'Qty Retur' => $item->returPenjualanDetails->sum('qty'),
                                 'Harga' => $item->price_after_discount,
                                 'Total Item' => $item->price_after_discount * $item->quantity,
                                 'Nama Barang (Internal)' => 'No Mapping',
@@ -169,6 +172,7 @@ class SalesExportMappedExport implements FromIterator, WithHeadings, ShouldAutoS
             'Nama Barang (Platform)',
             'Varian',
             'Qty (Platform)',
+            'Qty Retur',
             'Harga',
             'Total Item',
             'Nama Barang (Internal)',
