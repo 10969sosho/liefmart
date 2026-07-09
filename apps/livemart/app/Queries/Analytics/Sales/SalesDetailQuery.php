@@ -89,7 +89,7 @@ class SalesDetailQuery
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 WHERE 1=1{$dateFilter}{$platformFilter}
                 GROUP BY o.id, o.order_number, o.tanggal, o.platform_id
-                HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}
+                HAVING 1=1{$priceFilter}{$qtyFilter}
             )";
         
         // Build ORDER BY
@@ -158,7 +158,7 @@ class SalesDetailQuery
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 WHERE 1=1{$dateFilter}{$platformFilter}
                 GROUP BY o.id
-                HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}
+                HAVING 1=1{$priceFilter}{$qtyFilter}
             )";
         
         return "
@@ -211,7 +211,7 @@ class SalesDetailQuery
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 WHERE 1=1{$dateFilter}{$platformFilter}
                 GROUP BY o.id
-                HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}
+                HAVING 1=1{$priceFilter}{$qtyFilter}
             ),
             all_orders_count AS (
                 SELECT COUNT(*) as total

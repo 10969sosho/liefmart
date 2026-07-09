@@ -300,7 +300,7 @@
                                                 <td rowspan="{{ $itemRowspan }}">{{ $item->platformProduct ? $item->platformProduct->platform_product_name : '-' }}</td>
                                                 <td rowspan="{{ $itemRowspan }}">{{ $item->platformProduct ? $item->platformProduct->variant : '-' }}</td>
                                                 <td rowspan="{{ $itemRowspan }}" class="text-center">{{ $item->quantity }}</td>
-                                                <td rowspan="{{ $itemRowspan }}" class="text-center">0</td>
+                                                <td rowspan="{{ $itemRowspan }}" class="text-center">{{ $item->returPenjualanDetails->sum('qty') }}</td>
                                                 <td rowspan="{{ $itemRowspan }}" class="text-end">Rp {{ number_format($item->price_after_discount, 0, ',', '.') }}</td>
                                                 <td rowspan="{{ $itemRowspan }}" class="text-end">Rp {{ number_format($item->price_after_discount * $item->quantity, 0, ',', '.') }}</td>
                                             @endif
@@ -337,7 +337,7 @@
                                         <td>{{ $item->platformProduct ? $item->platformProduct->platform_product_name : '-' }}</td>
                                         <td>{{ $item->platformProduct ? $item->platformProduct->variant : '-' }}</td>
                                         <td class="text-center">{{ $item->quantity }}</td>
-                                        <td class="text-center">0</td>
+                                        <td class="text-center">{{ $item->returPenjualanDetails->sum('qty') }}</td>
                                         <td class="text-end">Rp {{ number_format($item->price_after_discount, 0, ',', '.') }}</td>
                                         <td class="text-end">Rp {{ number_format($item->price_after_discount * $item->quantity, 0, ',', '.') }}</td>
 

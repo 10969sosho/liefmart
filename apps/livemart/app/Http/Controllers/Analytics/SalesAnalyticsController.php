@@ -654,6 +654,7 @@ class SalesAnalyticsController extends Controller
                     'orderItems.platformProduct.mappingBarang' => function($query) {
                         $query->where('is_active', true)->with('product');
                     },
+                    'orderItems.returPenjualanDetails',
                     'platform'
                 ])
                 ->get()
