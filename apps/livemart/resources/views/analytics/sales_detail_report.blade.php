@@ -307,18 +307,10 @@
                             </div>
                             <div class="mt-2 small opacity-75" style="font-size: 0.75rem; line-height: 1.4;">
                                 @php
-                                    // Card summary mengikuti semua filter (tanggal, platform, harga, qty)
-                                    $totalBeforeReturns = $summary['total_orders_before_returns'] ?? 0;
                                     $ordersWithReturns = $summary['orders_with_returns'] ?? 0;
-
-                                    // Pastikan total sebelum retur lebih besar atau sama dengan setelah retur
-                                    $totalAfterReturns = $summary['total_orders_after_returns'] ?? 0;
-                                    if ($totalBeforeReturns < $totalAfterReturns) {
-                                        // Jika tidak valid, gunakan total setelah retur sebagai fallback
-                                        $totalBeforeReturns = $totalAfterReturns;
-                                    }
+                                    $totalAllOrders = $summary['total_orders_all'] ?? $summary['total_orders_after_returns'] ?? 0;
                                 @endphp
-                                Retur {{ number_format($ordersWithReturns) }} dari total orderan {{ number_format($totalBeforeReturns) }}
+                                Retur {{ number_format($ordersWithReturns) }} dari total orderan {{ number_format($totalAllOrders) }}
                             </div>
                         </div>
                     </div>
