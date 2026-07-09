@@ -636,14 +636,14 @@ class SalesAnalyticsController extends Controller
         $page = $request->input('page', 1);
         
         // Execute optimized SQL query untuk mendapatkan order IDs yang sudah difilter
-        $sqlQuery = SalesDetailQuery::build($filters, $perPage, $page);
+        $sqlQuery = SalesDetailQuery::build($filters, $perPage, $page, false);
         $orderResults = DB::select($sqlQuery);
         
         // Get order IDs dari hasil query
         $orderIds = collect($orderResults)->pluck('id')->toArray();
         
         // Get count untuk pagination
-        $countQuery = SalesDetailQuery::buildCount($filters);
+        $countQuery = SalesDetailQuery::buildCount($filters, false);
         $countResult = DB::selectOne($countQuery);
         $total = (int)($countResult->total ?? 0);
         
@@ -684,7 +684,7 @@ class SalesAnalyticsController extends Controller
         );
         
         // Get summary menggunakan SQL query (optimized)
-        $summaryQuery = SalesDetailQuery::buildSummary($filters);
+        $summaryQuery = SalesDetailQuery::buildSummary($filters, false);
         $summaryResult = DB::selectOne($summaryQuery);
         
         // Calculate percentage shown (hanya affected oleh price/qty filters)
@@ -700,7 +700,7 @@ class SalesAnalyticsController extends Controller
         $summaryWithoutPriceQtyFilters['min_qty'] = null;
         $summaryWithoutPriceQtyFilters['max_qty'] = null;
         
-        $summaryQueryWithoutPriceQty = SalesDetailQuery::buildSummary($summaryWithoutPriceQtyFilters);
+        $summaryQueryWithoutPriceQty = SalesDetailQuery::buildSummary($summaryWithoutPriceQtyFilters, false);
         $summaryResultWithoutPriceQty = DB::selectOne($summaryQueryWithoutPriceQty);
         $totalOrdersByDatePlatform = (int)($summaryResultWithoutPriceQty->total_orders ?? 0);
         
