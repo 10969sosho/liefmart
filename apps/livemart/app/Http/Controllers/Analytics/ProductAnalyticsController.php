@@ -8,13 +8,11 @@ use App\Models\Platform;
 use App\Models\PlatformProduct;
 use App\Models\Product;
 use Carbon\Carbon;
+use App\Http\Controllers\Analytics\Traits\DispatchesAnalyticsExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\SalesByMasterProductExport;
 use App\Exports\SalesByPlatformProductExport;
-use App\Exports\ProdukInternalTerlarisExport;
-use App\Exports\ProdukPlatformTerlarisExport;
 use App\Models\SubBrand;
 use App\Models\ProductCategory;
 use App\Models\ProductType;
@@ -25,6 +23,7 @@ use App\Models\OrderItem;
 
 class ProductAnalyticsController extends Controller
 {
+    use DispatchesAnalyticsExport;
     private function calculateAverageCostForProduct($productId)
     {
         // Weighted average cost from penerimaan_detail records
@@ -919,156 +918,7 @@ class ProductAnalyticsController extends Controller
      */
     public function exportProdukInternalTerlaris(Request $request)
     {
-        // Use same logic as produkInternalTerlaris but without pagination
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->format('Y-m-d');
-        $endDate = $request->filled('end_date') ? $request->input('end_date') : now()->format('Y-m-d');
-        $selectedPlatform = $request->input('platform_id');
-        $search = $request->input('search');
-        $sortBy = $request->input('sort', 'quantity_highest');
-        
-        // Parse dates
-        try {
-            $startDateCarbon = Carbon::parse($startDate)->startOfDay();
-            $endDateCarbon = Carbon::parse($endDate)->endOfDay();
-        } catch (\Exception $e) {
-            $startDateCarbon = Carbon::today()->startOfDay();
-            $endDateCarbon = Carbon::today()->endOfDay();
-            $startDate = $startDateCarbon->format('Y-m-d');
-            $endDate = $endDateCarbon->format('Y-m-d');
-        }
-        
-        // Main query - same as produkInternalTerlaris but get ALL data
-        $query = DB::table('order_items')
-            ->join('orders', 'order_items.order_id', '=', 'orders.id')
-            ->join('mapping_barangs', 'order_items.platform_product_id', '=', 'mapping_barangs.platform_product_id')
-            ->join('products', 'mapping_barangs.product_id', '=', 'products.id')
-            ->whereBetween('orders.tanggal', [$startDateCarbon, $endDateCarbon])
-            ->whereNotNull('orders.platform_id')
-            ->where('mapping_barangs.is_active', 1)
-            ->select(
-                'products.id as product_id',
-                'products.name as product_name',
-                'products.sku as product_sku',
-                DB::raw('SUM(order_items.quantity * mapping_barangs.quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT orders.id) as order_count'),
-                DB::raw('GROUP_CONCAT(DISTINCT orders.platform_id ORDER BY orders.platform_id SEPARATOR ",") as platform_ids')
-            )
-            ->groupBy('products.id', 'products.name', 'products.sku');
-        
-        // Apply filters
-        if ($selectedPlatform) {
-            $query->where('orders.platform_id', $selectedPlatform);
-        }
-        
-        $query->whereNotExists(function($subquery) {
-            $subquery->select(DB::raw(1))
-                ->from('retur_penjualans')
-                ->whereColumn('retur_penjualans.order_id', 'orders.id')
-                ->whereIn('retur_penjualans.status', ['draft', 'selesai']);
-        });
-        
-        if ($search) {
-            $query->where(function($q) use ($search) {
-                $q->where('products.name', 'like', "%$search%")
-                  ->orWhere('products.sku', 'like', "%$search%");
-            });
-        }
-        
-        // Apply sorting
-        switch ($sortBy) {
-            case 'quantity_lowest':
-                $query->orderByRaw('total_quantity ASC');
-                break;
-            case 'order_count_highest':
-                $query->orderByRaw('order_count DESC');
-                break;
-            case 'order_count_lowest':
-                $query->orderByRaw('order_count ASC');
-                break;
-            case 'quantity_highest':
-            default:
-                $query->orderByRaw('total_quantity DESC');
-                break;
-        }
-        
-        // Get ALL products (no pagination)
-        $products = $query->get();
-        
-        // Get platform names
-        $platformIds = [];
-        foreach ($products as $product) {
-            if ($product->platform_ids) {
-                $platformIds = array_merge($platformIds, explode(',', $product->platform_ids));
-            }
-        }
-        $platformIds = array_unique($platformIds);
-        $platformNames = Platform::whereIn('id', $platformIds)->pluck('name', 'id');
-        
-        // Get returns for all products
-        $productIds = $products->pluck('product_id')->toArray();
-        $returnsData = [];
-        if (!empty($productIds)) {
-            $returnsData = DB::table('order_items')
-                ->join('orders', 'order_items.order_id', '=', 'orders.id')
-                ->join('mapping_barangs', 'order_items.platform_product_id', '=', 'mapping_barangs.platform_product_id')
-                ->join('retur_penjualan_details', 'order_items.id', '=', 'retur_penjualan_details.order_item_id')
-                ->join('retur_penjualans', 'retur_penjualan_details.retur_penjualan_id', '=', 'retur_penjualans.id')
-                ->whereIn('mapping_barangs.product_id', $productIds)
-                ->where('mapping_barangs.is_active', 1)
-                ->whereBetween('orders.tanggal', [$startDateCarbon, $endDateCarbon])
-                ->whereIn('retur_penjualans.status', ['draft', 'selesai'])
-                ->when($selectedPlatform, function($q) use ($selectedPlatform) {
-                    $q->where('orders.platform_id', $selectedPlatform);
-                })
-                ->select(
-                    'mapping_barangs.product_id',
-                    // FIXED: retur_penjualan_details.qty is already in individual product units
-                    DB::raw('SUM(retur_penjualan_details.qty) as qty_retur')
-                )
-                ->groupBy('mapping_barangs.product_id')
-                ->get()
-                ->keyBy('product_id');
-        }
-        
-        // Transform products
-        $transformedProducts = $products->map(function($product) use ($platformNames, $returnsData) {
-            $platformIdArray = $product->platform_ids ? explode(',', $product->platform_ids) : [];
-            $platforms = [];
-            foreach ($platformIdArray as $pid) {
-                if (isset($platformNames[$pid])) {
-                    $platforms[] = $platformNames[$pid];
-                }
-            }
-            
-            $qtyRetur = isset($returnsData[$product->product_id]) 
-                ? (float) $returnsData[$product->product_id]->qty_retur 
-                : 0;
-            
-            $netQuantity = max(0, $product->total_quantity - $qtyRetur);
-            
-            return [
-                'product_id' => $product->product_id,
-                'product_name' => $product->product_name,
-                'product_sku' => $product->product_sku ?? '-',
-                'total_quantity' => (float) $product->total_quantity,
-                'qty_retur' => $qtyRetur,
-                'net_quantity' => $netQuantity,
-                'order_count' => (int) $product->order_count,
-                'platforms' => implode(', ', array_unique($platforms)),
-            ];
-        });
-        
-        // Calculate summary
-        $summary = [
-            'total_products' => $transformedProducts->count(),
-            'total_quantity' => $transformedProducts->sum('net_quantity'),
-            'total_returns' => $transformedProducts->sum('qty_retur'),
-            'total_orders' => $transformedProducts->sum('order_count'),
-        ];
-        
-        $filename = 'produk-internal-terlaris-' . date('Y-m-d') . '.xlsx';
-        
-        return Excel::download(new ProdukInternalTerlarisExport($transformedProducts, $summary, $startDate, $endDate), $filename);
+        return $this->dispatchExport('produk_internal_terlaris', $request->all());
     }
 
     /**
@@ -1077,141 +927,7 @@ class ProductAnalyticsController extends Controller
      */
     public function exportProdukPlatformTerlaris(Request $request)
     {
-        // Use same logic as produkPlatformTerlaris but without pagination
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->format('Y-m-d');
-        $endDate = $request->filled('end_date') ? $request->input('end_date') : now()->format('Y-m-d');
-        $selectedPlatform = $request->input('platform_id');
-        $search = $request->input('search');
-        $sortBy = $request->input('sort', 'quantity_highest');
-        
-        // Parse dates
-        try {
-            $startDateCarbon = Carbon::parse($startDate)->startOfDay();
-            $endDateCarbon = Carbon::parse($endDate)->endOfDay();
-        } catch (\Exception $e) {
-            $startDateCarbon = Carbon::today()->startOfDay();
-            $endDateCarbon = Carbon::today()->endOfDay();
-            $startDate = $startDateCarbon->format('Y-m-d');
-            $endDate = $endDateCarbon->format('Y-m-d');
-        }
-        
-        // Build main query - same as produkPlatformTerlaris but get ALL data
-        // FIXED: Exclude orders that have returns from order_count
-        $query = DB::table('order_items')
-            ->join('orders', 'order_items.order_id', '=', 'orders.id')
-            ->join('platform_products', 'order_items.platform_product_id', '=', 'platform_products.id')
-            ->join('platforms', 'platform_products.platform_id', '=', 'platforms.id')
-            ->whereBetween('orders.tanggal', [$startDateCarbon, $endDateCarbon])
-            ->whereNotNull('orders.platform_id')
-            // Exclude orders that have returns
-            ->whereNotExists(function($subquery) {
-                $subquery->select(DB::raw(1))
-                    ->from('retur_penjualans')
-                    ->whereColumn('retur_penjualans.order_id', 'orders.id')
-                    ->whereIn('retur_penjualans.status', ['draft', 'selesai']);
-            })
-            ->select(
-                'platform_products.id as platform_product_id',
-                'platform_products.platform_product_name',
-                'platform_products.variant',
-                'platforms.id as platform_id',
-                'platforms.name as platform_name',
-                DB::raw('SUM(order_items.quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT order_items.order_id) as order_count'),
-                DB::raw('SUM(order_items.price_after_discount * order_items.quantity) as total_value'),
-                DB::raw('(
-                    SELECT COALESCE(SUM(rpd.qty), 0)
-                    FROM retur_penjualan_details rpd
-                    JOIN retur_penjualans rp ON rpd.retur_penjualan_id = rp.id
-                    JOIN order_items oi2 ON rpd.order_item_id = oi2.id
-                    JOIN orders o2 ON oi2.order_id = o2.id
-                    WHERE oi2.platform_product_id = platform_products.id
-                      AND rp.status IN ("draft", "selesai")
-                      AND o2.tanggal BETWEEN "' . $startDateCarbon->format('Y-m-d H:i:s') . '" 
-                      AND "' . $endDateCarbon->format('Y-m-d H:i:s') . '"
-                ) as qty_retur_individual'),
-                DB::raw('(
-                    SELECT COALESCE(SUM(mb.quantity), 1)
-                    FROM mapping_barangs mb
-                    WHERE mb.platform_product_id = platform_products.id
-                      AND mb.is_active = 1
-                ) as package_quantity')
-            )
-            ->groupBy('platform_products.id', 'platform_products.platform_product_name', 'platform_products.variant', 'platforms.id', 'platforms.name');
-        
-        // Apply filters
-        if ($selectedPlatform) {
-            $query->where('platforms.id', $selectedPlatform);
-        }
-        
-        if ($search) {
-            $query->where(function($q) use ($search) {
-                $q->where('platform_products.platform_product_name', 'like', "%$search%")
-                  ->orWhere('platform_products.variant', 'like', "%$search%");
-            });
-        }
-        
-        // Apply sorting
-        switch ($sortBy) {
-            case 'quantity_lowest':
-                $query->orderByRaw('(SUM(order_items.quantity) - (qty_retur_individual / package_quantity)) ASC');
-                break;
-            case 'value_highest':
-                $query->orderByRaw('SUM(order_items.price_after_discount * order_items.quantity) DESC');
-                break;
-            case 'value_lowest':
-                $query->orderByRaw('SUM(order_items.price_after_discount * order_items.quantity) ASC');
-                break;
-            case 'order_count_highest':
-                $query->orderByRaw('COUNT(DISTINCT order_items.order_id) DESC');
-                break;
-            case 'order_count_lowest':
-                $query->orderByRaw('COUNT(DISTINCT order_items.order_id) ASC');
-                break;
-            case 'quantity_highest':
-            default:
-                $query->orderByRaw('(SUM(order_items.quantity) - (qty_retur_individual / package_quantity)) DESC');
-                break;
-        }
-        
-        // Get ALL products (no pagination)
-        $products = $query->get();
-        
-        // Transform results - same logic as view method
-        // Retur dihitung dari subquery yang ada di query utama (sama seperti view)
-        $transformedProducts = $products->map(function($product) {
-            $qtyReturPackage = $product->package_quantity > 0 
-                ? $product->qty_retur_individual / $product->package_quantity 
-                : $product->qty_retur_individual;
-            
-            $netQuantity = max(0, $product->total_quantity - $qtyReturPackage);
-            
-            return [
-                'platform_product_id' => $product->platform_product_id,
-                'platform_product_name' => $product->platform_product_name,
-                'variant' => $product->variant ?? '-',
-                'platform_id' => $product->platform_id,
-                'platform_name' => $product->platform_name,
-                'total_quantity' => (float) $product->total_quantity,
-                'qty_retur' => (float) $qtyReturPackage,
-                'net_quantity' => (float) $netQuantity,
-                'order_count' => (int) $product->order_count,
-                'total_value' => (float) $product->total_value,
-            ];
-        });
-        
-        // Calculate summary
-        $summary = [
-            'total_products' => $transformedProducts->count(),
-            'total_quantity' => $transformedProducts->sum('net_quantity'),
-            'total_returns' => $transformedProducts->sum('qty_retur'),
-            'total_orders' => $transformedProducts->sum('order_count'),
-            'total_value' => $transformedProducts->sum('total_value'),
-        ];
-        
-        $filename = 'produk-platform-terlaris-' . date('Y-m-d') . '.xlsx';
-        
-        return Excel::download(new ProdukPlatformTerlarisExport($transformedProducts, $summary, $startDate, $endDate), $filename);
+        return $this->dispatchExport('produk_platform_terlaris', $request->all());
     }
 
     /**

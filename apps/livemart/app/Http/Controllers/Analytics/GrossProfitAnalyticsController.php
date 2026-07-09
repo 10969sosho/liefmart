@@ -24,6 +24,8 @@ use App\Models\ReturPenjualanDetail;
 
 class GrossProfitAnalyticsController extends Controller
 {
+    use \App\Http\Controllers\Analytics\Traits\DispatchesAnalyticsExport;
+
     public function grossProfitOfflineReport(Request $request)
     {
         // Set default date range
@@ -39,9 +41,71 @@ class GrossProfitAnalyticsController extends Controller
         // Get all customers for the filter
         $customers = \App\Models\Customer::orderBy('name')->get();
         
-        // Build the query for offline sales with finance data
+        // Process data (shared logic)
+        $result = $this->processGrossProfitOfflineData(
+            $startDate, $endDate, $selectedInvoice, $selectedPO, $selectedSKU, $selectedCustomer
+        );
+        
+        return view('analytics.gross_profit_offline', compact(
+            'result',
+            'customers',
+            'startDate',
+            'endDate',
+            'selectedInvoice',
+            'selectedPO',
+            'selectedSKU',
+            'selectedCustomer'
+        ) + $result);
+    }
+
+    /**
+     * AJAX endpoint: Get paginated table data for gross profit offline.
+     */
+    public function grossProfitOfflineTableData(Request $request)
+    {
+        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
+        $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
+        $selectedInvoice = $request->input('invoice_number');
+        $selectedPO = $request->input('po_number');
+        $selectedSKU = $request->input('sku');
+        $selectedCustomer = $request->input('customer_id');
+        
+        $result = $this->processGrossProfitOfflineData(
+            $startDate, $endDate, $selectedInvoice, $selectedPO, $selectedSKU, $selectedCustomer
+        );
+        
+        $perPage = 50;
+        $page = $request->input('page', 1);
+        $profitData = $result['profitData'];
+        $total = $profitData->count();
+        $items = $profitData->forPage($page, $perPage)->values();
+        
+        $html = view('analytics.partials.gross_profit_table_rows', ['profitData' => $items, 'page' => $page, 'perPage' => $perPage])->render();
+        
+        return response()->json([
+            'success' => true,
+            'html' => $html,
+            'total' => $total,
+            'page' => (int) $page,
+            'per_page' => $perPage,
+            'last_page' => ceil($total / $perPage),
+            'summary' => [
+                'totalSales' => $result['totalSales'],
+                'totalRevenue' => $result['totalRevenue'],
+                'totalRevenueWithoutPPN' => $result['totalRevenueWithoutPPN'],
+                'totalProfit' => $result['totalProfit'],
+                'averageMargin' => $result['averageMargin'],
+            ],
+        ]);
+    }
+
+    /**
+     * Shared data processing for gross profit offline.
+     */
+    private function processGrossProfitOfflineData($startDate, $endDate, $selectedInvoice, $selectedPO, $selectedSKU, $selectedCustomer)
+    {
         $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
-            ->where('status', 'paid') // Only show paid sales
+            ->where('status', 'paid')
             ->with([
                 'items', 
                 'items.product', 
@@ -49,13 +113,11 @@ class GrossProfitAnalyticsController extends Controller
                 'items.warehouseStock.penerimaanDetail',
                 'customerInfo',
             ]);
-            
-        // Apply date filter
+        
         if ($startDate && $endDate) {
             $query->whereBetween('sale_date', [$startDate, $endDate]);
         }
         
-        // Apply filters
         if ($selectedCustomer) {
             $query->where('customer_id', $selectedCustomer);
         }
@@ -76,16 +138,13 @@ class GrossProfitAnalyticsController extends Controller
             });
         }
         
-        // Get the sales
         $sales = $query->get();
         
-        // Process sales data for profit calculation
         $profitData = $sales->map(function ($sale) {
             $totalPaymentAmount = 0;
             $paymentDate = null;
             
-            // Get payment information
-            $financeOffline = $sale->finance_offline; // Use the accessor
+            $financeOffline = $sale->finance_offline;
             if ($financeOffline && $financeOffline->isNotEmpty()) {
                 $totalPaymentAmount = $financeOffline->sum(function($invoice) {
                     return $invoice->payments ? $invoice->payments->sum('amount') : 0;
@@ -93,85 +152,39 @@ class GrossProfitAnalyticsController extends Controller
                 $paymentDate = $financeOffline->first()?->payments?->first()?->payment_date ?? $sale->sale_date;
             }
             
-            // Calculate total cost price for all items in this sale
-            $totalCostPriceForSale = 0;
-            foreach ($sale->items as $saleItem) {
-                if ($saleItem->warehouseStock && $saleItem->warehouseStock->penerimaanDetail) {
-                    $penerimaanDetail = $saleItem->warehouseStock->penerimaanDetail;
-                    $subtotal = $penerimaanDetail->subtotal ?? 0;
-                    $diskon = $penerimaanDetail->diskon ?? 0;
-                    $qty = $penerimaanDetail->qty ?? 1;
-                    
-                    if ($qty > 0) {
-                        $costPricePerUnit = ($subtotal - $diskon) / $qty;
-                        $totalCostPriceForSale += $costPricePerUnit * $saleItem->quantity;
-                    }
-                }
-            }
-            
-            // Process each item in the sale
-            return $sale->items->map(function ($item) use ($sale, $totalPaymentAmount, $paymentDate, $financeOffline, $totalCostPriceForSale) {
-                // Calculate cost price from penerimaan detail
+            return $sale->items->map(function ($item) use ($sale, $totalPaymentAmount, $paymentDate, $financeOffline) {
                 $costPrice = 0;
                 if ($item->warehouseStock && $item->warehouseStock->penerimaanDetail) {
                     $penerimaanDetail = $item->warehouseStock->penerimaanDetail;
                     $subtotal = $penerimaanDetail->subtotal ?? 0;
                     $diskon = $penerimaanDetail->diskon ?? 0;
                     $qty = $penerimaanDetail->qty ?? 1;
-                    
-                    if ($qty > 0) {
-                        $costPrice = ($subtotal - $diskon) / $qty;
-                    }
+                    if ($qty > 0) $costPrice = ($subtotal - $diskon) / $qty;
                 }
                 
-                // Check if item is PKP (tax_id == 3)
-                $isPKP = false;
-                if ($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
-                    $isPKP = true;
-                }
-                
-                // Calculate selling price after discounts per unit
+                $isPKP = $item->warehouseStock && $item->warehouseStock->tax_id == 3;
                 $sellingPriceAfterDiscount = $this->calculatePriceAfterDiscountsPerUnit($item);
-                
-                // Calculate profit per unit (using price after discount)
-                $sellingPrice = $item->unit_price; // Keep original for display
+                $sellingPrice = $item->unit_price;
                 $profitPerUnit = $sellingPriceAfterDiscount - $costPrice;
-                
-                // Calculate total cost price
                 $totalCostPrice = $costPrice * $item->quantity;
                 
-                // Calculate profit per invoice (proportional to item value)
                 $itemValue = $item->subtotal;
                 $totalSaleValue = $sale->total_amount;
                 $proportionalPayment = $totalSaleValue > 0 ? ($itemValue / $totalSaleValue) * $totalPaymentAmount : 0;
                 $profitPerInvoice = $proportionalPayment - $totalCostPrice;
-                
-                // Calculate payment per product from proportional payment (actual money received per product)
-                // This is the actual payment amount allocated to this product (total, not per unit)
                 $paymentPerProduct = $proportionalPayment;
                 
-                // Calculate payment per invoice without PPN (DPP)
-                // For PKP: DPP = Grand Total / 1.11
-                // For Non-PKP: DPP = Grand Total (no change)
                 $paymentPerInvoiceWithoutPPN = $isPKP ? ($totalPaymentAmount / 1.11) : $totalPaymentAmount;
                 $paymentPerInvoiceWithoutPPN = \App\Helpers\NumberFormatter::roundToWholeNumber($paymentPerInvoiceWithoutPPN);
                 
-                // Calculate payment per product without PPN (DPP total per product, not per unit)
-                // This should be calculated from the actual proportional payment, not from selling price
-                // For PKP: DPP = Proportional Payment / 1.11
-                // For Non-PKP: DPP = Proportional Payment (no change)
                 $paymentPerProductWithoutPPN = $isPKP ? ($proportionalPayment / 1.11) : $proportionalPayment;
                 $paymentPerProductWithoutPPN = \App\Helpers\NumberFormatter::roundToTwoDecimals($paymentPerProductWithoutPPN);
                 
-                // Calculate payment per PCS without PPN (DPP per piece)
-                // This is the payment per product without PPN divided by quantity (per unit)
                 $paymentPerPCSWithoutPPN = $item->quantity > 0 ? ($paymentPerProductWithoutPPN / $item->quantity) : 0;
                 $paymentPerPCSWithoutPPN = \App\Helpers\NumberFormatter::roundToTwoDecimals($paymentPerPCSWithoutPPN);
                 
-                // Calculate profit per product (payment per product without PPN - total cost price)
                 $profitPerProduct = $paymentPerProductWithoutPPN - $totalCostPrice;
                 
-                // Calculate margins
                 $marginPerUnit = $sellingPrice > 0 ? (($profitPerUnit / $sellingPrice) * 100) : 0;
                 $marginPerProduct = $paymentPerProductWithoutPPN > 0 ? (($profitPerProduct / $paymentPerProductWithoutPPN) * 100) : 0;
                 $marginPerInvoice = $paymentPerProduct > 0 ? (($profitPerInvoice / $paymentPerProduct) * 100) : 0;
@@ -199,17 +212,12 @@ class GrossProfitAnalyticsController extends Controller
                     'margin_per_unit' => $marginPerUnit,
                     'margin_per_product' => $marginPerProduct,
                     'margin_per_invoice' => $marginPerInvoice,
-                    'sale' => $sale,
-                    'item' => $item
                 ];
             });
         })->flatten(1);
         
-        // Calculate summary cards
+        // Summary calculations
         $totalSales = $sales->count();
-        // Use actual payment amount from invoices to match list invoice calculation
-        // Calculate total revenue by summing unique payment per sale (not per item)
-        // Since each sale's items have the same payment_per_invoice, we need to group by sale
         $totalRevenue = $sales->sum(function($sale) {
             $financeOffline = $sale->finance_offline;
             if ($financeOffline && $financeOffline->isNotEmpty()) {
@@ -220,32 +228,13 @@ class GrossProfitAnalyticsController extends Controller
             return 0;
         });
         
-        // Calculate total revenue without PPN from profitData to ensure consistency with filtered data
-        // payment_per_product_without_ppn is already total per product (not per unit), so just sum it
-        $totalRevenueWithoutPPN = $profitData->sum('payment_per_product_without_ppn');
-        $totalRevenueWithoutPPN = \App\Helpers\NumberFormatter::roundToWholeNumber($totalRevenueWithoutPPN);
-        
-        // Calculate total profit using profit_per_product (total profit per product)
+        $totalRevenueWithoutPPN = \App\Helpers\NumberFormatter::roundToWholeNumber($profitData->sum('payment_per_product_without_ppn'));
         $totalProfit = $profitData->sum('profit_per_product');
-        
-        // Calculate average margin using margin_per_product
         $averageMargin = $profitData->avg('margin_per_product');
         
-        return view('analytics.gross_profit_offline', compact(
-            'profitData',
-            'customers',
-            'startDate',
-            'endDate',
-            'selectedInvoice',
-            'selectedPO',
-            'selectedSKU',
-            'selectedCustomer',
-            'totalSales',
-            'totalRevenue',
-            'totalRevenueWithoutPPN',
-            'totalProfit',
-            'averageMargin'
-        ));
+        return compact(
+            'profitData', 'totalSales', 'totalRevenue', 'totalRevenueWithoutPPN', 'totalProfit', 'averageMargin'
+        );
     }
 
     /**
@@ -253,203 +242,7 @@ class GrossProfitAnalyticsController extends Controller
      */
     public function exportGrossProfitOffline(Request $request)
     {
-        // Set default date range - same as report method
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
-        $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
-        
-        // Get filter parameters
-        $selectedInvoice = $request->input('invoice_number');
-        $selectedPO = $request->input('po_number');
-        $selectedSKU = $request->input('sku');
-        $selectedCustomer = $request->input('customer_id');
-        
-        // Build the query for offline sales with finance data
-        $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
-            ->where('status', 'paid') // Only show paid sales
-            ->with([
-                'items', 
-                'items.product', 
-                'items.warehouseStock',
-                'items.warehouseStock.penerimaanDetail',
-                'items.barangKeluar.financeOffline',
-                'customerInfo',
-            ]);
-            
-        // Apply date filter
-        if ($startDate && $endDate) {
-            $query->whereBetween('sale_date', [$startDate, $endDate]);
-        }
-        
-        // Apply filters
-        if ($selectedCustomer) {
-            $query->where('customer_id', $selectedCustomer);
-        }
-        
-        if ($selectedInvoice) {
-            $query->whereHas('items.barangKeluar.financeOffline', function($q) use ($selectedInvoice) {
-                $q->where('invoice_number', 'like', '%' . $selectedInvoice . '%');
-            });
-        }
-        
-        if ($selectedPO) {
-            $query->where('surat_jalan_number', 'like', '%' . $selectedPO . '%');
-        }
-        
-        if ($selectedSKU) {
-            $query->whereHas('items.product', function($q) use ($selectedSKU) {
-                $q->where('sku', 'like', '%' . $selectedSKU . '%');
-            });
-        }
-        
-        // Get the sales
-        $sales = $query->get();
-        
-        // Process sales data for profit calculation
-        $profitData = $sales->map(function ($sale) use ($selectedInvoice, $selectedSKU, $selectedPO) {
-            $totalPaymentAmount = 0;
-            $paymentDate = null;
-            
-            // Get payment information
-            $financeOffline = $sale->finance_offline; // Use the accessor
-            if ($financeOffline && $financeOffline->isNotEmpty()) {
-                $totalPaymentAmount = $financeOffline->sum(function($invoice) {
-                    return $invoice->payments ? $invoice->payments->sum('amount') : 0;
-                });
-                $paymentDate = $financeOffline->first()?->payments?->first()?->payment_date ?? $sale->sale_date;
-            }
-            
-            // Calculate total cost price for all items in this sale
-            $totalCostPriceForSale = 0;
-            foreach ($sale->items as $saleItem) {
-                if ($saleItem->warehouseStock && $saleItem->warehouseStock->penerimaanDetail) {
-                    $penerimaanDetail = $saleItem->warehouseStock->penerimaanDetail;
-                    $subtotal = $penerimaanDetail->subtotal ?? 0;
-                    $diskon = $penerimaanDetail->diskon ?? 0;
-                    $qty = $penerimaanDetail->qty ?? 1;
-                    
-                    if ($qty > 0) {
-                        $costPricePerUnit = ($subtotal - $diskon) / $qty;
-                        $totalCostPriceForSale += $costPricePerUnit * $saleItem->quantity;
-                    }
-                }
-            }
-            
-            // Process each item in the sale with item-level filtering
-            // Note: invoice_number and po_number are sale-level, so filtering is done at query level
-            // Only SKU needs item-level filtering
-            return $sale->items->filter(function ($item) use ($selectedSKU) {
-                // Apply item-level filter for SKU
-                if ($selectedSKU) {
-                    $itemSKU = $item->product ? $item->product->sku : '';
-                    if (stripos($itemSKU, $selectedSKU) === false) {
-                        return false;
-                    }
-                }
-                return true;
-            })->map(function ($item) use ($sale, $totalPaymentAmount, $paymentDate, $financeOffline, $totalCostPriceForSale) {
-                // Calculate cost price from penerimaan detail
-                $costPrice = 0;
-                if ($item->warehouseStock && $item->warehouseStock->penerimaanDetail) {
-                    $penerimaanDetail = $item->warehouseStock->penerimaanDetail;
-                    $subtotal = $penerimaanDetail->subtotal ?? 0;
-                    $diskon = $penerimaanDetail->diskon ?? 0;
-                    $qty = $penerimaanDetail->qty ?? 1;
-                    
-                    if ($qty > 0) {
-                        $costPrice = ($subtotal - $diskon) / $qty;
-                    }
-                }
-                
-                // Check if item is PKP (tax_id == 3)
-                $isPKP = false;
-                if ($item->warehouseStock && $item->warehouseStock->tax_id == 3) {
-                    $isPKP = true;
-                }
-                
-                // Calculate selling price after discounts per unit
-                $sellingPriceAfterDiscount = $this->calculatePriceAfterDiscountsPerUnit($item);
-                
-                // Calculate profit per unit (using price after discount)
-                $sellingPrice = $item->unit_price; // Keep original for display
-                $profitPerUnit = $sellingPriceAfterDiscount - $costPrice;
-                
-                // Calculate total cost price
-                $totalCostPrice = $costPrice * $item->quantity;
-                
-                // Calculate profit per invoice (proportional to item value)
-                $itemValue = $item->subtotal;
-                $totalSaleValue = $sale->total_amount;
-                $proportionalPayment = $totalSaleValue > 0 ? ($itemValue / $totalSaleValue) * $totalPaymentAmount : 0;
-                $profitPerInvoice = $proportionalPayment - $totalCostPrice;
-                
-                // Calculate payment per product from proportional payment (actual money received per product)
-                // This is the actual payment amount allocated to this product (total, not per unit)
-                $paymentPerProduct = $proportionalPayment;
-                
-                // Calculate payment per invoice without PPN (DPP)
-                // For PKP: DPP = Grand Total / 1.11
-                // For Non-PKP: DPP = Grand Total (no change)
-                $paymentPerInvoiceWithoutPPN = $isPKP ? ($totalPaymentAmount / 1.11) : $totalPaymentAmount;
-                $paymentPerInvoiceWithoutPPN = \App\Helpers\NumberFormatter::roundToWholeNumber($paymentPerInvoiceWithoutPPN);
-                
-                // Calculate payment per product without PPN (DPP total per product, not per unit)
-                // This should be calculated from the actual proportional payment, not from selling price
-                // For PKP: DPP = Proportional Payment / 1.11
-                // For Non-PKP: DPP = Proportional Payment (no change)
-                $paymentPerProductWithoutPPN = $isPKP ? ($proportionalPayment / 1.11) : $proportionalPayment;
-                $paymentPerProductWithoutPPN = \App\Helpers\NumberFormatter::roundToTwoDecimals($paymentPerProductWithoutPPN);
-                
-                // Calculate payment per PCS without PPN (DPP per piece)
-                // This is the payment per product without PPN divided by quantity (per unit)
-                $paymentPerPCSWithoutPPN = $item->quantity > 0 ? ($paymentPerProductWithoutPPN / $item->quantity) : 0;
-                $paymentPerPCSWithoutPPN = \App\Helpers\NumberFormatter::roundToTwoDecimals($paymentPerPCSWithoutPPN);
-                
-                // Calculate profit per product (payment per product without PPN - total cost price)
-                $profitPerProduct = $paymentPerProductWithoutPPN - $totalCostPrice;
-                
-                // Calculate margins
-                $marginPerUnit = $sellingPrice > 0 ? (($profitPerUnit / $sellingPrice) * 100) : 0;
-                $marginPerProduct = $paymentPerProductWithoutPPN > 0 ? (($profitPerProduct / $paymentPerProductWithoutPPN) * 100) : 0;
-                $marginPerInvoice = $paymentPerProduct > 0 ? (($profitPerInvoice / $paymentPerProduct) * 100) : 0;
-                
-                return [
-                    'payment_date' => $paymentDate,
-                    'sale_date' => $sale->sale_date,
-                    'customer_name' => $sale->customerInfo ? $sale->customerInfo->name : ($sale->customer_name ?? '-'),
-                    'po_number' => $sale->surat_jalan_number,
-                    'invoice_number' => $financeOffline && $financeOffline->isNotEmpty() ? $financeOffline->first()->invoice_number : '-',
-                    'product_name' => $item->product ? $item->product->name : 'Unknown Product',
-                    'quantity' => $item->quantity,
-                    'sku' => $item->product ? $item->product->sku : '-',
-                    'payment_per_invoice' => $totalPaymentAmount,
-                    'payment_per_invoice_without_ppn' => $paymentPerInvoiceWithoutPPN,
-                    'payment_per_product' => $paymentPerProduct,
-                    'payment_per_product_without_ppn' => $paymentPerProductWithoutPPN,
-                    'payment_per_pcs_without_ppn' => $paymentPerPCSWithoutPPN,
-                    'is_pkp' => $isPKP,
-                    'cost_price' => $costPrice,
-                    'total_cost_price' => $totalCostPrice,
-                    'profit_per_unit' => $profitPerUnit,
-                    'profit_per_product' => $profitPerProduct,
-                    'profit_per_invoice' => $profitPerInvoice,
-                    'margin_per_unit' => $marginPerUnit,
-                    'margin_per_product' => $marginPerProduct,
-                    'margin_per_invoice' => $marginPerInvoice,
-                    'sale' => $sale,
-                    'item' => $item
-                ];
-            });
-        })->flatten(1);
-        
-        // Sort by sale_date ascending (oldest to newest) for export
-        $profitData = $profitData->sortBy(function ($item) {
-            return $item['sale_date'] ? \Carbon\Carbon::parse($item['sale_date'])->timestamp : 0;
-        })->values();
-        
-        // Generate filename
-        $filename = 'Gross_Profit_Offline_' . $startDate . '_to_' . $endDate . '.xlsx';
-        
-        return Excel::download(new GrossProfitOfflineExport($profitData), $filename);
+        return $this->dispatchExport('gross_profit_offline', $request->all());
     }
 
     // ========== HELPER METHODS FROM AnalyticController ==========
@@ -899,32 +692,7 @@ class GrossProfitAnalyticsController extends Controller
     public function exportSalesByPlatformProduct(Request $request)
     {
         try {
-            set_time_limit(300);
-            ini_set('memory_limit', '2048M');
-
-            // Use the NEW Query class for consistency with view
-            $query = new \App\Queries\SalesByPlatformProductQuery($request);
-            
-            // Get ALL data without pagination for export
-            $platformProductRows = $query->get();
-            $summary = $query->getSummary();
-
-            $startDate = $request->filled('start_date') ? $request->input('start_date') : now()->format('Y-m-d');
-            $endDate = $request->filled('end_date') ? $request->input('end_date') : now()->format('Y-m-d');
-            $selectedPlatform = $request->input('platform_id');
-            $sortBy = $request->input('sort', 'revenue_highest');
-
-            $filename = 'laporan-penjualan-platform-produk-' . date('Y-m-d') . '.xlsx';
-            
-            $filters = [
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-                'platform_id' => $selectedPlatform,
-                'sort' => $sortBy
-            ];
-            
-            return Excel::download(new SalesByPlatformProductExport($platformProductRows, $summary, $filters), $filename);
-
+            return $this->dispatchExport('sales_by_platform_product', $request->all());
         } catch (\Exception $e) {
             \Log::error('Error in exportSalesByPlatformProduct: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -935,24 +703,7 @@ class GrossProfitAnalyticsController extends Controller
     public function exportSalesByMasterProduct(Request $request)
     {
         try {
-            set_time_limit(300);
-            ini_set('memory_limit', '2048M');
-
-            // Use the NEW Query class for consistency with view
-            $query = new \App\Queries\SalesByMasterProductQuery($request);
-            
-            // Get ALL data without pagination for export
-            $productRows = $query->get();
-            $summary = $query->getSummary();
-
-            // Get filters from query class to ensure consistency
-            $filters = $query->getFilters();
-            $filters['sort'] = $request->input('sort', 'revenue_highest');
-
-            $filename = 'laporan-penjualan-master-produk-' . date('Y-m-d') . '.xlsx';
-            
-            return Excel::download(new SalesByMasterProductExport($productRows, $summary, $filters), $filename);
-
+            return $this->dispatchExport('sales_by_master_product', $request->all());
         } catch (\Exception $e) {
             \Log::error('Error in exportSalesByMasterProduct: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());

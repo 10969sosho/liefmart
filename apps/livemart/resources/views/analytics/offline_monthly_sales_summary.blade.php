@@ -1,132 +1,119 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ringkasan Penjualan Bulanan Offline</title>
+@extends('layouts.app')
+@section('title', 'Ringkasan Penjualan Bulanan Offline')
+@push('styles')
+<style>
+    :root {
+        --primary-color: #4361ee;
+        --secondary-color: #3f37c9;
+        --success-color: #0bb4aa;
+        --info-color: #4cc9f0;
+        --warning-color: #f72585;
+        --dark-color: #212529;
+        --light-color: #f8f9fa;
+    }
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    body {
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: #f5f7fa;
+        color: #333;
+        line-height: 1.6;
+    }
 
-    <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3f37c9;
-            --success-color: #0bb4aa;
-            --info-color: #4cc9f0;
-            --warning-color: #f72585;
-            --dark-color: #212529;
-            --light-color: #f8f9fa;
-        }
+    .container-fluid {
+        padding: 20px;
+        max-width: 1440px;
+        margin: 0 auto;
+    }
 
-        body {
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
+    .card-header {
+        border-radius: 10px 10px 0 0 !important;
+        font-weight: 600;
+        padding: 15px 20px;
+    }
 
-        .container-fluid {
-            padding: 20px;
-            max-width: 1440px;
-            margin: 0 auto;
-        }
+    .card-body {
+        padding: 20px;
+    }
 
-        .card-header {
-            border-radius: 10px 10px 0 0 !important;
-            font-weight: 600;
-            padding: 15px 20px;
-        }
+    .table-dark th {
+        background-color: var(--dark-color) !important;
+        color: white !important;
+        font-weight: 500;
+    }
 
-        .card-body {
-            padding: 20px;
-        }
+    /* Efek hover pada baris tabel */
+    .table-row-hover {
+        transition: all 0.2s ease;
+    }
 
-        .table-dark th {
-            background-color: var(--dark-color) !important;
-            color: white !important;
-            font-weight: 500;
-        }
+    .table-row-hover:hover {
+        background-color: rgba(99, 102, 241, 0.04) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
 
-        /* Efek hover pada baris tabel */
-        .table-row-hover {
-            transition: all 0.2s ease;
-        }
+    /* Summary cards */
+    .summary-card {
+        border-radius: 10px;
+        color: white;
+        height: 100%;
+    }
 
-        .table-row-hover:hover {
-            background-color: rgba(99, 102, 241, 0.04) !important;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
+    .bg-primary {
+        background-color: var(--primary-color) !important;
+    }
 
-        /* Summary cards */
-        .summary-card {
-            border-radius: 10px;
-            color: white;
-            height: 100%;
-        }
+    .bg-success {
+        background-color: var(--success-color) !important;
+    }
 
-        .bg-primary {
-            background-color: var(--primary-color) !important;
-        }
+    .bg-info {
+        background-color: var(--info-color) !important;
+    }
 
-        .bg-success {
-            background-color: var(--success-color) !important;
-        }
+    .bg-dark {
+        background-color: var(--dark-color) !important;
+    }
 
-        .bg-info {
-            background-color: var(--info-color) !important;
-        }
+    /* Chart container */
+    .chart-container {
+        position: relative;
+        margin: 20px 0;
+        height: 300px;
+    }
 
-        .bg-dark {
-            background-color: var(--dark-color) !important;
-        }
+    /* Breadcrumb */
+    .breadcrumb {
+        background-color: transparent;
+        padding: 0;
+        margin-bottom: 20px;
+    }
 
-        /* Chart container */
-        .chart-container {
-            position: relative;
-            margin: 20px 0;
-            height: 300px;
-        }
+    .breadcrumb-item a {
+        color: var(--primary-color);
+        text-decoration: none;
+    }
 
-        /* Breadcrumb */
-        .breadcrumb {
-            background-color: transparent;
-            padding: 0;
-            margin-bottom: 20px;
-        }
-
-        .breadcrumb-item a {
-            color: var(--primary-color);
-            text-decoration: none;
-        }
-
-        .breadcrumb-item.active {
-            color: #6c757d;
-        }
+    .breadcrumb-item.active {
+        color: #6c757d;
+    }
 
 /* Customer styles */
-        .customer-badge {
-            display: inline-block;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            min-width: 120px;
-            text-align: center;
-            letter-spacing: 0.3px;
-            background-color: #6c757d;
-            color: white;
-        }
-    </style>
-</head>
-<body>
-
+    .customer-badge {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        min-width: 120px;
+        text-align: center;
+        letter-spacing: 0.3px;
+        background-color: #6c757d;
+        color: white;
+    }
+</style>
+@endpush
+@section('content')
 <div class="container-fluid">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb">
@@ -175,18 +162,18 @@
                     <!-- Submit and Reset Button -->
                     <div class="col-md-2">
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search"></i> Filter
+                            <i class="fa fa-search"></i> Filter
                         </button>
                     </div>
                     <div class="col-md-2">
                         <a href="{{ route('analytics.offline.monthly-sales-summary') }}" class="btn btn-outline-secondary w-100">
-                            <i class="bi bi-arrow-counterclockwise"></i> Reset
+                            <i class="fa fa-undo"></i> Reset
                         </a>
                     </div>
                     <div class="col-md-2">
-                        <a href="{{ route('analytics.offline.monthly-sales-summary.export', request()->query()) }}" class="btn btn-success w-100">
-                            <i class="bi bi-download"></i> Export Excel
-                        </a>
+                        <button type="button" class="btn btn-success w-100" onclick="exportOfflineMonthlySalesSummary()">
+                            <i class="fa fa-download"></i> Export Excel
+                        </button>
                     </div>
                 </div>
             </form>
@@ -291,10 +278,9 @@
         </div>
     </div>
 </div>
-
-<!-- Bootstrap JS Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-
+@include('analytics.partials.export_script', ['exportType' => 'offline_monthly_sales_summary'])
+@endsection
+@push('scripts')
 @if($yearSummary['total_orders'] > 0)
 <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -455,5 +441,20 @@
     });
 </script>
 @endif
-</body>
-</html>
+
+<script>
+    // Export function using queued export system
+    window.exportOfflineMonthlySalesSummary = function() {
+        const form = document.getElementById('filter-form');
+        const filters = {};
+        if (form) {
+            const fd = new FormData(form);
+            for (let [key, value] of fd.entries()) {
+                if (value) filters[key] = value;
+            }
+        }
+        dispatchExport('offline_monthly_sales_summary', filters);
+    };
+</script>
+
+@endpush

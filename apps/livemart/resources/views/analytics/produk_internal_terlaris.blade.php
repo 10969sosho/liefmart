@@ -1,123 +1,110 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Produk Internal Terlaris</title>
+@extends('layouts.app')
+@section('title', 'Produk Internal Terlaris')
+@push('styles')
+<style>
+    :root {
+        --primary-color: #4361ee;
+        --secondary-color: #3f37c9;
+        --success-color: #0bb4aa;
+        --info-color: #4cc9f0;
+        --warning-color: #f72585;
+        --dark-color: #212529;
+        --light-color: #f8f9fa;
+    }
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    body {
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: #f5f7fa;
+        color: #333;
+        line-height: 1.6;
+    }
 
-    <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3f37c9;
-            --success-color: #0bb4aa;
-            --info-color: #4cc9f0;
-            --warning-color: #f72585;
-            --dark-color: #212529;
-            --light-color: #f8f9fa;
-        }
+    .container-fluid {
+        padding: 20px;
+        max-width: 1440px;
+        margin: 0 auto;
+    }
 
-        body {
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
+    .card-header {
+        border-radius: 10px 10px 0 0 !important;
+        font-weight: 600;
+        padding: 15px 20px;
+    }
 
-        .container-fluid {
-            padding: 20px;
-            max-width: 1440px;
-            margin: 0 auto;
-        }
+    .card-body {
+        padding: 20px;
+    }
 
-        .card-header {
-            border-radius: 10px 10px 0 0 !important;
-            font-weight: 600;
-            padding: 15px 20px;
-        }
+    .btn-outline-secondary {
+        color: #6c757d;
+        border-color: #6c757d;
+    }
 
-        .card-body {
-            padding: 20px;
-        }
+    .btn-outline-secondary:hover {
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .btn-outline-secondary {
-            color: #6c757d;
-            border-color: #6c757d;
-        }
+    .table-dark th {
+        background-color: var(--dark-color) !important;
+        color: white !important;
+        font-weight: 500;
+    }
 
-        .btn-outline-secondary:hover {
-            background-color: #6c757d;
-            color: white;
-        }
+    .table-striped tbody tr:nth-of-type(odd) {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
 
-        .table-dark th {
-            background-color: var(--dark-color) !important;
-            color: white !important;
-            font-weight: 500;
-        }
+    .table-row-hover {
+        transition: all 0.2s ease;
+    }
 
-        .table-striped tbody tr:nth-of-type(odd) {
-            background-color: rgba(0, 0, 0, 0.02);
-        }
+    .table-row-hover:hover {
+        background-color: rgba(99, 102, 241, 0.04) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
 
-        .table-row-hover {
-            transition: all 0.2s ease;
-        }
+    /* Breadcrumb */
+    .breadcrumb {
+        background-color: transparent;
+        padding: 0;
+        margin-bottom: 20px;
+    }
 
-        .table-row-hover:hover {
-            background-color: rgba(99, 102, 241, 0.04) !important;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
+    .breadcrumb-item a {
+        color: var(--primary-color);
+        text-decoration: none;
+    }
 
-        /* Breadcrumb */
-        .breadcrumb {
-            background-color: transparent;
-            padding: 0;
-            margin-bottom: 20px;
-        }
-
-        .breadcrumb-item a {
-            color: var(--primary-color);
-            text-decoration: none;
-        }
-
-        .breadcrumb-item.active {
-            color: #6c757d;
-        }
+    .breadcrumb-item.active {
+        color: #6c757d;
+    }
 
 /* Table responsive */
-        .table-responsive {
-            border-radius: 8px;
-            overflow: hidden;
-        }
+    .table-responsive {
+        border-radius: 8px;
+        overflow: hidden;
+    }
 
-        /* Quick filter buttons */
-        .quick-filter {
-            transition: all 0.3s;
-        }
+    /* Quick filter buttons */
+    .quick-filter {
+        transition: all 0.3s;
+    }
 
-        .quick-filter:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-        }
+    .quick-filter:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
 
-        .quick-filter.active {
-            background-color: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-        }
-    </style>
-</head>
-<body>
-
+    .quick-filter.active {
+        background-color: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
+    }
+</style>
+@endpush
+@section('content')
 <div class="container-fluid">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb">
@@ -223,18 +210,18 @@
                     <!-- Submit, Reset, and Export Button -->
                     <div class="col-md-2">
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search"></i> Filter
+                            <i class="fa fa-search"></i> Filter
                         </button>
                     </div>
                     <div class="col-md-2">
                         <a href="{{ route('analytics.produk-internal-terlaris') }}" class="btn btn-outline-secondary w-100">
-                            <i class="bi bi-arrow-counterclockwise"></i> Reset
+                            <i class="fa fa-undo"></i> Reset
                         </a>
                     </div>
                     <div class="col-md-2">
-                        <a href="{{ route('analytics.produk-internal-terlaris.export', request()->query()) }}" class="btn btn-success w-100">
-                            <i class="bi bi-file-earmark-excel"></i> Export Excel
-                        </a>
+                        <button type="button" class="btn btn-success w-100" onclick="exportProdukInternalTerlaris()">
+                            <i class="fa fa-file-excel"></i> Export Excel
+                        </button>
                     </div>
                 </div>
             </form>
@@ -349,11 +336,9 @@
         </div>
     </div>
 </div>
-
-<!-- Bootstrap JS Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="{{ asset('js/date-format.js') }}"></script>
+@include('analytics.partials.export_script', ['exportType' => 'produk_internal_terlaris'])
+@endsection
+@push('scripts')
 <script>
     // Quick filter handler
     document.addEventListener('DOMContentLoaded', function() {
@@ -448,6 +433,19 @@
         // - If inputs have values: preserve them (from Blade or user input)
         // This ensures dates are NEVER reset when changing filters (platform, sort, limit, search, etc.)
     });
+
+    // Export function using queued export system
+    window.exportProdukInternalTerlaris = function() {
+        const form = document.getElementById('filter-form');
+        const filters = {};
+        if (form) {
+            const fd = new FormData(form);
+            for (let [key, value] of fd.entries()) {
+                if (value) filters[key] = value;
+            }
+        }
+        dispatchExport('produk_internal_terlaris', filters);
+    };
 </script>
-</body>
-</html>
+
+@endpush

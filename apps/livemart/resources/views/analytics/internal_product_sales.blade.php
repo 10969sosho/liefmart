@@ -1,175 +1,162 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analytics Penjualan Master Internal</title>
+@extends('layouts.app')
+@section('title', 'Analytics Penjualan Master Internal')
+@push('styles')
+<style>
+    :root {
+        --primary-color: #4361ee;
+        --secondary-color: #3f37c9;
+        --success-color: #0bb4aa;
+        --info-color: #4cc9f0;
+        --warning-color: #f72585;
+        --dark-color: #212529;
+        --light-color: #f8f9fa;
+    }
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
-    <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+    body {
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: #f5f7fa;
+        color: #333;
+        line-height: 1.6;
+    }
 
-    <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3f37c9;
-            --success-color: #0bb4aa;
-            --info-color: #4cc9f0;
-            --warning-color: #f72585;
-            --dark-color: #212529;
-            --light-color: #f8f9fa;
-        }
+    .container-fluid {
+        padding: 20px;
+        max-width: 1440px;
+        margin: 0 auto;
+    }
 
-        body {
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
+    .card-header {
+        border-radius: 10px 10px 0 0 !important;
+        font-weight: 600;
+        padding: 15px 20px;
+    }
 
-        .container-fluid {
-            padding: 20px;
-            max-width: 1440px;
-            margin: 0 auto;
-        }
+    .card-body {
+        padding: 20px;
+    }
 
-        .card-header {
-            border-radius: 10px 10px 0 0 !important;
-            font-weight: 600;
-            padding: 15px 20px;
-        }
+    .btn-outline-secondary {
+        color: #6c757d;
+        border-color: #6c757d;
+    }
 
-        .card-body {
-            padding: 20px;
-        }
+    .btn-outline-secondary:hover {
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .btn-outline-secondary {
-            color: #6c757d;
-            border-color: #6c757d;
-        }
+    .table th {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+    }
 
-        .btn-outline-secondary:hover {
-            background-color: #6c757d;
-            color: white;
-        }
+    .table-dark th {
+        background-color: var(--dark-color) !important;
+        color: white !important;
+        font-weight: 500;
+    }
 
-        .table th {
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 0.5px;
-        }
+    .table-row-even {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
 
-        .table-dark th {
-            background-color: var(--dark-color) !important;
-            color: white !important;
-            font-weight: 500;
-        }
+    .table-row-odd {
+        background-color: #fff;
+    }
 
-        .table-row-even {
-            background-color: rgba(0, 0, 0, 0.02);
-        }
+    .table-row-even:hover, .table-row-odd:hover {
+        background-color: rgba(99, 102, 241, 0.04);
+    }
 
-        .table-row-odd {
-            background-color: #fff;
-        }
+    /* Card and Icon styles */
+    .icon-circle {
+        height: 3rem;
+        width: 3rem;
+        border-radius: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 
-        .table-row-even:hover, .table-row-odd:hover {
-            background-color: rgba(99, 102, 241, 0.04);
-        }
+    .icon-circle i {
+        font-size: 1.5rem;
+    }
 
-        /* Card and Icon styles */
-        .icon-circle {
-            height: 3rem;
-            width: 3rem;
-            border-radius: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+    /* Platform box styling */
+    .platform-box {
+        display: inline-block;
+        padding: 5px 8px;
+        border-radius: 6px;
+        font-weight: 600;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        min-width: 80px;
+        text-align: center;
+        font-size: 0.8rem;
+    }
 
-        .icon-circle i {
-            font-size: 1.5rem;
-        }
+    /* Platform specific colors */
+    .platform-shopee {
+        background-color: #EE4D2D;
+        color: white;
+    }
+    .platform-tiktok {
+        background-color: #000000;
+        color: white;
+    }
 
-        /* Platform box styling */
-        .platform-box {
-            display: inline-block;
-            padding: 5px 8px;
-            border-radius: 6px;
-            font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            min-width: 80px;
-            text-align: center;
-            font-size: 0.8rem;
-        }
+    .platform-offline {
+        background-color: #6B7280;
+        color: white;
+    }
 
-        /* Platform specific colors */
-        .platform-shopee {
-            background-color: #EE4D2D;
-            color: white;
-        }
-        .platform-tiktok {
-            background-color: #000000;
-            color: white;
-        }
+    .platform-unknown {
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .platform-offline {
-            background-color: #6B7280;
-            color: white;
-        }
+    /* Breadcrumb */
+    .breadcrumb {
+        background-color: transparent;
+        padding: 0;
+        margin-bottom: 20px;
+    }
 
-        .platform-unknown {
-            background-color: #6c757d;
-            color: white;
-        }
+    .breadcrumb-item a {
+        color: var(--primary-color);
+        text-decoration: none;
+    }
 
-        /* Breadcrumb */
-        .breadcrumb {
-            background-color: transparent;
-            padding: 0;
-            margin-bottom: 20px;
-        }
-
-        .breadcrumb-item a {
-            color: var(--primary-color);
-            text-decoration: none;
-        }
-
-        .breadcrumb-item.active {
-            color: #6c757d;
-        }
+    .breadcrumb-item.active {
+        color: #6c757d;
+    }
 
 /* Table responsive */
-        .table-responsive {
-            border-radius: 8px;
-            overflow: hidden;
+    .table-responsive {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    /* Form styling */
+    #filter-form {
+        border-left: 4px solid var(--primary-color);
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .table {
+            font-size: 0.75rem;
         }
 
-        /* Form styling */
-        #filter-form {
-            border-left: 4px solid var(--primary-color);
+        .platform-box {
+            min-width: 60px;
+            font-size: 0.7rem;
         }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .table {
-                font-size: 0.75rem;
-            }
-
-            .platform-box {
-                min-width: 60px;
-                font-size: 0.7rem;
-            }
-        }
-    </style>
-</head>
-<body>
-
+    }
+</style>
+@endpush
+@section('content')
 <div class="container-fluid">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb">
@@ -244,14 +231,14 @@
                     <div class="col-md-12">
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary">
-                                <i class="bi bi-search"></i> Filter
+                                <i class="fa fa-search"></i> Filter
                             </button>
                             <a href="{{ route('analytics.internal-product-sales') }}" class="btn btn-outline-secondary">
-                                <i class="bi bi-arrow-counterclockwise"></i> Reset
+                                <i class="fa fa-undo"></i> Reset
                             </a>
-                            <a href="{{ route('analytics.internal-product-sales.export', request()->query()) }}" class="btn btn-success">
-                                <i class="bi bi-download"></i> Export Excel
-                            </a>
+                            <button type="button" class="btn btn-success" onclick="exportInternalProductSales()">
+                                <i class="fa fa-download"></i> Export Excel
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -268,7 +255,7 @@
                                     <h2 class="font-weight-bold mb-0">{{ number_format($summary['total_products']) }}</h2>
                                 </div>
                                 <div class="icon-circle bg-white text-primary">
-                                    <i class="bi bi-box-seam"></i>
+                                    <i class="fa fa-box"></i>
                                 </div>
                             </div>
                             <div class="mt-2 text-white-50 small">
@@ -286,7 +273,7 @@
                                     <h2 class="font-weight-bold mb-0">{{ number_format($summary['total_orders']) }}</h2>
                                 </div>
                                 <div class="icon-circle bg-white text-info">
-                                    <i class="bi bi-cart"></i>
+                                    <i class="fa fa-shopping-cart"></i>
                                 </div>
                             </div>
                             <div class="mt-2 text-white-50 small">
@@ -304,7 +291,7 @@
                                     <h2 class="font-weight-bold mb-0">Rp {{ number_format($summary['total_value'], 0, ',', '.') }}</h2>
                                 </div>
                                 <div class="icon-circle bg-white text-success">
-                                    <i class="bi bi-cash-coin"></i>
+                                    <i class="fa fa-money-bill-wave"></i>
                                 </div>
                             </div>
                             <div class="mt-2 text-white-50 small">
@@ -322,7 +309,7 @@
                                     <h2 class="font-weight-bold mb-0">{{ number_format($summary['total_qty']) }}</h2>
                                 </div>
                                 <div class="icon-circle bg-white text-warning">
-                                    <i class="bi bi-box"></i>
+                                    <i class="fa fa-box"></i>
                                 </div>
                             </div>
                             <div class="mt-2 text-white-50 small">
@@ -398,10 +385,9 @@
         </div>
     </div>
 </div>
-
-<!-- Bootstrap JS Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+@include('analytics.partials.export_script', ['exportType' => 'internal_product_sales'])
+@endsection
+@push('scripts')
 <script>
     // Set default date to today if not already set
     document.addEventListener('DOMContentLoaded', function() {
@@ -431,7 +417,19 @@
             document.getElementById('filter-form').submit();
         }
     });
-</script>
-</body>
-</html>
 
+    // Export function using queued export system
+    window.exportInternalProductSales = function() {
+        const form = document.getElementById('filter-form');
+        const filters = {};
+        if (form) {
+            const fd = new FormData(form);
+            for (let [key, value] of fd.entries()) {
+                if (value) filters[key] = value;
+            }
+        }
+        dispatchExport('internal_product_sales', filters);
+    };
+</script>
+
+@endpush

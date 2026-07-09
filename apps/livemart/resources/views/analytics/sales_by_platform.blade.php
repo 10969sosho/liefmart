@@ -1,162 +1,152 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Data Penjualan by Platform</title>
+@extends('layouts.app')
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+@section('title', 'Data Penjualan by Platform')
 
-    <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3f37c9;
-            --success-color: #0bb4aa;
-            --info-color: #4cc9f0;
-            --warning-color: #f72585;
-            --dark-color: #212529;
-            --light-color: #f8f9fa;
-        }
+@push('styles')
+<style>
+    :root {
+        --primary-color: #4361ee;
+        --secondary-color: #3f37c9;
+        --success-color: #0bb4aa;
+        --info-color: #4cc9f0;
+        --warning-color: #f72585;
+        --dark-color: #212529;
+        --light-color: #f8f9fa;
+    }
 
-        body {
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
+    body {
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: #f5f7fa;
+        color: #333;
+        line-height: 1.6;
+    }
 
-        .container-fluid {
-            padding: 20px;
-            max-width: 1440px;
-            margin: 0 auto;
-        }
+    .container-fluid {
+        padding: 20px;
+        max-width: 1440px;
+        margin: 0 auto;
+    }
 
-        .card-header {
-            border-radius: 10px 10px 0 0 !important;
-            font-weight: 600;
-            padding: 15px 20px;
-        }
+    .card-header {
+        border-radius: 10px 10px 0 0 !important;
+        font-weight: 600;
+        padding: 15px 20px;
+    }
 
-        .card-body {
-            padding: 20px;
-        }
+    .card-body {
+        padding: 20px;
+    }
 
-        .btn-outline-secondary {
-            color: #6c757d;
-            border-color: #6c757d;
-        }
+    .btn-outline-secondary {
+        color: #6c757d;
+        border-color: #6c757d;
+    }
 
-        .btn-outline-secondary:hover {
-            background-color: #6c757d;
-            color: white;
-        }
+    .btn-outline-secondary:hover {
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .table-dark th {
-            background-color: var(--dark-color) !important;
-            color: white !important;
-            font-weight: 500;
-        }
+    .table-dark th {
+        background-color: var(--dark-color) !important;
+        color: white !important;
+        font-weight: 500;
+    }
 
-        .table-striped tbody tr:nth-of-type(odd) {
-            background-color: rgba(0, 0, 0, 0.02);
-        }
+    .table-striped tbody tr:nth-of-type(odd) {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
 
-        /* Efek hover pada baris tabel */
-        .table-row-hover {
-            transition: all 0.2s ease;
-        }
+    /* Efek hover pada baris tabel */
+    .table-row-hover {
+        transition: all 0.2s ease;
+    }
 
-        .table-row-hover:hover {
-            background-color: rgba(99, 102, 241, 0.04) !important;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
+    .table-row-hover:hover {
+        background-color: rgba(99, 102, 241, 0.04) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
 
-        /* Platform box styling */
-        .platform-box {
-            display: inline-block;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            min-width: 120px;
-            text-align: center;
-            letter-spacing: 0.3px;
-        }
+    /* Platform box styling */
+    .platform-box {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        min-width: 120px;
+        text-align: center;
+        letter-spacing: 0.3px;
+    }
 
-        .platform-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            min-width: 90px;
-            text-align: center;
-            letter-spacing: 0.3px;
-            font-size: 0.9rem;
-        }
+    .platform-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-weight: 600;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        min-width: 90px;
+        text-align: center;
+        letter-spacing: 0.3px;
+        font-size: 0.9rem;
+    }
 
-        /* Platform specific colors */
-        .platform-shopee {
-            background-color: #ee4d2d;
-            color: white;
-        }
-        .platform-tiktok {
-            background-color: #000000;
-            color: white;
-        }
+    /* Platform specific colors */
+    .platform-shopee {
+        background-color: #ee4d2d;
+        color: white;
+    }
+    .platform-tiktok {
+        background-color: #000000;
+        color: white;
+    }
 
-        .platform-offline {
-            background-color: #6c757d;
-            color: white;
-        }
+    .platform-offline {
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .platform-unknown {
-            background-color: #adb5bd;
-            color: white;
-        }
+    .platform-unknown {
+        background-color: #adb5bd;
+        color: white;
+    }
 
-        /* Breadcrumb */
-        .breadcrumb {
-            background-color: transparent;
-            padding: 0;
-            margin-bottom: 20px;
-        }
+    /* Breadcrumb */
+    .breadcrumb {
+        background-color: transparent;
+        padding: 0;
+        margin-bottom: 20px;
+    }
 
-        .breadcrumb-item a {
-            color: var(--primary-color);
-            text-decoration: none;
-        }
+    .breadcrumb-item a {
+        color: var(--primary-color);
+        text-decoration: none;
+    }
 
-        .breadcrumb-item.active {
-            color: #6c757d;
-        }
+    .breadcrumb-item.active {
+        color: #6c757d;
+    }
 
 /* Table responsive */
-        .table-responsive {
-            border-radius: 8px;
-            overflow: hidden;
-        }
+    .table-responsive {
+        border-radius: 8px;
+        overflow: hidden;
+    }
 
-        /* Add hover effect for platform badges in order list */
-        .table-row-hover:hover .platform-badge {
-            transform: translateY(-2px);
-            transition: transform 0.2s ease;
-        }
+    /* Add hover effect for platform badges in order list */
+    .table-row-hover:hover .platform-badge {
+        transform: translateY(-2px);
+        transition: transform 0.2s ease;
+    }
 
-        .table-row-hover .platform-badge {
-            transition: transform 0.2s ease;
-        }
-    </style>
-</head>
-<body>
+    .table-row-hover .platform-badge {
+        transition: transform 0.2s ease;
+    }
+</style>
+@endpush
 
+@section('content')
 <div class="container-fluid">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb">
@@ -229,18 +219,18 @@
                     <!-- Submit and Reset Button -->
                     <div class="col-md-2">
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search"></i> Filter
+                            <i class="fa-solid fa-magnifying-glass"></i> Filter
                         </button>
                     </div>
                     <div class="col-md-2">
                         <a href="{{ route('analytics.sales-by-platform') }}" class="btn btn-outline-secondary w-100">
-                            <i class="bi bi-arrow-counterclockwise"></i> Reset
+                            <i class="fa-solid fa-arrow-rotate-left"></i> Reset
                         </a>
                     </div>
                     <div class="col-md-2">
-                        <a href="{{ route('analytics.sales-by-platform.export', request()->query()) }}" class="btn btn-success w-100">
-                            <i class="bi bi-download"></i> Export Excel
-                        </a>
+                        <button type="button" class="btn btn-success w-100" onclick="exportSalesByPlatform()">
+                            <i class="fa-solid fa-download"></i> Export Excel
+                        </button>
                     </div>
                 </div>
             </form>
@@ -397,10 +387,10 @@
         </div>
     </div>
 </div>
+@include('analytics.partials.export_script')
+@endsection
 
-<!-- Bootstrap JS Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+@push('scripts')
 <script>
     // Aktivasi tooltip
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
@@ -434,5 +424,18 @@
         }
     });
 </script>
-</body>
-</html>
+
+<script>
+    function exportSalesByPlatform() {
+        const filters = {};
+        const form = document.getElementById('filter-form');
+        if (form) {
+            const formData = new FormData(form);
+            for (let [key, value] of formData.entries()) {
+                if (value) filters[key] = value;
+            }
+        }
+        dispatchExport('sales_by_platform', filters);
+    }
+</script>
+@endpush

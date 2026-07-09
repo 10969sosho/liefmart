@@ -3,20 +3,17 @@
 namespace App\Http\Controllers\Analytics;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Analytics\Traits\DispatchesAnalyticsExport;
 use App\Models\ShopeeFinancialTransaction;
 use App\Models\TiktokFinancialTransaction;
 use App\Models\Shopee2FinancialTransaction;
 use App\Models\Tiktok2FinancialTransaction;
-use App\Exports\ShopeeFinanceAnalyticsExport;
-use App\Exports\TiktokFinanceAnalyticsExport;
-use App\Exports\Shopee2FinanceAnalyticsExport;
-use App\Exports\Tiktok2FinanceAnalyticsExport;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
-use Maatwebsite\Excel\Facades\Excel;
 
 class FinanceAnalyticsController extends Controller
 {
+    use DispatchesAnalyticsExport;
     /**
      * Display Shopee analytics
      *
@@ -441,51 +438,43 @@ class FinanceAnalyticsController extends Controller
      * Export Shopee analytics to Excel
      *
      * @param Request $request
-     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
      */
     public function exportShopeeAnalytics(Request $request)
     {
-        $filename = 'shopee_finance_analytics_' . now()->format('Y-m-d_H-i-s') . '.xlsx';
-        
-        return Excel::download(new ShopeeFinanceAnalyticsExport($request->all()), $filename);
+        return $this->dispatchExport('finance_shopee', $request->all());
     }
 
     /**
      * Export Shopee 2 analytics to Excel
      *
      * @param Request $request
-     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
      */
     public function exportShopee2Analytics(Request $request)
     {
-        $filename = 'shopee2_finance_analytics_' . now()->format('Y-m-d_H-i-s') . '.xlsx';
-        
-        return Excel::download(new Shopee2FinanceAnalyticsExport($request->all()), $filename);
+        return $this->dispatchExport('finance_shopee2', $request->all());
     }
 
     /**
      * Export TikTok analytics to Excel
      *
      * @param Request $request
-     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
      */
     public function exportTiktokAnalytics(Request $request)
     {
-        $filename = 'tiktok_finance_analytics_' . now()->format('Y-m-d_H-i-s') . '.xlsx';
-        
-        return Excel::download(new TiktokFinanceAnalyticsExport($request->all()), $filename);
+        return $this->dispatchExport('finance_tiktok', $request->all());
     }
 
     /**
      * Export TikTok 2 analytics to Excel
      *
      * @param Request $request
-     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
      */
     public function exportTiktok2Analytics(Request $request)
     {
-        $filename = 'tiktok2_finance_analytics_' . now()->format('Y-m-d_H-i-s') . '.xlsx';
-        
-        return Excel::download(new Tiktok2FinanceAnalyticsExport($request->all()), $filename);
+        return $this->dispatchExport('finance_tiktok2', $request->all());
     }
 } 

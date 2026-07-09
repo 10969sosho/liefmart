@@ -1,7 +1,6 @@
 {{-- resources/views/components/sidebar.blade.php --}}
 
-<div class="sidebar">
-    <div class="sticky-top h-100 d-flex flex-column">
+<div class="d-flex flex-column h-100">
         <!-- Logo and branding -->
         <div class="sidebar-header p-3 border-bottom d-flex align-items-center" style="border-color: rgba(0,0,0,0.05) !important;">
             <div class="d-flex align-items-center">
@@ -687,7 +686,6 @@
             </div>
         </div>
     </div>
-</div>
 
 <!-- Add this script to the bottom of your sidebar component or include it in your main JS file -->
 <script>

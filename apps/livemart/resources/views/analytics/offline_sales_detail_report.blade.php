@@ -1,152 +1,139 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laporan Detail Penjualan Offline</title>
+@extends('layouts.app')
+@section('title', 'Laporan Detail Penjualan Offline')
+@push('styles')
+<style>
+    :root {
+        --primary-color: #4361ee;
+        --secondary-color: #3f37c9;
+        --success-color: #0bb4aa;
+        --info-color: #4cc9f0;
+        --warning-color: #f72585;
+        --dark-color: #212529;
+        --light-color: #f8f9fa;
+    }
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    body {
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: #f5f7fa;
+        color: #333;
+        line-height: 1.6;
+    }
 
-    <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3f37c9;
-            --success-color: #0bb4aa;
-            --info-color: #4cc9f0;
-            --warning-color: #f72585;
-            --dark-color: #212529;
-            --light-color: #f8f9fa;
-        }
+    .container-fluid {
+        padding: 20px;
+        max-width: 1440px;
+        margin: 0 auto;
+    }
 
-        body {
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
+    .card-header {
+        border-radius: 10px 10px 0 0 !important;
+        font-weight: 600;
+        padding: 15px 20px;
+    }
 
-        .container-fluid {
-            padding: 20px;
-            max-width: 1440px;
-            margin: 0 auto;
-        }
+    .card-body {
+        padding: 20px;
+    }
 
-        .card-header {
-            border-radius: 10px 10px 0 0 !important;
-            font-weight: 600;
-            padding: 15px 20px;
-        }
+    .btn-outline-secondary {
+        color: #6c757d;
+        border-color: #6c757d;
+    }
 
-        .card-body {
-            padding: 20px;
-        }
+    .btn-outline-secondary:hover {
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .btn-outline-secondary {
-            color: #6c757d;
-            border-color: #6c757d;
-        }
+    .table-dark th {
+        background-color: var(--dark-color) !important;
+        color: white !important;
+        font-weight: 500;
+    }
 
-        .btn-outline-secondary:hover {
-            background-color: #6c757d;
-            color: white;
-        }
+    .table-striped tbody tr:nth-of-type(odd) {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
 
-        .table-dark th {
-            background-color: var(--dark-color) !important;
-            color: white !important;
-            font-weight: 500;
-        }
+    /* Efek hover pada baris tabel */
+    .table-row-hover {
+        transition: all 0.2s ease;
+    }
 
-        .table-striped tbody tr:nth-of-type(odd) {
-            background-color: rgba(0, 0, 0, 0.02);
-        }
+    .table-row-hover:hover {
+        background-color: rgba(99, 102, 241, 0.04) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
 
-        /* Efek hover pada baris tabel */
-        .table-row-hover {
-            transition: all 0.2s ease;
-        }
+    /* Customer badge styling */
+    .customer-badge {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        min-width: 120px;
+        text-align: center;
+        letter-spacing: 0.3px;
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .table-row-hover:hover {
-            background-color: rgba(99, 102, 241, 0.04) !important;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
+    /* Breadcrumb */
+    .breadcrumb {
+        background-color: transparent;
+        padding: 0;
+        margin-bottom: 20px;
+    }
 
-        /* Customer badge styling */
-        .customer-badge {
-            display: inline-block;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            min-width: 120px;
-            text-align: center;
-            letter-spacing: 0.3px;
-            background-color: #6c757d;
-            color: white;
-        }
+    .breadcrumb-item a {
+        color: var(--primary-color);
+        text-decoration: none;
+    }
 
-        /* Breadcrumb */
-        .breadcrumb {
-            background-color: transparent;
-            padding: 0;
-            margin-bottom: 20px;
-        }
-
-        .breadcrumb-item a {
-            color: var(--primary-color);
-            text-decoration: none;
-        }
-
-        .breadcrumb-item.active {
-            color: #6c757d;
-        }
+    .breadcrumb-item.active {
+        color: #6c757d;
+    }
 
 /* Table responsive */
-        .table-responsive {
-            border-radius: 8px;
-            overflow: hidden;
-        }
+    .table-responsive {
+        border-radius: 8px;
+        overflow: hidden;
+    }
 
-        /* Analytics menu cards */
-        .analytics-menu-card {
-            text-decoration: none;
-            color: inherit;
-            display: block;
-            height: 100%;
-        }
+    /* Analytics menu cards */
+    .analytics-menu-card {
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        height: 100%;
+    }
 
-        .analytics-menu-card:hover {
-            color: inherit;
-            text-decoration: none;
-        }
+    .analytics-menu-card:hover {
+        color: inherit;
+        text-decoration: none;
+    }
 
-        .analytics-menu-card .card-title {
-            font-weight: 600;
-            margin-bottom: 10px;
-            color: var(--primary-color);
-        }
+    .analytics-menu-card .card-title {
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: var(--primary-color);
+    }
 
-        .analytics-menu-card .card-icon {
-            font-size: 2.5rem;
-            margin-bottom: 15px;
-            color: var(--primary-color);
-        }
+    .analytics-menu-card .card-icon {
+        font-size: 2.5rem;
+        margin-bottom: 15px;
+        color: var(--primary-color);
+    }
 
-        .analytics-menu-card:hover .card-icon {
-            transform: scale(1.1);
-            transition: transform 0.3s ease;
-        }
-    </style>
-</head>
-<body>
-
+    .analytics-menu-card:hover .card-icon {
+        transform: scale(1.1);
+        transition: transform 0.3s ease;
+    }
+</style>
+@endpush
+@section('content')
 <div class="container-fluid">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb">
@@ -171,7 +158,7 @@
                                 <div class="card h-100">
                                     <div class="card-body text-center">
                                         <div class="card-icon">
-                                            <i class="bi bi-calendar-check"></i>
+                                            <i class="fa fa-calendar-check"></i>
                                         </div>
                                         <h5 class="card-title">Ringkasan Bulanan</h5>
                                         <p class="card-text">Analisis penjualan per bulan dalam satu tahun</p>
@@ -184,7 +171,7 @@
                                 <div class="card h-100">
                                     <div class="card-body text-center">
                                         <div class="card-icon">
-                                            <i class="bi bi-people"></i>
+                                            <i class="fa fa-users"></i>
                                         </div>
                                         <h5 class="card-title">Penjualan per Customer</h5>
                                         <p class="card-text">Analisis penjualan berdasarkan customer</p>
@@ -197,7 +184,7 @@
                                 <div class="card h-100">
                                     <div class="card-body text-center">
                                         <div class="card-icon">
-                                            <i class="bi bi-box-seam"></i>
+                                            <i class="fa fa-box"></i>
                                         </div>
                                         <h5 class="card-title">Penjualan per Produk</h5>
                                         <p class="card-text">Analisis penjualan berdasarkan produk</p>
@@ -210,7 +197,7 @@
                                 <div class="card h-100">
                                     <div class="card-body text-center">
                                         <div class="card-icon">
-                                            <i class="bi bi-file-earmark-text"></i>
+                                            <i class="fa fa-file-alt"></i>
                                         </div>
                                         <h5 class="card-title">Laporan Detail</h5>
                                         <p class="card-text">Laporan detail penjualan offline</p>
@@ -223,7 +210,7 @@
                                 <div class="card h-100">
                                     <div class="card-body text-center">
                                         <div class="card-icon">
-                                            <i class="bi bi-graph-up"></i>
+                                            <i class="fa fa-chart-line"></i>
                                         </div>
                                         <h5 class="card-title">Gross Profit</h5>
                                         <p class="card-text">Analisis profit dan margin penjualan offline</p>
@@ -293,18 +280,18 @@
                     <!-- Submit and Reset Button -->
                     <div class="col-md-2">
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search"></i> Filter
+                            <i class="fa fa-search"></i> Filter
                         </button>
                     </div>
                     <div class="col-md-2">
                         <a href="{{ route('analytics.offline.sales-detail-report') }}" class="btn btn-outline-secondary w-100">
-                            <i class="bi bi-arrow-counterclockwise"></i> Reset
+                            <i class="fa fa-undo"></i> Reset
                         </a>
                     </div>
                     <div class="col-md-2">
-                        <a href="{{ route('analytics.offline.sales-detail-report.export', request()->query()) }}" class="btn btn-success w-100">
-                            <i class="bi bi-download"></i> Export Excel
-                        </a>
+                        <button type="button" class="btn btn-success w-100" onclick="exportOfflineSalesDetailReport()">
+                            <i class="fa fa-download"></i> Export Excel
+                        </button>
                     </div>
                 </div>
             </form>
@@ -528,10 +515,9 @@
         </div>
     </div>
 </div>
-
-<!-- Bootstrap JS Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+@include('analytics.partials.export_script', ['exportType' => 'offline_sales_detail_report'])
+@endsection
+@push('scripts')
 <script>
     // Set default date to today if not already set
     document.addEventListener('DOMContentLoaded', function() {
@@ -545,6 +531,8 @@
 
         // Set default values if empty
         if (!startDateInput.value) {
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
             // First day of current month
             startDateInput.value = `${year}-${month}-01`;
         }
@@ -553,6 +541,19 @@
             endDateInput.value = todayFormatted;
         }
     });
+
+    // Export function using queued export system
+    window.exportOfflineSalesDetailReport = function() {
+        const form = document.getElementById('filter-form');
+        const filters = {};
+        if (form) {
+            const fd = new FormData(form);
+            for (let [key, value] of fd.entries()) {
+                if (value) filters[key] = value;
+            }
+        }
+        dispatchExport('offline_sales_detail_report', filters);
+    };
 </script>
-</body>
-</html>
+
+@endpush

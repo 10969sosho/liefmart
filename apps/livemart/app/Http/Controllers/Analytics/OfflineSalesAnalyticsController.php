@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Analytics;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Analytics\Traits\DispatchesAnalyticsExport;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,8 @@ use App\Exports\OfflineSalesDetailReportExport;
 
 class OfflineSalesAnalyticsController extends Controller
 {
+    use DispatchesAnalyticsExport;
+
     private function calculateTotalAfterDiscounts($item)
     {
         $basePrice = (float)($item->unit_price ?? 0);
@@ -503,58 +506,7 @@ class OfflineSalesAnalyticsController extends Controller
      */
     public function exportOfflineMonthlySales(Request $request)
     {
-        // Get the same data as the view
-        $selectedYear = $request->input('year', date('Y'));
-        $selectedCustomer = $request->input('customer_id');
-        
-        $customers = \App\Models\Customer::orderBy('name')->get();
-        
-        $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
-            ->with(['items', 'customerInfo'])
-            ->whereYear('sale_date', $selectedYear);
-            
-        if ($selectedCustomer) {
-            $query->where('customer_id', $selectedCustomer);
-        }
-        
-        $sales = $query->get();
-        
-        // Group by month
-        $monthlySummary = $sales->groupBy(function ($sale) {
-            return $sale->sale_date->format('Y-m');
-        })->map(function ($monthSales, $yearMonth) {
-            $totalVolume = $monthSales->sum(function ($sale) {
-                return $sale->items->sum('quantity');
-            });
-            
-            return [
-                'year_month' => $yearMonth,
-                'month_name' => Carbon::createFromFormat('Y-m', $yearMonth)->format('M Y'),
-                'total_orders' => $monthSales->count(),
-                'total_value' => $monthSales->sum('total_amount'),
-                'total_volume' => $totalVolume,
-                'avg_order_value' => $monthSales->count() > 0 ? $monthSales->sum('total_amount') / $monthSales->count() : 0,
-                'avg_order_volume' => $monthSales->count() > 0 ? $totalVolume / $monthSales->count() : 0,
-            ];
-        })->sortBy('year_month')->values();
-
-        // Calculate year summary
-        $yearSummary = [
-            'total_orders' => $sales->count(),
-            'total_value' => $sales->sum('total_amount'),
-            'total_volume' => $sales->sum(function ($sale) {
-                return $sale->items->sum('quantity');
-            }),
-        ];
-        
-        $yearSummary['avg_order_value'] = $yearSummary['total_orders'] > 0 ? $yearSummary['total_value'] / $yearSummary['total_orders'] : 0;
-        $yearSummary['avg_order_volume'] = $yearSummary['total_orders'] > 0 ? $yearSummary['total_volume'] / $yearSummary['total_orders'] : 0;
-
-        $customerName = $selectedCustomer ? $customers->where('id', $selectedCustomer)->first()->name ?? 'Unknown' : null;
-        
-        $filename = 'penjualan-bulanan-offline-' . $selectedYear . '-' . date('Y-m-d') . '.xlsx';
-        
-        return Excel::download(new OfflineMonthlySalesExport($monthlySummary, $yearSummary, $selectedYear, $customerName), $filename);
+        return $this->dispatchExport('offline_monthly_sales_summary', $request->all());
     }
 
     /**
@@ -562,94 +514,7 @@ class OfflineSalesAnalyticsController extends Controller
      */
     public function exportOfflineSalesByCustomer(Request $request)
     {
-        // Get the same data as the view
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
-        $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
-        $selectedCustomer = $request->input('customer_id');
-        $sortBy = $request->input('sort', 'value_highest');
-        
-        $customers = \App\Models\Customer::orderBy('name')->get();
-        
-        $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
-            ->with(['items', 'customerInfo']);
-            
-        if ($startDate && $endDate) {
-            $query->whereBetween('sale_date', [$startDate, $endDate]);
-        }
-        
-        if ($selectedCustomer) {
-            $query->where('customer_id', $selectedCustomer);
-        }
-        
-        $sales = $query->get();
-        
-        // Group by customer
-        $customerSummary = $sales->groupBy('customer_id')->map(function ($customerSales, $customerId) {
-            $customer = $customerSales->first()->customerInfo;
-            $customerName = $customer ? $customer->name : 'Unknown';
-            
-            $totalVolume = $customerSales->sum(function ($sale) {
-                return $sale->items->sum('quantity');
-            });
-            
-            return [
-                'customer_id' => $customerId,
-                'customer_name' => $customerName,
-                'total_orders' => $customerSales->count(),
-                'total_value' => $customerSales->sum('total_amount'),
-                'total_volume' => $totalVolume,
-                'avg_order_value' => $customerSales->count() > 0 ? $customerSales->sum('total_amount') / $customerSales->count() : 0,
-                'avg_order_volume' => $customerSales->count() > 0 ? $totalVolume / $customerSales->count() : 0,
-            ];
-        });
-
-        // Sort data
-        switch ($sortBy) {
-            case 'value_highest':
-                $customerSummary = $customerSummary->sortByDesc('total_value');
-                break;
-            case 'value_lowest':
-                $customerSummary = $customerSummary->sortBy('total_value');
-                break;
-            case 'volume_highest':
-                $customerSummary = $customerSummary->sortByDesc('total_volume');
-                break;
-            case 'volume_lowest':
-                $customerSummary = $customerSummary->sortBy('total_volume');
-                break;
-            case 'orders_highest':
-                $customerSummary = $customerSummary->sortByDesc('total_orders');
-                break;
-            case 'orders_lowest':
-                $customerSummary = $customerSummary->sortBy('total_orders');
-                break;
-            case 'name_asc':
-                $customerSummary = $customerSummary->sortBy('customer_name');
-                break;
-            case 'name_desc':
-                $customerSummary = $customerSummary->sortByDesc('customer_name');
-                break;
-            default:
-                $customerSummary = $customerSummary->sortByDesc('total_value');
-        }
-
-        // Calculate summary
-        $summary = [
-            'total_orders' => $sales->count(),
-            'total_value' => $sales->sum('total_amount'),
-            'total_volume' => $sales->sum(function ($sale) {
-                return $sale->items->sum('quantity');
-            }),
-        ];
-        
-        $summary['avg_order_value'] = $summary['total_orders'] > 0 ? $summary['total_value'] / $summary['total_orders'] : 0;
-        $summary['avg_order_volume'] = $summary['total_orders'] > 0 ? $summary['total_volume'] / $summary['total_orders'] : 0;
-
-        $customerName = $selectedCustomer ? $customers->where('id', $selectedCustomer)->first()->name ?? 'Unknown' : null;
-        
-        $filename = 'penjualan-offline-by-customer-' . date('Y-m-d') . '.xlsx';
-        
-        return Excel::download(new OfflineSalesByCustomerExport($customerSummary, $summary, $startDate, $endDate, $customerName), $filename);
+        return $this->dispatchExport('offline_sales_by_customer', $request->all());
     }
 
     /**
@@ -657,93 +522,7 @@ class OfflineSalesAnalyticsController extends Controller
      */
     public function exportOfflineSalesByProduct(Request $request)
     {
-        // Get the same data as the view
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
-        $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
-        $selectedCustomer = $request->input('customer_id');
-        $selectedProduct = $request->input('product_id');
-        $sortBy = $request->input('sort', 'value_highest');
-        
-        $customers = \App\Models\Customer::orderBy('name')->get();
-        $products = \App\Models\Product::orderBy('name')->get();
-        
-        $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
-            ->with(['items.product', 'customerInfo']);
-            
-        if ($startDate && $endDate) {
-            $query->whereBetween('sale_date', [$startDate, $endDate]);
-        }
-        
-        if ($selectedCustomer) {
-            $query->where('customer_id', $selectedCustomer);
-        }
-        
-        $sales = $query->get();
-        
-        // Filter sale items by product if selected
-        $allSaleItems = collect();
-        foreach ($sales as $sale) {
-            foreach ($sale->items as $item) {
-                if (!$selectedProduct || $item->product_id == $selectedProduct) {
-                    $allSaleItems->push($item);
-                }
-            }
-        }
-        
-        // Group items by product
-        $productSummary = $allSaleItems->groupBy('product_id')->map(function ($items, $productId) {
-            $product = $items->first()->product;
-            $productName = $product ? $product->name : 'Unknown';
-            
-            $totalQuantity = $items->sum('quantity');
-            $totalValue = $items->sum('subtotal');
-            
-            return [
-                'product_id' => $productId,
-                'product_name' => $productName,
-                'total_quantity' => $totalQuantity,
-                'total_value' => $totalValue,
-                'avg_price' => $totalQuantity > 0 ? $totalValue / $totalQuantity : 0,
-            ];
-        });
-        
-        // Sort data
-        switch ($sortBy) {
-            case 'value_highest':
-                $productSummary = $productSummary->sortByDesc('total_value');
-                break;
-            case 'value_lowest':
-                $productSummary = $productSummary->sortBy('total_value');
-                break;
-            case 'quantity_highest':
-                $productSummary = $productSummary->sortByDesc('total_quantity');
-                break;
-            case 'quantity_lowest':
-                $productSummary = $productSummary->sortBy('total_quantity');
-                break;
-            case 'name_asc':
-                $productSummary = $productSummary->sortBy('product_name');
-                break;
-            case 'name_desc':
-                $productSummary = $productSummary->sortByDesc('product_name');
-                break;
-            default:
-                $productSummary = $productSummary->sortByDesc('total_value');
-        }
-
-        // Calculate summary
-        $summary = [
-            'total_products' => $productSummary->count(),
-            'total_value' => $productSummary->sum('total_value'),
-            'total_quantity' => $productSummary->sum('total_quantity'),
-        ];
-
-        $customerName = $selectedCustomer ? $customers->where('id', $selectedCustomer)->first()->name ?? 'Unknown' : null;
-        $productName = $selectedProduct ? $products->where('id', $selectedProduct)->first()->name ?? 'Unknown' : null;
-        
-        $filename = 'penjualan-offline-by-product-' . date('Y-m-d') . '.xlsx';
-        
-        return Excel::download(new OfflineSalesByProductExport($productSummary, $summary, $startDate, $endDate, $customerName, $productName), $filename);
+        return $this->dispatchExport('offline_sales_by_product', $request->all());
     }
 
     /**
@@ -751,105 +530,6 @@ class OfflineSalesAnalyticsController extends Controller
      */
     public function exportOfflineSalesDetailReport(Request $request)
     {
-        // Set default date range
-        $startDate = $request->filled('start_date') ? $request->input('start_date') : date('Y-m-01');
-        $endDate = $request->filled('end_date') ? $request->input('end_date') : date('Y-m-d');
-        
-        // Get selected customer if any
-        $selectedCustomer = $request->input('customer_id');
-        
-        // Get selected product if any
-        $selectedProduct = $request->input('product_id');
-        
-        // Build the query for offline sales
-        $query = \App\Models\OfflineSale::withoutGlobalScope('mainCategory')
-            ->with(['items', 'items.product', 'customerInfo']);
-            
-        // Apply date filter
-        if ($startDate && $endDate) {
-            $query->whereBetween('sale_date', [$startDate, $endDate]);
-        }
-        
-        // Apply customer filter if selected
-        if ($selectedCustomer) {
-            $query->where('customer_id', $selectedCustomer);
-        }
-        
-        // Get the sales
-        $sales = $query->get();
-        
-        // Sort by the selected criteria
-        $sortBy = $request->input('sort', 'date_newest');
-        
-        switch ($sortBy) {
-            case 'value_highest':
-                $sales = $sales->sortByDesc('total_amount');
-                break;
-            case 'value_lowest':
-                $sales = $sales->sortBy('total_amount');
-                break;
-            case 'date_newest':
-                $sales = $sales->sortByDesc('sale_date');
-                break;
-            case 'date_oldest':
-                $sales = $sales->sortBy('sale_date');
-                break;
-            default:
-                $sales = $sales->sortByDesc('sale_date');
-        }
-        
-        // Calculate total volume for each sale and value after returns
-        $sales = $sales->map(function ($sale) {
-            $sale->total_volume = $sale->items->sum('quantity');
-            
-            // Calculate actual value and volume after returns (same logic as display)
-            $qtyRetur = 0;
-            $valueAfterReturns = 0;
-            
-            foreach ($sale->items as $item) {
-                // Get return quantity for this specific item
-                $itemQtyRetur = \App\Models\ReturOfflineSaleDetail::where('offline_sale_item_id', $item->id)
-                    ->whereHas('returOfflineSale', function($q) { $q->where('status', 'selesai'); })
-                    ->sum('qty');
-                
-                $itemQtyRetur = (float) $itemQtyRetur;
-                $qtyRetur += $itemQtyRetur;
-                
-                // Calculate quantity after return for this item
-                $qtyAfterRetur = max(0, $item->quantity - $itemQtyRetur);
-                
-                // ✅ Calculate total value after ALL DISCOUNTS for this item (export method)
-                $itemTotalAfterDiscounts = $this->calculateTotalAfterDiscounts($item);
-                
-                // ✅ Use full value regardless of returns - VALUE should show original total with discounts (export)
-                $valueAfterReturns += $itemTotalAfterDiscounts;
-            }
-            
-            // Set calculated values
-            $sale->total_retur_qty = $qtyRetur;
-            $sale->total_volume_after_returns = $sale->total_volume; // ✅ Use original volume, not reduced by returns (export)
-            $sale->value_after_returns = $valueAfterReturns;
-            
-            return $sale;
-        });
-        
-        // Calculate overall summary using corrected values
-        $summary = [
-            'total_orders' => $sales->count(),
-            'total_value' => $sales->sum('value_after_returns'), // Use value after returns
-            'total_volume' => $sales->sum('total_volume_after_returns'), // Use original volume (not reduced by returns) (export)
-        ];
-        
-        $summary['avg_order_value'] = $summary['total_orders'] > 0 
-            ? $summary['total_value'] / $summary['total_orders'] 
-            : 0;
-            
-        $summary['avg_order_volume'] = $summary['total_orders'] > 0 
-            ? $summary['total_volume'] / $summary['total_orders'] 
-            : 0;
-        
-        $filename = 'laporan-detail-penjualan-offline-' . date('Y-m-d') . '.xlsx';
-        
-        return Excel::download(new OfflineSalesDetailReportExport($sales, $summary, $startDate, $endDate, $selectedCustomer, $selectedProduct), $filename);
+        return $this->dispatchExport('offline_sales_detail_report', $request->all());
     }
 }

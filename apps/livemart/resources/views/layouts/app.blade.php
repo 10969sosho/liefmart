@@ -88,6 +88,17 @@
             transition: background 0.2s ease;
         }
         
+        /* Sidebar hidden state for analytics pages */
+        .sidebar.sidebar-hidden {
+            left: calc(-1 * var(--sidebar-width)) !important;
+        }
+        .sidebar.sidebar-hidden + .sidebar-resizer {
+            display: none;
+        }
+        .content.content-full {
+            margin-left: 0 !important;
+        }
+        
         .sidebar-resizer:hover {
             background: rgba(99, 102, 241, 0.3);
         }
@@ -450,10 +461,24 @@
         }
         
         .table-responsive thead th {
-            background-color: #f8f9fa !important;
+            background-color: #f8f9fa;
             position: sticky !important;
             top: 0 !important;
             z-index: 10 !important;
+        }
+        
+        /* Dark table headers inside responsive tables - override for analytics */
+        .table-responsive .table-dark th {
+            background-color: #374151 !important;
+            color: #ffffff !important;
+            font-weight: 600;
+        }
+        
+        /* Light table headers inside responsive tables */
+        .table-responsive .table-light th {
+            background-color: #f3f4f6 !important;
+            color: #374151 !important;
+            font-weight: 600;
         }
         
         /* Ensure tables don't extend endlessly */
@@ -820,7 +845,40 @@
                     }
                 }
             });
+            
+            // Auto-hide sidebar on analytics pages for more screen space
+            if (currentPath.startsWith('/analytics')) {
+                const sidebar = document.getElementById('sidebar');
+                const content = document.getElementById('content');
+                if (sidebar && content && window.innerWidth > 991.98) {
+                    sidebar.classList.add('sidebar-hidden');
+                    content.classList.add('content-full');
+                    addAnalyticsToggle();
+                }
+            }
         });
+        
+        function addAnalyticsToggle() {
+            if (document.getElementById('analytic-sidebar-toggle')) return;
+            const btn = document.createElement('button');
+            btn.id = 'analytic-sidebar-toggle';
+            btn.innerHTML = '<i class="fas fa-bars"></i>';
+            btn.title = 'Buka Sidebar';
+            btn.style.cssText = 'position:fixed;top:80px;left:12px;z-index:9998;width:36px;height:36px;border-radius:8px;border:none;background:#6366F1;color:#fff;font-size:0.9rem;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.4);display:flex;align-items:center;justify-content:center;transition:all 0.3s ease;';
+            btn.onmouseenter = function() { this.style.transform = 'scale(1.1)'; };
+            btn.onmouseleave = function() { this.style.transform = 'scale(1)'; };
+            btn.onclick = function() {
+                const s = document.getElementById('sidebar');
+                const c = document.getElementById('content');
+                s.classList.toggle('sidebar-hidden');
+                c.classList.toggle('content-full');
+                const hidden = s.classList.contains('sidebar-hidden');
+                this.innerHTML = hidden ? '<i class="fas fa-bars"></i>' : '<i class="fas fa-times"></i>';
+                this.title = hidden ? 'Buka Sidebar' : 'Tutup Sidebar';
+                this.style.left = hidden ? '12px' : 'calc(var(--sidebar-width) + 12px)';
+            };
+            document.body.appendChild(btn);
+        }
     </script>
     
     <!-- Diagnostic script for debugging -->

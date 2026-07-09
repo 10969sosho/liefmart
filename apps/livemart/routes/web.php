@@ -586,6 +586,7 @@ Route::prefix('analytics')
             Route::get('/sales-detail-report', [App\Http\Controllers\Analytics\OfflineSalesAnalyticsController::class, 'offlineSalesDetailReport'])->name('sales-detail-report');
             Route::get('/sales-by-product', [App\Http\Controllers\Analytics\OfflineSalesAnalyticsController::class, 'offlineSalesByProductReport'])->name('sales-by-product');
             Route::get('/gross-profit', [App\Http\Controllers\Analytics\GrossProfitAnalyticsController::class, 'grossProfitOfflineReport'])->name('gross-profit');
+            Route::get('/gross-profit/table-data', [App\Http\Controllers\Analytics\GrossProfitAnalyticsController::class, 'grossProfitOfflineTableData'])->name('gross-profit.table-data');
             
             // Export routes for offline analytics
             Route::get('/monthly-sales-summary/export', [App\Http\Controllers\Analytics\OfflineSalesAnalyticsController::class, 'exportOfflineMonthlySales'])->name('monthly-sales-summary.export');
@@ -593,6 +594,17 @@ Route::prefix('analytics')
             Route::get('/sales-by-product/export', [App\Http\Controllers\Analytics\OfflineSalesAnalyticsController::class, 'exportOfflineSalesByProduct'])->name('sales-by-product.export');
             Route::get('/sales-detail-report/export', [App\Http\Controllers\Analytics\OfflineSalesAnalyticsController::class, 'exportOfflineSalesDetailReport'])->name('sales-detail-report.export');
             Route::get('/gross-profit/export', [App\Http\Controllers\Analytics\GrossProfitAnalyticsController::class, 'exportGrossProfitOffline'])->name('gross-profit.export');
+        });
+
+        // Queued Export System Routes
+        Route::prefix('exports')->name('exports.')->group(function () {
+            Route::post('/dispatch', [App\Http\Controllers\Analytics\AnalyticsExportController::class, 'export'])->name('dispatch');
+            Route::get('/list', [App\Http\Controllers\Analytics\AnalyticsExportController::class, 'listExports'])->name('list');
+            Route::get('/{id}/status', [App\Http\Controllers\Analytics\AnalyticsExportController::class, 'status'])->name('status');
+            Route::get('/{id}/download', [App\Http\Controllers\Analytics\AnalyticsExportController::class, 'download'])->name('download');
+            Route::get('/notifications/list', [App\Http\Controllers\Analytics\AnalyticsExportController::class, 'notifications'])->name('notifications');
+            Route::post('/notifications/{id}/read', [App\Http\Controllers\Analytics\AnalyticsExportController::class, 'markAsRead'])->name('notifications.read');
+            Route::post('/notifications/read-all', [App\Http\Controllers\Analytics\AnalyticsExportController::class, 'markAllAsRead'])->name('notifications.read-all');
         });
     });
 

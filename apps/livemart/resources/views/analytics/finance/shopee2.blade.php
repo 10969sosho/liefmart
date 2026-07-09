@@ -18,7 +18,7 @@
                         <i class="fas fa-download me-1"></i> Export
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow">
-                        <li><a class="dropdown-item" href="{{ route('analytics.finance.shopee2.export', request()->all()) }}"><i class="far fa-file-excel me-2"></i>Excel</a></li>
+                        <li><button type="button" class="dropdown-item" onclick="exportFinanceShopee2()"><i class="far fa-file-excel me-2"></i>Excel</button></li>
                     </ul>
                 </div>
             </div>
@@ -578,6 +578,8 @@
     </div>
 </div>
 
+@include('analytics.partials.export_script', ['exportType' => 'finance_shopee2'])
+
 @push('styles')
 <style>
     /* Dashboard Cards */
@@ -670,6 +672,11 @@
 function resetFilters() {
     // Redirect to the same page without any query parameters
     window.location.href = "{{ route('analytics.finance.shopee') }}";
+}
+
+function exportFinanceShopee2() {
+    const form = document.querySelector('#filterModal form');
+    exportWithFilters('finance_shopee2', form);
 }
 </script>
 @endpush
