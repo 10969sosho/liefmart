@@ -311,8 +311,8 @@ class PenerimaanController extends Controller
      */
     public function edit($id)
     {
-        // Check user permission (admin and superadmin can edit)
-        if (!Auth::user()->canEdit()) {
+        // Check user permission (hanya superadmin)
+        if (!Auth::user()->isSuperAdmin()) {
             return redirect()->route('penerimaan.index')
                 ->with('error', 'Anda tidak memiliki izin untuk mengedit data penerimaan.');
         }
@@ -362,8 +362,8 @@ class PenerimaanController extends Controller
      */
     public function update(Request $request, $id)
     {
-        // Check user permission (admin and superadmin can edit)
-        if (!Auth::user()->canEdit()) {
+        // Check user permission (hanya superadmin)
+        if (!Auth::user()->isSuperAdmin()) {
             return redirect()->route('penerimaan.index')
                 ->with('error', 'Anda tidak memiliki izin untuk mengedit data penerimaan.');
         }
@@ -662,6 +662,11 @@ class PenerimaanController extends Controller
      */
     public function storeBatchDetails(Request $request, $id)
     {
+        // Hanya superadmin
+        if (!Auth::user()->isSuperAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Hanya superadmin yang dapat mengedit penerimaan.'], 403);
+        }
+
         $validator = Validator::make($request->all(), [
             'items' => 'required|array|min:1',
             'items.*.barang_id' => 'required|exists:products,id',
@@ -816,6 +821,11 @@ class PenerimaanController extends Controller
      */
     public function clearDetails(Request $request, $id)
     {
+        // Hanya superadmin
+        if (!Auth::user()->isSuperAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Hanya superadmin yang dapat mengedit penerimaan.'], 403);
+        }
+
         try {
             DB::beginTransaction();
             
@@ -880,6 +890,11 @@ class PenerimaanController extends Controller
      */
     public function updateHeader(Request $request, $id)
     {
+        // Hanya superadmin
+        if (!Auth::user()->isSuperAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Hanya superadmin yang dapat mengedit penerimaan.'], 403);
+        }
+
         $validator = Validator::make($request->all(), [
             'main_category_id' => 'required',
             'tax_category_id' => 'required',
@@ -961,6 +976,11 @@ class PenerimaanController extends Controller
      */
     public function finalizePenerimaanUpdate(Request $request, $id)
     {
+        // Hanya superadmin
+        if (!Auth::user()->isSuperAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Hanya superadmin yang dapat mengedit penerimaan.'], 403);
+        }
+
         try {
             $penerimaan = Penerimaan::findOrFail($id);
 

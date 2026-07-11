@@ -203,8 +203,8 @@
                                         <a href="{{ route('penerimaan.print', $item->id) }}" class="btn btn-sm btn-success me-1" data-bs-toggle="tooltip" title="Print" target="_blank">
                                             <i class="fas fa-print"></i>
                                         </a>
-                                        @if(Auth::user()->canEdit())
-                                            {{-- Edit button - Tersedia untuk semua status, controller akan cek apakah stok sudah terjual --}}
+                                        @if(Auth::user()->isSuperAdmin())
+                                            {{-- Edit button - Hanya superadmin --}}
                                             <a href="{{ route('penerimaan.edit', $item->id) }}" class="btn btn-sm btn-primary me-1" data-bs-toggle="tooltip" title="Edit">
                                                 <i class="fas fa-edit"></i>
                                             </a>
