@@ -909,7 +909,7 @@ class SalesAnalyticsController extends Controller
         // Use summary without price/qty filters for total_value and total_volume to match export calculation
         $summary = [
             'total_orders' => (int)($summaryResult->total_orders ?? 0),
-            'total_orders_after_returns' => (int)($summaryResult->total_orders ?? 0),
+            'total_orders_after_returns' => max(0, (int)($summaryResult->total_orders_all ?? 0) - (int)($summaryResult->orders_with_returns ?? 0)),
             'total_value' => (float)($summaryResultWithoutPriceQty->total_value ?? 0),
             'total_volume' => (float)($summaryResultWithoutPriceQty->total_volume ?? 0),
             'avg_order_value' => (float)($summaryResultWithoutPriceQty->avg_order_value ?? 0),
