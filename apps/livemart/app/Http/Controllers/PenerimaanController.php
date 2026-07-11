@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BarangKeluar;
 use App\Models\MainCategory;
+use App\Models\OfflineSaleItem;
+use App\Models\OrderItem;
 use App\Models\Penerimaan;
 use App\Models\PenerimaanActivity;
 use App\Models\PenerimaanDetail;
@@ -319,10 +322,18 @@ class PenerimaanController extends Controller
             $penerimaan = Penerimaan::with(['details.product', 'details.satuan', 'mainCategory', 'taxCategory'])
                 ->findOrFail($id);
 
-            // Cek apakah sudah diproses
-            if ($penerimaan->status !== 'Unlocated') {
+            // Cek apakah ada WarehouseStock dari penerimaan ini yang sudah digunakan
+            // di barang_keluar, order_items, atau offline_sale_items
+            $detailIds = $penerimaan->details()->pluck('id')->toArray();
+            $warehouseStockIds = WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)->pluck('id')->toArray();
+            
+            $hasBarangKeluar = !empty($warehouseStockIds) && BarangKeluar::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOrderItem = !empty($warehouseStockIds) && OrderItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOfflineSaleItem = !empty($warehouseStockIds) && OfflineSaleItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            
+            if ($hasBarangKeluar || $hasOrderItem || $hasOfflineSaleItem) {
                 return redirect()->route('penerimaan.index')
-                    ->with('error', 'Penerimaan yang sudah diproses (Located) tidak dapat diedit.');
+                    ->with('error', 'Penerimaan tidak dapat diedit karena stok sudah digunakan dalam transaksi penjualan.');
             }
         } catch (\Exception $e) {
             return redirect()->route('penerimaan.index')
@@ -386,10 +397,18 @@ class PenerimaanController extends Controller
 
             $penerimaan = Penerimaan::findOrFail($id);
 
-            // Hanya boleh update jika statusnya masih Unlocated
-            if ($penerimaan->status !== 'Unlocated') {
+            // Cek apakah ada WarehouseStock dari penerimaan ini yang sudah digunakan
+            // di barang_keluar, order_items, atau offline_sale_items
+            $detailIds = $penerimaan->details()->pluck('id')->toArray();
+            $warehouseStockIds = WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)->pluck('id')->toArray();
+            
+            $hasBarangKeluar = !empty($warehouseStockIds) && BarangKeluar::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOrderItem = !empty($warehouseStockIds) && OrderItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOfflineSaleItem = !empty($warehouseStockIds) && OfflineSaleItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            
+            if ($hasBarangKeluar || $hasOrderItem || $hasOfflineSaleItem) {
                 return redirect()->route('penerimaan.index')
-                    ->with('error', 'Penerimaan yang sudah diproses (Located) tidak dapat diedit.');
+                    ->with('error', 'Penerimaan tidak dapat diedit karena stok sudah digunakan dalam transaksi penjualan.');
             }
 
             // Store old data for logging
@@ -680,11 +699,10 @@ class PenerimaanController extends Controller
                 ->pluck('id')
                 ->toArray();
 
-            // Set penerimaan_detail_id to NULL in warehouse_stock before deleting details
-            // This prevents foreign key constraint violation
+            // Hapus WarehouseStock terkait (bukan hanya set null)
+            // karena detail akan dihapus dan dibuat ulang
             if (!empty($detailIds)) {
-                WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)
-                    ->update(['penerimaan_detail_id' => null]);
+                WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)->delete();
             }
 
             // Hapus detail lama jika ada (untuk create dan edit - clear-details sudah dipanggil sebelumnya untuk edit tapi untuk safety tetap hapus)
@@ -714,7 +732,7 @@ class PenerimaanController extends Controller
                     }
                 }
 
-                PenerimaanDetail::create([
+                $penerimaanDetail = PenerimaanDetail::create([
                     'penerimaan_id' => $penerimaan->id,
                     'product_id' => $detail['barang_id'],
                     'qty' => NumberFormatter::formatDecimal($detail['qty']),
@@ -803,25 +821,30 @@ class PenerimaanController extends Controller
             
             $penerimaan = Penerimaan::findOrFail($id);
 
-            // Hanya boleh clear jika statusnya masih Unlocated
-            if ($penerimaan->status !== 'Unlocated') {
-                DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Penerimaan yang sudah diproses (Located) tidak dapat diedit.'
-                ], 400);
-            }
-
             // Get all detail IDs that will be deleted
             $detailIds = PenerimaanDetail::where('penerimaan_id', $penerimaan->id)
                 ->pluck('id')
                 ->toArray();
 
-            // Set penerimaan_detail_id to NULL in warehouse_stock before deleting details
-            // This prevents foreign key constraint violation
+            // Safety check: cek apakah warehouse_stock sudah digunakan di transaksi penjualan
+            $warehouseStockIds = WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)->pluck('id')->toArray();
+            
+            $hasBarangKeluar = !empty($warehouseStockIds) && BarangKeluar::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOrderItem = !empty($warehouseStockIds) && OrderItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOfflineSaleItem = !empty($warehouseStockIds) && OfflineSaleItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            
+            if ($hasBarangKeluar || $hasOrderItem || $hasOfflineSaleItem) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Stok dari penerimaan ini sudah digunakan dalam transaksi penjualan. Tidak dapat diedit.'
+                ], 400);
+            }
+
+            // Hapus WarehouseStock terkait (bukan hanya set null)
+            // karena detail akan dihapus dan dibuat ulang
             if (!empty($detailIds)) {
-                WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)
-                    ->update(['penerimaan_detail_id' => null]);
+                WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)->delete();
             }
 
             // Hapus semua detail
@@ -877,11 +900,19 @@ class PenerimaanController extends Controller
         try {
             $penerimaan = Penerimaan::findOrFail($id);
 
-            // Hanya boleh update jika statusnya masih Unlocated
-            if ($penerimaan->status !== 'Unlocated') {
+            // Cek apakah ada WarehouseStock dari penerimaan ini yang sudah digunakan
+            // di barang_keluar, order_items, atau offline_sale_items
+            $detailIds = $penerimaan->details()->pluck('id')->toArray();
+            $warehouseStockIds = WarehouseStock::whereIn('penerimaan_detail_id', $detailIds)->pluck('id')->toArray();
+            
+            $hasBarangKeluar = !empty($warehouseStockIds) && BarangKeluar::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOrderItem = !empty($warehouseStockIds) && OrderItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            $hasOfflineSaleItem = !empty($warehouseStockIds) && OfflineSaleItem::whereIn('warehouse_stock_id', $warehouseStockIds)->exists();
+            
+            if ($hasBarangKeluar || $hasOrderItem || $hasOfflineSaleItem) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Penerimaan yang sudah diproses (Located) tidak dapat diedit.'
+                    'message' => 'Penerimaan tidak dapat diedit karena stok sudah digunakan dalam transaksi penjualan.'
                 ], 400);
             }
 
@@ -936,6 +967,10 @@ class PenerimaanController extends Controller
             // Recalculate total
             $newTotalHarga = $penerimaan->recalculateTotalHarga();
 
+            // Kembalikan status ke Unlocated agar items muncul di daftar Unlocated
+            // dan bisa di-transfer ulang ke gudang
+            $penerimaan->update(['status' => 'Unlocated']);
+
             // Log activity
             $oldData = $request->old_data ?? [];
             $newData = [
@@ -954,7 +989,7 @@ class PenerimaanController extends Controller
             return response()->json([
                 'success' => true,
                 'penerimaan_id' => $penerimaan->id,
-                'message' => 'Update penerimaan berhasil disimpan'
+                'message' => 'Update penerimaan berhasil disimpan. Status dikembalikan ke Unlocated.'
             ]);
         } catch (\Exception $e) {
             return response()->json([

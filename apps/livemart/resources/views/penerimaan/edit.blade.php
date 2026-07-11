@@ -304,6 +304,19 @@
             </div>
         @endif
 
+        <!-- Warning Banner -->
+        <div class="alert alert-warning shadow-sm rounded-3" role="alert">
+            <div class="d-flex align-items-start">
+                <i class="fas fa-exclamation-triangle fa-lg me-3 mt-1"></i>
+                <div>
+                    <strong>Perhatian!</strong> Mengubah data penerimaan akan menghapus stok lama dan mengembalikan status ke <strong>Unlocated</strong>. 
+                    Pastikan tidak ada transaksi penjualan yang sudah menggunakan stok dari penerimaan ini, karena jika ada maka <strong>tidak bisa diedit</strong>.
+                    <br>
+                    <small class="text-muted">Setelah disimpan, items akan muncul kembali di daftar <strong>Unlocated</strong> dan perlu dipindahkan ke gudang kembali via fitur transfer.</small>
+                </div>
+            </div>
+        </div>
+
         <form onsubmit="return false;" id="formPenerimaan">
             <div class="row">
                 <!-- Left Column - Main Information -->
