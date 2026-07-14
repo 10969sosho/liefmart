@@ -636,6 +636,7 @@ class SalesAnalyticsController extends Controller
         $page = $request->input('page', 1);
         
         // Execute optimized SQL query untuk mendapatkan order IDs yang sudah difilter
+        // excludeZeroQty = false: Mapped report menampilkan ALL order termasuk full retur
         $sqlQuery = SalesDetailQuery::build($filters, $perPage, $page, false);
         $orderResults = DB::select($sqlQuery);
         
@@ -684,6 +685,7 @@ class SalesAnalyticsController extends Controller
         );
         
         // Get summary menggunakan SQL query (optimized)
+        // excludeZeroQty = false: Mapped report menampilkan ALL order
         $summaryQuery = SalesDetailQuery::buildSummary($filters, false);
         $summaryResult = DB::selectOne($summaryQuery);
         
@@ -858,20 +860,26 @@ class SalesAnalyticsController extends Controller
             ? round((($summaryResult->total_orders ?? 0) / $totalOrdersByDatePlatform) * 100, 1)
             : 100;
         
+        // Hitung order yang FULL retur (qty total = 0, sudah di-exclude oleh HAVING)
+        $totalOrdersAll = (int)($summaryResult->total_orders_all ?? 0);
+        $totalOrdersFiltered = (int)($summaryResult->total_orders ?? 0);
+        $fullyReturnedOrders = max(0, $totalOrdersAll - $totalOrdersFiltered);
+        
         // Build summary array
         // Use summary without price/qty filters for total_value and total_volume to match export calculation
         $summary = [
-            'total_orders' => (int)($summaryResult->total_orders ?? 0),
-            'total_orders_after_returns' => max(0, (int)($summaryResult->total_orders_all ?? 0) - (int)($summaryResult->orders_with_returns ?? 0)),
+            'total_orders' => $totalOrdersFiltered,
+            'total_orders_after_returns' => $totalOrdersFiltered,
             'total_value' => (float)($summaryResultWithoutPriceQty->total_value ?? 0),
             'total_volume' => (float)($summaryResultWithoutPriceQty->total_volume ?? 0),
             'avg_order_value' => (float)($summaryResultWithoutPriceQty->avg_order_value ?? 0),
             'avg_order_volume' => (float)($summaryResultWithoutPriceQty->avg_order_volume ?? 0),
             'percentage_shown' => $percentageShown,
-            'total_orders_all' => (int)($summaryResult->total_orders_all ?? 0),
+            'total_orders_all' => $totalOrdersAll,
             'total_orders_before_returns' => $totalOrdersByDatePlatform,
             'total_returns' => (int)($summaryResult->total_returns ?? 0),
             'orders_with_returns' => (int)($summaryResult->orders_with_returns ?? 0),
+            'fully_returned_orders' => $fullyReturnedOrders,
         ];
         
         return view('analytics.sales_detail_report', [
@@ -2983,40 +2991,42 @@ class SalesAnalyticsController extends Controller
         ini_set('memory_limit', '512M');
         set_time_limit(300);
         
-        // Use the same logic as the view method to ensure consistency
-        $platforms = Platform::all();
-        
         // Parse dates
         $startDate = $request->input('start_date') ?? now()->format('Y-m-d');
         $endDate = $request->input('end_date') ?? now()->format('Y-m-d');
+        $sortBy = $request->input('sort', 'date_newest');
         
-        try {
-            $startDateCarbon = Carbon::parse($startDate)->startOfDay();
-            $endDateCarbon = Carbon::parse($endDate)->endOfDay();
-        } catch (\Exception $e) {
-            $startDateCarbon = Carbon::today()->startOfDay();
-            $endDateCarbon = Carbon::today()->endOfDay();
-        }
+        // Build filters array for SalesDetailQuery (excludeZeroQty = true by default)
+        // Ini KUNCI: detail report HANYA menampilkan order dengan total qty > 0
+        // (exclude order yang full retur), berbeda dengan sales-export-mapped
+        $filters = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'platform_id' => $request->input('platform_id'),
+            'min_price' => $request->input('min_price'),
+            'max_price' => $request->input('max_price'),
+            'min_qty' => $request->input('min_qty'),
+            'max_qty' => $request->input('max_qty'),
+            'sort' => $sortBy,
+        ];
+        
+        // Gunakan SalesDetailQuery untuk mendapatkan order IDs yang sudah difilter
+        // excludeZeroQty = true (default): HANYA order dengan remaining_qty > 0
+        $orderIds = collect(DB::select(SalesDetailQuery::build($filters, 100000, 1)))->pluck('id')->toArray();
         
         // Build the query for order items with eager loading to avoid N+1
-        // Use subquery for sorting to avoid join duplication
+        // HANYA order yang lolos filter (qty total > 0 setelah retur)
         $query = \App\Models\OrderItem::with([
             'order.platform',
             'order.orderItems.platformProduct', // Preload all order items for totals calculation
             'platformProduct.mappingBarang'
-        ])->whereHas('order', function($q) use ($startDateCarbon, $endDateCarbon, $request) {
+        ])->whereHas('order', function($q) use ($orderIds) {
             $q->withoutGlobalScope('mainCategory')
-              ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
-            
-            // Apply platform filter if provided
-            if ($request->has('platform_id') && !empty($request->platform_id)) {
-                $q->where('platform_id', $request->platform_id);
-            }
+              ->whereIn('id', $orderIds);
         });
         
         // Apply sorting based on order
         // Use subquery to avoid DISTINCT + ORDER BY conflict
-        $sortBy = $request->input('sort', 'date_newest');
         switch ($sortBy) {
             case 'date_oldest':
                 $query->join('orders', 'order_items.order_id', '=', 'orders.id')
@@ -3049,37 +3059,17 @@ class SalesAnalyticsController extends Controller
                 break;
         }
         
-        // Calculate summary using aggregation (more memory efficient)
-        $summaryQuery = Order::withoutGlobalScope('mainCategory')
-            ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
-        
-        if ($request->has('platform_id') && !empty($request->platform_id)) {
-            $summaryQuery->where('platform_id', $request->platform_id);
-        }
+        // Calculate summary menggunakan SalesDetailQuery (konsisten dengan view)
+        // excludeZeroQty = true: HANYA order dengan remaining_qty > 0
+        $summaryResult = DB::selectOne(SalesDetailQuery::buildSummary($filters));
         
         $summary = [
-            'total_orders' => $summaryQuery->count(),
-            'total_value' => 0,
-            'total_volume' => 0,
+            'total_orders' => (int)($summaryResult->total_orders ?? 0),
+            'total_value' => (float)($summaryResult->total_value ?? 0),
+            'total_volume' => (float)($summaryResult->total_volume ?? 0),
+            'avg_order_value' => (float)($summaryResult->avg_order_value ?? 0),
+            'avg_order_volume' => (float)($summaryResult->avg_order_volume ?? 0),
         ];
-        
-        // Calculate totals using aggregation
-        $totals = \App\Models\OrderItem::whereHas('order', function($q) use ($startDateCarbon, $endDateCarbon, $request) {
-            $q->withoutGlobalScope('mainCategory')
-              ->whereBetween('tanggal', [$startDateCarbon, $endDateCarbon]);
-            
-            if ($request->has('platform_id') && !empty($request->platform_id)) {
-                $q->where('platform_id', $request->platform_id);
-            }
-        })->selectRaw('
-            SUM(price_after_discount * quantity) as total_value,
-            SUM(quantity) as total_volume
-        ')->first();
-        
-        $summary['total_value'] = $totals->total_value ?? 0;
-        $summary['total_volume'] = $totals->total_volume ?? 0;
-        $summary['avg_order_value'] = $summary['total_orders'] > 0 ? $summary['total_value'] / $summary['total_orders'] : 0;
-        $summary['avg_order_volume'] = $summary['total_orders'] > 0 ? $summary['total_volume'] / $summary['total_orders'] : 0;
         
         $filename = 'laporan-detail-penjualan-' . date('Y-m-d') . '.xlsx';
         
