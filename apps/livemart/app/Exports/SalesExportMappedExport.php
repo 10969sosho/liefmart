@@ -39,7 +39,7 @@ class SalesExportMappedExport implements FromIterator, WithHeadings, ShouldAutoS
         $no = 1;
         
         do {
-            $sqlQuery = SalesDetailQuery::build($this->filters, $perPage, $page);
+            $sqlQuery = SalesDetailQuery::build($this->filters, $perPage, $page, false);
             $orderResults = DB::select($sqlQuery);
             
             if (empty($orderResults)) {

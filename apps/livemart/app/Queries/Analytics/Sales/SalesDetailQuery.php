@@ -43,7 +43,7 @@ class SalesDetailQuery
     /**
      * Build query untuk sales detail with pagination
      */
-    public static function build(array $filters = [], int $perPage = 25, int $page = 1): string
+    public static function build(array $filters = [], int $perPage = 25, int $page = 1, bool $excludeZeroQty = true): string
     {
         $startDate = $filters['start_date'] ?? null;
         $endDate = $filters['end_date'] ?? null;
@@ -74,6 +74,10 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        $zeroQtyClause = $excludeZeroQty
+            ? "HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}"
+            : "HAVING 1=1{$priceFilter}{$qtyFilter}";
+        
         // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
             " . self::buildOrderItemsWithReturCTE() . ",
@@ -89,7 +93,7 @@ class SalesDetailQuery
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 WHERE 1=1{$dateFilter}{$platformFilter}
                 GROUP BY o.id, o.order_number, o.tanggal, o.platform_id
-                HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}
+                {$zeroQtyClause}
             )";
         
         // Build ORDER BY
@@ -117,7 +121,7 @@ class SalesDetailQuery
     /**
      * Build query untuk count
      */
-    public static function buildCount(array $filters = []): string
+    public static function buildCount(array $filters = [], bool $excludeZeroQty = true): string
     {
         $startDate = $filters['start_date'] ?? null;
         $endDate = $filters['end_date'] ?? null;
@@ -146,6 +150,10 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        $zeroQtyClause = $excludeZeroQty
+            ? "HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}"
+            : "HAVING 1=1{$priceFilter}{$qtyFilter}";
+        
         // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
             " . self::buildOrderItemsWithReturCTE() . ",
@@ -158,7 +166,7 @@ class SalesDetailQuery
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 WHERE 1=1{$dateFilter}{$platformFilter}
                 GROUP BY o.id
-                HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}
+                {$zeroQtyClause}
             )";
         
         return "
@@ -170,7 +178,7 @@ class SalesDetailQuery
     /**
      * Build query untuk summary
      */
-    public static function buildSummary(array $filters = []): string
+    public static function buildSummary(array $filters = [], bool $excludeZeroQty = true): string
     {
         $startDate = $filters['start_date'] ?? null;
         $endDate = $filters['end_date'] ?? null;
@@ -199,6 +207,10 @@ class SalesDetailQuery
             $qtyFilter .= " AND order_total_volume <= " . floatval($maxQty);
         }
         
+        $zeroQtyClause = $excludeZeroQty
+            ? "HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}"
+            : "HAVING 1=1{$priceFilter}{$qtyFilter}";
+        
         // Build order items CTE (no need for retur_details since remaining_qty = current_qty)
         $returCTE = "
             " . self::buildOrderItemsWithReturCTE() . ",
@@ -211,7 +223,7 @@ class SalesDetailQuery
                 INNER JOIN order_items_with_retur oiwr ON o.id = oiwr.order_id
                 WHERE 1=1{$dateFilter}{$platformFilter}
                 GROUP BY o.id
-                HAVING SUM(oiwr.remaining_qty) > 0{$priceFilter}{$qtyFilter}
+                {$zeroQtyClause}
             ),
             all_orders_count AS (
                 SELECT COUNT(*) as total
