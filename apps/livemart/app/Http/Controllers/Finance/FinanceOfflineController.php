@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\FinanceOffline;
 use App\Models\BarangKeluar;
 use App\Models\OfflineSale;
+use App\Models\ReturOfflineSale;
 use App\Exports\FinanceOfflineInvoiceExport;
+use App\Services\ReturFinanceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1110,6 +1112,26 @@ class FinanceOfflineController extends Controller
                 
                 $invoiceMessages[] = "Invoice {$invoiceNumber} berhasil dibuat untuk " . 
                     ($taxId == 3 ? "barang PKP" : "barang Non-PKP");
+            }
+            
+            // Check if this offline sale has completed returns and handle finance accordingly
+            if (!$barangKeluarGrouped->isEmpty() && $offlineSale) {
+                $completedReturs = ReturOfflineSale::where('offline_sale_id', $offlineSale->id)
+                    ->where('status', 'selesai')
+                    ->with('details.offlineSaleItem')
+                    ->get();
+                
+                if ($completedReturs->isNotEmpty()) {
+                    Log::info("Found {$completedReturs->count()} completed return(s) for sale {$offlineSale->id}, applying finance adjustments");
+                    
+                    $financeService = new ReturFinanceService();
+                    foreach ($completedReturs as $retur) {
+                        $financeService->handleOfflineReturFinance($retur);
+                        Log::info("Finance adjustment applied for retur {$retur->kode_retur} after invoice generation");
+                    }
+                    
+                    $invoiceMessages[] = "Penyesuaian retur diterapkan untuk " . $completedReturs->count() . " retur.";
+                }
             }
             
             DB::commit();

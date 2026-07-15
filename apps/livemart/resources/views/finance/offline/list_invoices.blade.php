@@ -445,6 +445,18 @@
                                             $remainingAmount = max(0, $netTotal - $totalPaid);
                                             
                                             $dbStatus = $invoice->status ?? 'unpaid';
+                                            
+                                            // Jika status refunded/retur_full, force semua nilai finansial ke 0
+                                            if ($dbStatus == 'refunded' || $dbStatus == 'retur_full') {
+                                                $dppOriginal = 0;
+                                                $returAmount = 0;
+                                                $netDPP = 0;
+                                                $netPPN = 0;
+                                                $netTotal = 0;
+                                                $remainingAmount = 0;
+                                                $totalPaid = 0;
+                                            }
+                                            
                                             $isTidakBalance = ($totalPaid > $netTotal && $totalPaid > 0 && $dbStatus != 'refunded' && $dbStatus != 'retur_full');
                                             $isFullyPaid = ($remainingAmount == 0 && $dbStatus != 'refunded' && $dbStatus != 'retur_full');
                                             
@@ -743,6 +755,18 @@
     $paymentAdjustmentNeeded = $isTidakBalance ? ($totalPaid - $netTotalModal) : 0;
     
     $dbStatusModal = $invoice->status ?? 'unpaid';
+    
+    // Jika status refunded/retur_full, force semua nilai finansial ke 0
+    if ($dbStatusModal == 'refunded' || $dbStatusModal == 'retur_full') {
+        $dppOriginalModal = 0;
+        $returAmountModal = 0;
+        $netDPPModal = 0;
+        $netPPNModal = 0;
+        $netTotalModal = 0;
+        $remainingAmount = 0;
+        $totalPaid = 0;
+    }
+    
     $isTidakBalance = ($totalPaid > $netTotalModal && $totalPaid > 0 && $dbStatusModal != 'refunded' && $dbStatusModal != 'retur_full');
     $isFullyPaidModal = ($remainingAmount == 0 && $dbStatusModal != 'refunded' && $dbStatusModal != 'retur_full');
     
