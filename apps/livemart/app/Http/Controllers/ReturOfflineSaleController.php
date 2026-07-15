@@ -82,11 +82,9 @@ class ReturOfflineSaleController extends Controller
     public function create()
     {
         // Display a list of offline sales to choose from with eager loaded relations
-        // Limit to offline sales from the last 3 months to avoid timeout and memory issues
         $offlineSaleList = OfflineSale::withoutGlobalScope('mainCategory')
             ->with(['customerInfo'])
             ->whereHas('items')
-            ->where('sale_date', '>=', now()->subMonths(3))
             ->orderBy('sale_date', 'desc')
             ->limit(1000)
             ->get();
