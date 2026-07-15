@@ -105,8 +105,8 @@ Route::middleware(['auth', 'main.category', 'prevent-back-history'])->group(func
 // Route untuk penerimaan barang
 Route::prefix('penerimaan')->middleware(['auth', 'main.category', 'prevent-back-history', 'under.construction', 'increase.upload.limits'])->group(function () {
     Route::get('/', [PenerimaanController::class, 'index'])->name('penerimaan.index')->middleware('permission:warehouse.view');
-    Route::get('/create', [PenerimaanController::class, 'create'])->name('penerimaan.create')->middleware('permission:warehouse.create');
-    Route::post('/store', [PenerimaanController::class, 'store'])->name('penerimaan.store')->middleware('permission:warehouse.create');
+    Route::get('/create', [PenerimaanController::class, 'create'])->name('penerimaan.create')->middleware('permission:warehouse.view');
+    Route::post('/store', [PenerimaanController::class, 'store'])->name('penerimaan.store')->middleware('permission:warehouse.view');
     Route::get('/{id}', [PenerimaanController::class, 'show'])
         ->name('penerimaan.show')
         ->where('id', '[0-9]+')
@@ -137,9 +137,9 @@ Route::prefix('penerimaan')->middleware(['auth', 'main.category', 'prevent-back-
     Route::get('/get-tax-categories', [PenerimaanController::class, 'getTaxCategories'])->name('penerimaan.get-tax-categories')->middleware('permission:warehouse.view');
     
     // AJAX routes untuk batch processing - FULL JSON/AJAX
-    Route::post('/create-header', [PenerimaanController::class, 'createHeader'])->name('penerimaan.create-header')->middleware('permission:warehouse.create');
-    Route::post('/{id}/store-batch-details', [PenerimaanController::class, 'storeBatchDetails'])->name('penerimaan.store-batch-details')->middleware('permission:warehouse.create');
-    Route::post('/{id}/finalize', [PenerimaanController::class, 'finalizePenerimaan'])->name('penerimaan.finalize')->middleware('permission:warehouse.create');
+    Route::post('/create-header', [PenerimaanController::class, 'createHeader'])->name('penerimaan.create-header')->middleware('permission:warehouse.view');
+    Route::post('/{id}/store-batch-details', [PenerimaanController::class, 'storeBatchDetails'])->name('penerimaan.store-batch-details')->middleware('permission:warehouse.view');
+    Route::post('/{id}/finalize', [PenerimaanController::class, 'finalizePenerimaan'])->name('penerimaan.finalize')->middleware('permission:warehouse.view');
     Route::post('/{id}/update-header', [PenerimaanController::class, 'updateHeader'])->name('penerimaan.update-header')->middleware('permission:warehouse.edit');
     Route::post('/{id}/clear-details', [PenerimaanController::class, 'clearDetails'])->name('penerimaan.clear-details')->middleware('permission:warehouse.edit');
     Route::post('/{id}/finalize-update', [PenerimaanController::class, 'finalizePenerimaanUpdate'])->name('penerimaan.finalize-update')->middleware('permission:warehouse.edit');
