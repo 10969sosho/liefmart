@@ -662,10 +662,8 @@ class PenerimaanController extends Controller
      */
     public function storeBatchDetails(Request $request, $id)
     {
-        // Hanya superadmin
-        if (!Auth::user()->isSuperAdmin()) {
-            return response()->json(['success' => false, 'message' => 'Hanya superadmin yang dapat mengedit penerimaan.'], 403);
-        }
+        // Cek permission via route middleware (permission:warehouse.view), tidak perlu superadmin
+        // karena method ini dipanggil saat create maupun edit
 
         $validator = Validator::make($request->all(), [
             'items' => 'required|array|min:1',
