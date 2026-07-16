@@ -643,6 +643,9 @@ class PenerimaanController extends Controller
      */
     public function storeBatchDetails(Request $request, $id)
     {
+        // Cek permission via route middleware (permission:warehouse.view), tidak perlu superadmin
+        // karena method ini dipanggil saat create maupun edit
+
         $validator = Validator::make($request->all(), [
             'items' => 'required|array|min:1',
             'items.*.barang_id' => 'required|exists:products,id',
