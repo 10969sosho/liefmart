@@ -53,7 +53,8 @@ class SalesExportMappedExport implements FromIterator, WithHeadings, ShouldAutoS
                     ->whereIn('id', $orderIds)
                     ->with([
                         'orderItems' => function($query) {
-                            $query->select('id', 'order_id', 'platform_product_id', 'quantity', 'price_after_discount', 'tracking_number');
+                            $query->select('id', 'order_id', 'platform_product_id', 'quantity', 'price_after_discount', 'tracking_number')
+                                  ->orderBy('id');
                         },
                         'orderItems.platformProduct' => function($query) {
                             $query->select('id', 'platform_product_name', 'variant');

@@ -255,12 +255,14 @@ class MappingBarang extends Model
         if ($latestVersion !== null) {
             return static::where('platform_product_id', $platformProductId)
                 ->where('version', $latestVersion)
+                ->orderBy('id')
                 ->get();
         }
         
         // 3. If no version found, fallback to active mappings
         return static::where('platform_product_id', $platformProductId)
             ->where('is_active', true)
+            ->orderBy('id')
             ->get();
     }
 

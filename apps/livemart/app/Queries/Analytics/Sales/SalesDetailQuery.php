@@ -285,14 +285,14 @@ class SalesDetailQuery
     {
         switch ($sortBy) {
             case 'date_oldest':
-                return 'ORDER BY o.tanggal ASC';
+                return 'ORDER BY o.tanggal ASC, o.id ASC';
             case 'value_highest':
-                return 'ORDER BY owt.order_total_value DESC, o.tanggal DESC';
+                return 'ORDER BY owt.order_total_value DESC, o.tanggal DESC, o.id DESC';
             case 'value_lowest':
-                return 'ORDER BY owt.order_total_value ASC, o.tanggal DESC';
+                return 'ORDER BY owt.order_total_value ASC, o.tanggal DESC, o.id DESC';
             case 'date_newest':
             default:
-                return 'ORDER BY o.tanggal DESC';
+                return 'ORDER BY o.tanggal DESC, o.id DESC';
         }
     }
 }
