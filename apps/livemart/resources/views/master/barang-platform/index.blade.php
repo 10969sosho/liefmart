@@ -41,6 +41,10 @@
         vertical-align: top;
         padding: 0.25rem 0.5rem !important;
     }
+
+    .table-responsive thead.bg-dark th {
+        background-color: #343a40 !important;
+    }
 </style>
 @endpush
 
