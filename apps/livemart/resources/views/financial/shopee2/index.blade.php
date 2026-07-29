@@ -307,6 +307,7 @@
                     <tbody>
                         @forelse($groupedTransactions as $orderNumber => $orderTransactions)
                             @foreach($orderTransactions as $index => $transaction)
+                            @if($transaction)
                             @php
                                 $isUnpaid = $transaction->outstanding > 0;
                                 $isOlderThan3Weeks = false;
@@ -540,6 +541,7 @@
                                     </div>
                                 </td>
                             </tr>
+                            @endif
                             @endforeach
                         @empty
                         <tr>
