@@ -17,6 +17,8 @@ use App\Exports\Shopee2FinanceAnalyticsExport;
 use App\Exports\Shopee2CashFlowExport;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\AdjustmentHistory;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class PembayaranShopee2Controller extends Controller
 {
@@ -107,26 +109,38 @@ class PembayaranShopee2Controller extends Controller
             }
         }
         
-        // Calculate totals for cards from FILTERED data
-        $totalCount = $query->count();
-        $totalNominalFix = $query->sum('nominal_fix');
-        $totalSaldoMasuk = $query->sum('saldo_masuk');
-        $totalOutstanding = $query->sum('outstanding');
-        
-        // Get paginated results
-        $transactions = $query->orderBy('tanggal_order', 'desc')
+        // Get all transactions matching the query (without pagination yet)
+        $allTransactions = $query->orderBy('tanggal_order', 'desc')
             ->orderBy('no_order', 'desc')
-            ->paginate(50);
+            ->get();
         
         // Filter out fully returned orders from the results
-        $filteredCollection = $transactions->getCollection()->filter(function($transaction) {
+        $filteredCollection = $allTransactions->filter(function($transaction) {
             // Skip transactions whose orders are fully returned
             if ($transaction->order && $transaction->order->isFullyReturned()) {
                 return false;
             }
             return true;
         });
-        $transactions->setCollection($filteredCollection);
+        
+        // Calculate totals for cards from FILTERED data (after fully-returned filter)
+        $totalCount = $filteredCollection->count();
+        $totalNominalFix = $filteredCollection->sum('nominal_fix');
+        $totalSaldoMasuk = $filteredCollection->sum('saldo_masuk');
+        $totalOutstanding = $filteredCollection->sum('outstanding');
+        
+        // Paginate the filtered results for display
+        $perPage = 50;
+        $currentPage = Paginator::resolveCurrentPage('page');
+        $currentPageItems = $filteredCollection->slice(($currentPage - 1) * $perPage, $perPage)->values();
+        
+        $transactions = new LengthAwarePaginator(
+            $currentPageItems,
+            $filteredCollection->count(),
+            $perPage,
+            $currentPage,
+            ['path' => Paginator::resolveCurrentPath()]
+        );
         
         // Get all orders that don't have financial transactions
         $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
@@ -140,7 +154,7 @@ class PembayaranShopee2Controller extends Controller
             });
             
         // Group transactions by order number for display
-        $groupedTransactions = $transactions->groupBy('no_order');
+        $groupedTransactions = $transactions->getCollection()->groupBy('no_order');
         
         // Get all tax categories for filter dropdown
         $taxCategories = DB::table('tax_categories')
