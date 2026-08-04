@@ -3,28 +3,13 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { Package, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Package, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
 import { Navbar } from '@/components/layout/navbar';
 import { Sidebar } from '@/components/layout/sidebar';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { warehouseApi } from '@/lib/api';
 
 const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
+  defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
 });
 
 function WarehouseContent() {
@@ -42,129 +27,124 @@ function WarehouseContent() {
   });
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="container mx-auto p-6">
-            <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Warehouse Management</h1>
-            <p className="text-muted-foreground">
-              Kelola stok dan lokasi penyimpanan barang
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => router.push('/warehouse/stock')}
-            >
-              Stock List
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push('/warehouse/analytics')}
-            >
-              Analytics
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Unlocated Items</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {unlocatedStock?.data?.length || 0}
+        <main className="flex-1 p-8">
+          <div className="max-w-7xl mx-auto space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <button
+                  onClick={() => router.push('/')}
+                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Kembali
+                </button>
+                <h1 className="text-3xl font-bold text-gray-900">Warehouse Management</h1>
+                <p className="text-gray-500 mt-1">Kelola stok dan lokasi penyimpanan</p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Items belum dipindahkan
-              </p>
-            </CardContent>
-          </Card>
+              <button
+                onClick={() => router.push('/warehouse/move')}
+                className="btn-modern bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-lg"
+              >
+                Move to Warehouse A
+              </button>
+            </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Warehouse A</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">-</div>
-              <p className="text-xs text-muted-foreground">
-                Items di warehouse
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Damaged Stock</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">-</div>
-              <p className="text-xs text-muted-foreground">
-                Items rusak
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Unlocated Items - Perlu Dipindahkan</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-12 bg-gray-200 animate-pulse rounded"></div>
-                ))}
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm card-hover">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center shadow-lg">
+                    <Package className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-gray-500 mb-1">Unlocated Items</p>
+                <div className="text-3xl font-bold text-gray-900">
+                  {unlocatedStock?.data?.length || 0}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Items belum dipindahkan</p>
               </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {unlocatedStock?.data?.map((item: any) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">
-                        {item.product?.name || '-'}
-                      </TableCell>
-                      <TableCell>{item.product?.sku || '-'}</TableCell>
-                      <TableCell>{item.qty}</TableCell>
-                      <TableCell>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                          {item.location}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          onClick={() => router.push('/warehouse/move')}
-                        >
-                          Move to Warehouse A
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-              </Card>
+
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm card-hover">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                    <TrendingUp className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-gray-500 mb-1">Warehouse A</p>
+                <div className="text-3xl font-bold text-gray-900">-</div>
+                <p className="text-xs text-gray-500 mt-1">Items di warehouse</p>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm card-hover">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-500 flex items-center justify-center shadow-lg">
+                    <AlertTriangle className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-gray-500 mb-1">Damaged Stock</p>
+                <div className="text-3xl font-bold text-gray-900">-</div>
+                <p className="text-xs text-gray-500 mt-1">Items rusak</p>
+              </div>
+            </div>
+
+            {/* Unlocated Items Table */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <div className="p-6 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-900">Unlocated Items</h2>
+                <p className="text-sm text-gray-500 mt-1">Items yang perlu dipindahkan ke Warehouse A</p>
+              </div>
+              <div className="p-6">
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  </div>
+                ) : unlocatedStock?.data?.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500">Tidak ada item unlocated</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="table-modern">
+                      <thead>
+                        <tr>
+                          <th>Product</th>
+                          <th>SKU</th>
+                          <th>Quantity</th>
+                          <th>Location</th>
+                          <th className="text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unlocatedStock?.data?.map((item: any) => (
+                          <tr key={item.id}>
+                            <td className="font-medium">{item.product?.name || '-'}</td>
+                            <td>{item.product?.sku || '-'}</td>
+                            <td>
+                              <span className="badge-modern badge-info">{item.qty} pcs</span>
+                            </td>
+                            <td>
+                              <span className="badge-modern badge-warning">{item.location}</span>
+                            </td>
+                            <td className="text-right">
+                              <button
+                                onClick={() => router.push('/warehouse/move')}
+                                className="btn-modern bg-gradient-to-r from-green-600 to-emerald-600 text-white text-xs py-1.5 px-3"
+                              >
+                                Move
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </main>
