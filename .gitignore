@@ -34,3 +34,5 @@ apps/*/storage/debugbar/*
 *.class
 *.o
 *.pyc
+# Added by code-review-graph
+.code-review-graph/

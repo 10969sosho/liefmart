@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CustomerApiController;
 use App\Http\Controllers\Api\BrandApiController;
 use App\Http\Controllers\Api\MappingApiController;
 use App\Http\Controllers\Api\AnalyticsApiController;
+use App\Http\Controllers\Api\PenerimaanApiController;
 use App\Http\Controllers\PenerimaanController;
 use App\Http\Controllers\SalesController;
 use App\Http\Controllers\Master\BrandController;
@@ -129,6 +130,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exports/dispatch', [AnalyticsApiController::class, 'dispatchExport']);
         Route::get('/exports/list', [AnalyticsApiController::class, 'listExports']);
         Route::get('/exports/{id}/download', [AnalyticsApiController::class, 'downloadExport']);
+    });
+    
+    // Penerimaan
+    Route::prefix('penerimaan')->group(function () {
+        Route::get('/', [PenerimaanApiController::class, 'index']);
+        Route::get('/{id}', [PenerimaanApiController::class, 'show']);
+        Route::post('/create-header', [PenerimaanApiController::class, 'createHeader']);
+        Route::post('/{id}/store-batch-details', [PenerimaanApiController::class, 'storeBatchDetails']);
+        Route::delete('/{id}', [PenerimaanApiController::class, 'destroy']);
+        Route::get('/tax-categories', [PenerimaanApiController::class, 'getTaxCategories']);
+        Route::get('/products', [PenerimaanApiController::class, 'getProducts']);
+        Route::get('/satuans', [PenerimaanApiController::class, 'getSatuans']);
+        Route::get('/main-categories', [PenerimaanApiController::class, 'getMainCategories']);
     });
 });
 
