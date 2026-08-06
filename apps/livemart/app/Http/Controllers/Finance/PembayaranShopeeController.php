@@ -119,7 +119,16 @@ class PembayaranShopeeController extends Controller
                 ->whereNotNull('o.order_number')
                 ->where('o.order_number', '!=', '')
                 ->groupBy('o.id')
-                ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+                ->havingRaw('SUM(rpd.qty) >= (
+                    SELECT COALESCE(SUM(oi2.quantity * COALESCE((
+                        SELECT SUM(mb.quantity)
+                        FROM mapping_barangs mb
+                        WHERE mb.platform_product_id = oi2.platform_product_id
+                          AND mb.is_active = 1
+                    ), 1)), 0)
+                    FROM order_items oi2
+                    WHERE oi2.order_id = o.id
+                )');
         });
         
         // Optimized: Calculate all totals in a single query with caching
@@ -184,7 +193,16 @@ class PembayaranShopeeController extends Controller
                     ->whereNotNull('o.order_number')
                     ->where('o.order_number', '!=', '')
                     ->groupBy('o.id')
-                    ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+                    ->havingRaw('SUM(rpd.qty) >= (
+                        SELECT COALESCE(SUM(oi2.quantity * COALESCE((
+                            SELECT SUM(mb.quantity)
+                            FROM mapping_barangs mb
+                            WHERE mb.platform_product_id = oi2.platform_product_id
+                              AND mb.is_active = 1
+                        ), 1)), 0)
+                        FROM order_items oi2
+                        WHERE oi2.order_id = o.id
+                    )');
             });
             
             return $totalsQuery->selectRaw('
@@ -206,9 +224,16 @@ class PembayaranShopeeController extends Controller
         $transactions = $query->orderBy('tanggal_order', 'desc')->paginate(15);
         
         // Get all orders that don't have financial transactions
-        $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
+        $missingOrdersQuery = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
             ->whereDoesntHave('shopeeFinancialTransactions')
-            ->where('platform_id', $platformId)
+            ->where('platform_id', $platformId);
+
+        // Apply the order number filter to unpaid orders as well.
+        if ($request->filled('order_number')) {
+            $missingOrdersQuery->where('order_number', 'like', '%' . $request->order_number . '%');
+        }
+
+        $missingOrders = $missingOrdersQuery
             ->orderBy('tanggal', 'desc') // Use tanggal instead of order_date
             ->get()
             ->filter(function($order) {
@@ -1568,7 +1593,7 @@ class PembayaranShopeeController extends Controller
         // First, check BarangKeluar records associated with this order
         $barangKeluarItems = \App\Models\BarangKeluar::whereHas('orderItem', function($query) use ($order) {
             $query->where('order_id', $order->id);
-        })->with(['warehouseStock', 'orderItem'])->get();
+        })->with(['warehouseStock', 'orderItem.platformProduct.mappingBarang'])->get();
         
         // Group by tax_id
         $taxGroups = [];
@@ -1591,7 +1616,6 @@ class PembayaranShopeeController extends Controller
                 
                 // Add barang keluar item
                 $taxGroups[$taxId]['barang_keluar'][] = $bk;
-                $taxGroups[$taxId]['total_qty'] += $bk->qty;
                 
                 // Add order item if not already added
                 if ($bk->orderItem) {
@@ -1599,6 +1623,11 @@ class PembayaranShopeeController extends Controller
                     if (!isset($taxGroups[$taxId]['order_items'][$orderItemId])) {
                         $taxGroups[$taxId]['order_items'][$orderItemId] = $bk->orderItem;
                         $taxGroups[$taxId]['total_nominal'] += $bk->orderItem->price_after_discount * $bk->orderItem->quantity;
+
+                        $packageQuantity = $bk->orderItem->platformProduct?->mappingBarang
+                            ?->where('is_active', true)
+                            ?->sum('quantity') ?: 1;
+                        $taxGroups[$taxId]['total_qty'] += $bk->orderItem->quantity * $packageQuantity;
                     }
                 }
             }
@@ -1606,7 +1635,7 @@ class PembayaranShopeeController extends Controller
         
         // If no BarangKeluar items, fall back to order items
         if (empty($taxGroups)) {
-            $orderItems = $order->orderItems()->with('warehouseStock')->get();
+            $orderItems = $order->orderItems()->with(['warehouseStock', 'platformProduct.mappingBarang'])->get();
             
             foreach ($orderItems as $item) {
                 if ($item->warehouseStock) {
@@ -1625,8 +1654,12 @@ class PembayaranShopeeController extends Controller
                     }
                     
                     $taxGroups[$taxId]['order_items'][$item->id] = $item;
-                    $taxGroups[$taxId]['total_qty'] += $item->quantity;
                     $taxGroups[$taxId]['total_nominal'] += $item->price_after_discount * $item->quantity;
+
+                    $packageQuantity = $item->platformProduct?->mappingBarang
+                        ?->where('is_active', true)
+                        ?->sum('quantity') ?: 1;
+                    $taxGroups[$taxId]['total_qty'] += $item->quantity * $packageQuantity;
                 }
             }
         }
@@ -1720,6 +1753,12 @@ class PembayaranShopeeController extends Controller
                 return redirect()->back()
                     ->withInput()
                     ->with('error', 'Nomor pesanan yang dipilih bukan dari platform Shopee.');
+            }
+
+            if ($order->isFullyReturned()) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Order yang sudah diretur penuh tidak dapat dibuatkan transaksi finance.');
             }
             
             // Cek jika sudah ada transaksi untuk order ini
@@ -2154,7 +2193,16 @@ class PembayaranShopeeController extends Controller
                 ->whereNotNull('o.order_number')
                 ->where('o.order_number', '!=', '')
                 ->groupBy('o.id')
-                ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+                ->havingRaw('SUM(rpd.qty) >= (
+                    SELECT COALESCE(SUM(oi2.quantity * COALESCE((
+                        SELECT SUM(mb.quantity)
+                        FROM mapping_barangs mb
+                        WHERE mb.platform_product_id = oi2.platform_product_id
+                          AND mb.is_active = 1
+                    ), 1)), 0)
+                    FROM order_items oi2
+                    WHERE oi2.order_id = o.id
+                )');
         });
         
         $transactions = $query->orderBy('tanggal_order', 'desc')->get();

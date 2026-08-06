@@ -143,9 +143,16 @@ class PembayaranShopee2Controller extends Controller
         );
         
         // Get all orders that don't have financial transactions
-        $missingOrders = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
+        $missingOrdersQuery = Order::with(['orderItems', 'orderItems.platformProduct.mappingBarang'])
             ->whereDoesntHave('shopee2FinancialTransactions')
-            ->where('platform_id', $platformId)
+            ->where('platform_id', $platformId);
+
+        // Apply the order number filter to unpaid orders as well.
+        if ($request->filled('order_number')) {
+            $missingOrdersQuery->where('order_number', 'like', '%' . $request->order_number . '%');
+        }
+
+        $missingOrders = $missingOrdersQuery
             ->orderBy('tanggal', 'desc') // Use tanggal instead of order_date
             ->get()
             ->filter(function($order) {

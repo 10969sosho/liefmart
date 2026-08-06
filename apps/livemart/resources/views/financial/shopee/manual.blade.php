@@ -75,14 +75,17 @@
                             $selectedOrderId = request('order_id') ?: old('order_id');
                             $debugMessage = '';
                             if ($selectedOrderId) {
-                                $selectedOrder = \App\Models\Order::with('orderItems')->find($selectedOrderId);
+                                $selectedOrder = \App\Models\Order::with('orderItems.platformProduct.mappingBarang')->find($selectedOrderId);
                                 if ($selectedOrder) {
                                     $itemCount = $selectedOrder->orderItems->count();
                                     $debugMessage = "Order #{$selectedOrder->order_number} ditemukan, {$itemCount} order items.";
                                     foreach ($selectedOrder->orderItems as $item) {
                                         $debugMessage .= " [item#{$item->id}: price_after_discount={$item->price_after_discount}, qty={$item->quantity}]";
                                         $totalHarga += $item->price_after_discount * $item->quantity;
-                                        $totalQty += $item->quantity;
+                                        $packageQuantity = $item->platformProduct?->mappingBarang
+                                            ?->where('is_active', true)
+                                            ?->sum('quantity') ?: 1;
+                                        $totalQty += $item->quantity * $packageQuantity;
                                     }
                                 } else {
                                     $debugMessage = "ERROR: Order ID {$selectedOrderId} tidak ditemukan di database!";
@@ -364,4 +367,4 @@
         }
     });
 </script>
-@endpush 
+@endpush

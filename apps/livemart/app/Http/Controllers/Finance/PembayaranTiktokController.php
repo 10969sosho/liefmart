@@ -135,7 +135,16 @@ class PembayaranTiktokController extends Controller
                 ->whereNotNull('o.order_number')
                 ->where('o.order_number', '!=', '')
                 ->groupBy('o.id')
-                ->havingRaw('SUM(rpd.qty) >= (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id)');
+                ->havingRaw('SUM(rpd.qty) >= (
+                    SELECT COALESCE(SUM(oi2.quantity * COALESCE((
+                        SELECT SUM(mb.quantity)
+                        FROM mapping_barangs mb
+                        WHERE mb.platform_product_id = oi2.platform_product_id
+                          AND mb.is_active = 1
+                    ), 1)), 0)
+                    FROM order_items oi2
+                    WHERE oi2.order_id = o.id
+                )');
         });
         
         // Calculate totals for cards from FILTERED data - use table alias
@@ -186,7 +195,14 @@ class PembayaranTiktokController extends Controller
                 AND rp.status IN ("draft", "selesai")
                 GROUP BY oi.order_id
                 HAVING SUM(rpd.qty) >= (
-                    SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = orders.id
+                    SELECT COALESCE(SUM(oi2.quantity * COALESCE((
+                        SELECT SUM(mb.quantity)
+                        FROM mapping_barangs mb
+                        WHERE mb.platform_product_id = oi2.platform_product_id
+                          AND mb.is_active = 1
+                    ), 1)), 0)
+                    FROM order_items oi2
+                    WHERE oi2.order_id = orders.id
                 )
             )')
             ->groupBy('orders.id', 'orders.order_number', 'orders.tanggal', 'orders.status')
@@ -318,7 +334,14 @@ class PembayaranTiktokController extends Controller
                     AND rp.status IN ('draft', 'selesai')
                     GROUP BY oi.order_id
                     HAVING SUM(rpd.qty) >= (
-                        SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = orders.id
+                        SELECT COALESCE(SUM(oi2.quantity * COALESCE((
+                            SELECT SUM(mb.quantity)
+                            FROM mapping_barangs mb
+                            WHERE mb.platform_product_id = oi2.platform_product_id
+                              AND mb.is_active = 1
+                        ), 1)), 0)
+                        FROM order_items oi2
+                        WHERE oi2.order_id = orders.id
                     )
                 )
                 GROUP BY orders.id, orders.order_number, orders.tanggal
